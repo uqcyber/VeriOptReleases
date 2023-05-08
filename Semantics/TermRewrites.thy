@@ -862,6 +862,62 @@ lemma lift_common_valid:
       by (metis choice_join lift_common.simps(3) list.set_intros(1) list.set_intros(2))
     by simp
 
+fun find_common :: "MATCH \<Rightarrow> Rules \<Rightarrow> Rules option" where
+  "find_common m (base e) = None" |
+  "find_common m (r1 else r2) = None" |
+  "find_common m (m' ? r) = (if m = m' then Some r else None)" |
+  "find_common m (choice rules) = None"
+
+fun find_uncommon :: "MATCH \<Rightarrow> Rules \<Rightarrow> Rules option" where
+  "find_uncommon m (m' ? r) = (if m = m' then None else Some (m' ? r))" |
+  "find_uncommon m r = Some r"
+
+definition join_common :: "MATCH \<Rightarrow> Rules list \<Rightarrow> Rules list" where
+  "join_common m rules = List.map_filter (find_common m) rules"
+
+definition join_uncommon :: "MATCH \<Rightarrow> Rules list \<Rightarrow> Rules list" where
+  "join_uncommon m rules = List.map_filter (find_uncommon m) rules"
+
+lemma size_join_uncommon:
+  "size (join_uncommon m rules) \<le> size rules"
+  unfolding join_uncommon_def map_filter_def
+  by (induction rule: find_uncommon.induct; auto)
+
+function (sequential) combine_conditions :: "Rules \<Rightarrow> Rules" where
+  "combine_conditions (base e) = base e" |
+  "combine_conditions (r1 else r2) = (combine_conditions r1 else combine_conditions r2)" |
+  "combine_conditions (m ? r) = (m ? combine_conditions r)" |
+  "combine_conditions (choice ((m ? r) # rules)) = 
+    choice ((m ? combine_conditions (choice (r # join_common m rules))) # map combine_conditions (join_uncommon m rules))" |
+  "combine_conditions (choice rules) = 
+    choice (map combine_conditions rules)"
+  apply pat_completeness+
+  by simp+
+
+lemma find_common_size:
+  assumes "(find_common m r) \<noteq> None"
+  shows "size (the (find_common m r)) < size r"
+  using assms apply (induction r rule: find_common.induct)
+  apply simp+ apply fastforce by simp
+
+lemma "size_list size (join_common m rules) \<le> (size_list size rules)"
+  unfolding join_common_def map_filter_def
+  (*apply (induction rules) apply auto[1]*)
+  apply (induction rule: find_common.induct)
+  apply (induction rules) 
+  apply simp using find_common_size sledgehammer
+
+lemma
+  "combined_size (choice (join_common m rules))
+       < combined_size (m ? (choice rules)) \<or>
+       combined_size (choice (join_common m rules)) =
+       combined_size (m ? (choice rules)) \<and>
+       size_list size (join_common m rules) < Suc (size_list size rules)"
+
+termination combine_conditions
+  apply (relation "measures [combined_size, size]") apply auto[1] apply simp+
+  apply blast+
+  apply fastforce+ apply simp unfolding join_common_def sledgehammer
 
 definition optimized_export where
   "optimized_export = lift_common o lift_match o eliminate_noop o eliminate_empty"
@@ -1136,6 +1192,8 @@ corollary
 *)
 
 subsubsection \<open>Rule Optimization\<close>
+
+value "combine_conditions (lift_match (eliminate_noop (choice [NestedNot, RedundantSub, AddLeftNegateToSub])))"
 
 corollary
   "lift_match (RedundantSub else AddLeftNegateToSub) =
