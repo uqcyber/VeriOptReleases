@@ -361,7 +361,7 @@ subsection \<open>Match Primitives\<close>
 datatype MATCH =
   match VarName PatternExpr |
   equality VarName VarName (infixl "==" 52) |
-  seq MATCH MATCH (infixl "&&" 50) |
+  andthen MATCH MATCH (infixl "&&" 50) |
   either MATCH MATCH (infixl "||" 49) |
   negate SideCondition |
   check SideCondition |
@@ -452,7 +452,7 @@ fun eval_match :: "MATCH \<Rightarrow> Subst \<Rightarrow> Subst option" where
       None \<Rightarrow> None)" |
   "eval_match (equality v1 v2) s =
     (if s v1 = s v2 then Some s else None)" |
-  "eval_match (seq m1 m2) s =
+  "eval_match (andthen m1 m2) s =
       (case eval_match m1 s of 
         None \<Rightarrow> None |
         Some s' \<Rightarrow> eval_match m2 s')" |
@@ -472,6 +472,7 @@ datatype Rules =
   base IRExpr |
   cond MATCH Rules (infixl "?" 52) |
   else Rules Rules (infixl "else" 50) |
+  seq Rules Rules (infixl "\<then>" 49) |
   choice "Rules list"
 
 text \<open>Use the scope of a generated match to replace real variable names with aliases in the rewrite result.\<close>
@@ -531,29 +532,45 @@ lemma remove1_size:
   by (metis diff_less length_pos_if_in_set length_remove1 zero_less_one)
 
 inductive eval_rules :: "Rules \<Rightarrow> Subst \<Rightarrow> IRExpr option \<Rightarrow> bool" where
+  \<comment> \<open>Evaluate the result\<close>
   "eval_rules (base e) u (ground_expr e u)" |
+
+  \<comment> \<open>Evaluate a condition\<close>
   "\<lbrakk>eval_match m u = Some u';
     eval_rules r u' e\<rbrakk>
    \<Longrightarrow> eval_rules (cond m r) u e" |
   "\<lbrakk>eval_match m u = None\<rbrakk>
    \<Longrightarrow> eval_rules (cond m r) u None" |
+
+  \<comment> \<open>Evaluate else\<close>
   "\<lbrakk>eval_rules r1 u (Some r)\<rbrakk>
    \<Longrightarrow> eval_rules (r1 else r2) u (Some r)" |
   "\<lbrakk>eval_rules r1 u None;
     eval_rules r2 u e\<rbrakk>
    \<Longrightarrow> eval_rules (r1 else r2) u e" |
+
+  \<comment> \<open>Evaluate choice\<close>
   "\<lbrakk>rule \<in> set rules;
     eval_rules rule u (Some r)\<rbrakk>
    \<Longrightarrow> eval_rules (choice rules) u (Some r)" |
   "\<lbrakk>\<forall> rule \<in> set rules. eval_rules rule u None\<rbrakk>
    \<Longrightarrow> eval_rules (choice rules) u None" |
   "\<lbrakk>rules = []\<rbrakk>
-   \<Longrightarrow> eval_rules (choice rules) u None"
+   \<Longrightarrow> eval_rules (choice rules) u None" |
+
+  \<comment> \<open>Evaluate sequential\<close>
+  "\<lbrakk>eval_rules r1 u (Some e');
+    eval_rules r2 (u(STR ''e'' \<mapsto> e')) r\<rbrakk>
+   \<Longrightarrow> eval_rules (r1 \<then> r2) u r" |
+  "\<lbrakk>eval_rules r1 u None;
+    eval_rules r2 u r\<rbrakk>
+   \<Longrightarrow> eval_rules (r1 \<then> r2) u r"
 
 inductive_cases baseE: "eval_rules (base e') u e"
 inductive_cases condE: "eval_rules (cond m r) u e"
 inductive_cases elseE: "eval_rules (r1 else r2) u e"
 inductive_cases choiceE: "eval_rules (choice r) u e"
+inductive_cases seqE: "eval_rules (r1 \<then> r2) u e"
 
 code_pred [show_modes] eval_rules .
 (*
@@ -632,7 +649,8 @@ fun optimize_match :: "(MATCH \<Rightarrow> MATCH) \<Rightarrow> Rules \<Rightar
   "optimize_match f (base e) = base e" |
   "optimize_match f (m ? r) = f m ? optimize_match f r" |
   "optimize_match f (r1 else r2) = (optimize_match f r1 else optimize_match f r2)" |
-  "optimize_match f (choice rules) = choice (map (optimize_match f) rules)"
+  "optimize_match f (choice rules) = choice (map (optimize_match f) rules)" |
+  "optimize_match f (r1 \<then> r2) = (optimize_match f r1 \<then> optimize_match f r2)"
 
 lemma choice_join:
   assumes "eval_rules (a) u e = eval_rules (f a) u e"
@@ -654,7 +672,8 @@ fun eliminate_noop :: "Rules \<Rightarrow> Rules" where
   "eliminate_noop (base e) = base e" |
   "eliminate_noop (m ? r) = elim_noop m ? eliminate_noop r" |
   "eliminate_noop (r1 else r2) = (eliminate_noop r1 else eliminate_noop r2)" |
-  "eliminate_noop (choice rules) = choice (map eliminate_noop rules)"
+  "eliminate_noop (choice rules) = choice (map eliminate_noop rules)" |
+  "eliminate_noop (r1 \<then> r2) = (eliminate_noop r1 \<then> eliminate_noop r2)"
 
 
 lemma eliminate_noop_valid:
@@ -682,7 +701,7 @@ lemma eliminate_noop_valid:
       then show ?thesis by simp
     qed
     done
-  done
+  by (smt (verit) Rules.distinct(11) Rules.distinct(15) Rules.distinct(19) Rules.distinct(5) Rules.inject(4) eliminate_noop.simps(5) eval_rules.simps)
 
 fun elim_empty :: "MATCH \<Rightarrow> MATCH" where
   "elim_empty (check Empty) = noop" |
@@ -704,7 +723,8 @@ fun eliminate_empty :: "Rules \<Rightarrow> Rules" where
   "eliminate_empty (base e) = base e" |
   "eliminate_empty (m ? r) = elim_empty m ? eliminate_empty r" |
   "eliminate_empty (r1 else r2) = (eliminate_empty r1 else eliminate_empty r2)" |
-  "eliminate_empty (choice rules) = choice (map eliminate_empty rules)"
+  "eliminate_empty (choice rules) = choice (map eliminate_empty rules)" |
+  "eliminate_empty (r1 \<then> r2) = (eliminate_empty r1 \<then> eliminate_empty r2)"
 
 lemma eliminate_empty_valid:
   "eval_rules r u e = eval_rules (eliminate_empty r) u e"
@@ -719,14 +739,15 @@ lemma eliminate_empty_valid:
     using ind apply (induction rules) apply simp
     using choice_join
     by (metis list.set_intros(1) list.set_intros(2))
-  done
+  by (smt (verit) Rules.distinct(11) Rules.distinct(15) Rules.distinct(19) Rules.distinct(5) Rules.inject(4) eliminate_empty.simps(5) eval_rules.simps)
 
 fun combined_size :: "Rules \<Rightarrow> nat" where
   "combined_size (m ? r) = (2 * size m) + combined_size r" |
   "combined_size (base e) = 0" |
   "combined_size (r1 else r2) = combined_size r1 + combined_size r2" |
   "combined_size (choice (rule # rules)) = 1 + combined_size rule + combined_size (choice rules)" |
-  "combined_size (choice []) = 1"
+  "combined_size (choice []) = 1" |
+  "combined_size (r1 \<then> r2) = combined_size r1 + combined_size r2"
 
 value "size noop"
 
@@ -735,15 +756,17 @@ function (sequential) lift_match :: "Rules \<Rightarrow> Rules" where
   "lift_match (choice rules) = choice (map lift_match rules)" |
   "lift_match ((m1 && m2) ? r) = (lift_match (m1 ? (m2 ? r)))" |
   "lift_match (m ? r) = m ? (lift_match r)" |
-  "lift_match (base e) = (base e)"
+  "lift_match (base e) = (base e)" |
+  "lift_match (r1 \<then> r2) = (lift_match r1 \<then> lift_match r2)"
   by pat_completeness auto
 termination lift_match
   apply (relation "measures [combined_size, size]") apply auto[1]
   apply auto[1] apply auto[1] apply simp
   subgoal for rules x apply (induction rules) apply simp by fastforce
   apply simp subgoal for m2 r apply (cases m2) by (simp add: lift_match.psimps(4))
-  apply simp
-  by simp+
+        apply simp+
+  apply blast
+  by auto
 
 lemma chain_equiv:
   "eval_rules (m1 ? (m2 ? r)) u e = eval_rules ((m1 && m2) ? r) u e"
@@ -756,7 +779,7 @@ lemma lift_match_valid:
   apply (induction r arbitrary: u e rule: lift_match.induct) 
            apply simp 
   using lift_match.simps(1) elseE
-           apply (smt (verit) eval_rules.simps)
+  apply (smt (verit, ccfv_threshold) eval_rules.intros(4) eval_rules.intros(5))
   unfolding lift_match.simps(2)
   subgoal premises ind for rules u e 
     using ind apply (induction rules) apply simp
@@ -769,7 +792,8 @@ lemma lift_match_valid:
      apply (metis (full_types) condE eval_rules.intros(2) eval_rules.intros(3) lift_match.simps(7))
     apply (metis (full_types) condE eval_rules.intros(2) eval_rules.intros(3) lift_match.simps(8))
    apply (metis (full_types) condE eval_rules.intros(2) eval_rules.intros(3) lift_match.simps(9))
-  by simp
+   apply simp
+  by (smt (verit) Rules.distinct(11) Rules.distinct(15) Rules.distinct(19) Rules.distinct(5) Rules.inject(4) eval_rules.simps lift_match.simps(11))
 
 (*
 fun lift_common :: "Rules \<Rightarrow> Rules" where
@@ -792,9 +816,9 @@ fun join_conditions :: "Rules \<Rightarrow> Rules option" where
 
 lemma join_conditions_shrinks:
   "join_conditions r = Some r' \<Longrightarrow> size r' < size r"
-  apply (induction r rule: join_conditions.induct)
-  apply (metis One_nat_def Rules.size(6) Rules.size(7) Suc_eq_plus1 add_Suc_right add_Suc_shift join_conditions.simps(1) lessI option.distinct(1) option.sel)
-   apply (metis One_nat_def Rules.size(6) join_conditions.simps(2) less_add_same_cancel1 option.discI option.inject zero_less_one)
+  apply (induction r rule: join_conditions.induct) 
+  apply (metis Rules.size(7) Rules.size(8) Suc_le_eq add.left_commute add.right_neutral antisym_conv1 join_conditions.simps(1) le_simps(1) option.distinct(1) option.sel plus_nat.simps(2))
+   apply (metis One_nat_def Rules.size(7) join_conditions.simps(2) less_add_same_cancel1 less_numeral_extra(1) option.discI option.inject)
   by simp+
 
 (*
@@ -822,16 +846,18 @@ function lift_common :: "Rules \<Rightarrow> Rules" where
     of Some r' \<Rightarrow> lift_common r' |
        None \<Rightarrow> (m ? lift_common r))" |
   "lift_common (choice rules) = choice (map lift_common rules)" |
-  "lift_common (base e) = base e"
-  using combined_size.cases
-  apply metis
+  "lift_common (base e) = base e" |
+  "lift_common (r1 \<then> r2) = (lift_common r1 \<then> lift_common r2)"
+  using combined_size.cases 
+  apply (smt (verit, ccfv_threshold))
   by simp+
 termination
   apply (relation "measures [size]") apply auto[1]
     apply simp subgoal for r1 r2 apply (induction r1 rule: join_conditions.induct) by simp+
    apply auto[1] using join_conditions_shrinks apply fastforce+ 
-  apply auto[1] using join_conditions_shrinks by (simp add: le_imp_less_Suc size_list_estimation')
-  
+  apply auto[1] using join_conditions_shrinks apply (simp add: le_imp_less_Suc size_list_estimation')
+  by simp+
+
 lemma match_eq:
   "eval_match (m && m) u = eval_match m u"
   sorry
@@ -860,13 +886,12 @@ lemma lift_common_valid:
     subgoal for rules u apply (induction rules)
       apply simp
       by (metis choice_join lift_common.simps(3) list.set_intros(1) list.set_intros(2))
-    by simp
+     apply simp
+    by (smt (verit) Rules.distinct(11) Rules.distinct(15) Rules.distinct(19) Rules.distinct(5) Rules.inject(4) eval_rules.simps lift_common.simps(5))
 
 fun find_common :: "MATCH \<Rightarrow> Rules \<Rightarrow> Rules option" where
-  "find_common m (base e) = None" |
-  "find_common m (r1 else r2) = None" |
   "find_common m (m' ? r) = (if m = m' then Some r else None)" |
-  "find_common m (choice rules) = None"
+  "find_common m r = None"
 
 fun find_uncommon :: "MATCH \<Rightarrow> Rules \<Rightarrow> Rules option" where
   "find_uncommon m (m' ? r) = (if m = m' then None else Some (m' ? r))" |
@@ -890,7 +915,8 @@ function (sequential) combine_conditions :: "Rules \<Rightarrow> Rules" where
   "combine_conditions (choice ((m ? r) # rules)) = 
     choice ((m ? combine_conditions (choice (r # join_common m rules))) # map combine_conditions (join_uncommon m rules))" |
   "combine_conditions (choice rules) = 
-    choice (map combine_conditions rules)"
+    choice (map combine_conditions rules)" |
+  "combine_conditions (r1 \<then> r2) = (combine_conditions r1 \<then> combine_conditions r2)"
   apply pat_completeness+
   by simp+
 
@@ -898,8 +924,9 @@ lemma find_common_size:
   assumes "(find_common m r) \<noteq> None"
   shows "size (the (find_common m r)) < size r"
   using assms apply (induction r rule: find_common.induct)
-  apply simp+ apply fastforce by simp
+  apply simp+ apply fastforce by simp+
 
+(*
 lemma "size_list size (join_common m rules) \<le> (size_list size rules)"
   unfolding join_common_def map_filter_def
   (*apply (induction rules) apply auto[1]*)
@@ -918,6 +945,7 @@ termination combine_conditions
   apply (relation "measures [combined_size, size]") apply auto[1] apply simp+
   apply blast+
   apply fastforce+ apply simp unfolding join_common_def sledgehammer
+*)
 
 definition optimized_export where
   "optimized_export = lift_common o lift_match o eliminate_noop o eliminate_empty"
@@ -1021,7 +1049,7 @@ fun export_condition :: "SideCondition \<Rightarrow> string" where
 fun export_match :: "MATCH \<Rightarrow> string" where
   "export_match (match v p) = ''if ('' @ String.explode v @ '' instanceof '' @ export_pattern p @ '') {
 '' @ export_assignments v p" |
-  "export_match (seq m1 m2) = export_match m1 @ '''' @ export_match m2" |
+  "export_match (andthen m1 m2) = export_match m1 @ '''' @ export_match m2" |
   "export_match (equality v1 v2) = ''if ('' @ String.explode v1 @ '' == '' @ String.explode v2 @ '') {
 ''" |
   "export_match (negate sc) = ''if (!('' @ export_condition sc @ '')) {
@@ -1038,7 +1066,7 @@ fun close :: "MATCH \<Rightarrow> string" where
 }''" |
   "close (match v p) = ''
 }''" |
-  "close (seq m1 m2) = close m1 @ close m2" |
+  "close (andthen m1 m2) = close m1 @ close m2" |
   "close (equality v1 v2) = ''
 }''" |
   "close (negate sc) = ''
@@ -1051,7 +1079,9 @@ fun export_rules :: "Rules \<Rightarrow> string" where
   "export_rules (base e) = ''return '' @ export_irexpr e @ '';''" |
   "export_rules (cond m r) = export_match m @ export_rules r @ close m" |
   "export_rules (r1 else r2) = export_rules r1 @ ''
-'' @ export_rules r2"
+'' @ export_rules r2" |
+  "export_rules (r1 \<then> r2) = export_rules r1 @ ''
+'' @ export_rules r2" (* TODO: should modify e *)
 
 subsection \<open>Experiments\<close>
 
@@ -1255,5 +1285,7 @@ no_notation cond (infixl "?" 52)
 no_notation seq (infixl "&&" 50)
 
 notation And (infixl "&&" 50)
+
+value "NestedNot \<then> (RedundantSub else AddLeftNegateToSub)"
 
 end
