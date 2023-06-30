@@ -833,9 +833,9 @@ fun join_conditions :: "Rules \<Rightarrow> Rules option" where
   "join_conditions (m1 ? r1 else m2 ? r2) = 
     (if m1 = m2
       then Some (m1 ? (r1 else r2)) else None)" |
-  "join_conditions (m1 ? (m2 ? r1)) = 
+  (*"join_conditions (m1 ? (m2 ? r1)) = 
     (if m1 = m2
-      then Some ((m1 ? r1)) else None)" |
+      then Some ((m1 ? r1)) else None)" |*)
   "join_conditions r = None"
 
 lemma join_conditions_shrinks:
@@ -865,10 +865,11 @@ function lift_common :: "Rules \<Rightarrow> Rules" where
     case join_conditions (r1 else r2) 
     of Some r \<Rightarrow> lift_common r |
        None \<Rightarrow> (lift_common r1 else lift_common r2))" |
-  "lift_common (m ? r) = (
+  "lift_common (m ? r) = (m ? lift_common r)" |
+  (*"lift_common (m ? r) = (
     case join_conditions (m ? r) 
     of Some r' \<Rightarrow> lift_common r' |
-       None \<Rightarrow> (m ? lift_common r))" |
+       None \<Rightarrow> (m ? lift_common r))" |*)
   "lift_common (choice rules) = choice (map lift_common rules)" |
   "lift_common (base e) = base e" |
   "lift_common (r1 \<then> r2) = (lift_common r1 \<then> lift_common r2)"
@@ -1243,7 +1244,7 @@ proof -
   ultimately show ?thesis by simp
 qed
 
-lemma join_conditions_valid:
+(*lemma join_conditions_valid:
   assumes "valid_rules r"
   shows "join_conditions r = Some r' \<Longrightarrow> eval_rules r u e = eval_rules r' u e"
   using assms apply (induction r rule: join_conditions.induct)
@@ -1255,12 +1256,18 @@ lemma join_conditions_valid:
     ultimately show ?thesis
       by (metis join_conditions.simps(2) option.discI option.sel p(1) redundant_conditions)
   qed
+  by simp+*)
+end
+
+lemma join_conditions_valid:
+  "join_conditions r = Some r' \<Longrightarrow> eval_rules r u e = eval_rules r' u e"
+  apply (induction r rule: join_conditions.induct)
+  apply (smt (verit, ccfv_threshold) condE elseE eval_rules.intros(2) eval_rules.intros(3) eval_rules.intros(4) eval_rules.intros(5) join_conditions.simps(1) option.distinct(1) option.sel)
   by simp+
 
 lemma lift_common_valid:
-  assumes "valid_rules r"
-  shows "eval_rules r u e = eval_rules (lift_common r) u e"
-  using assms proof (induction r arbitrary: u e rule: lift_common.induct)
+  "eval_rules r u e = eval_rules (lift_common r) u e"
+  proof (induction r arbitrary: u e rule: lift_common.induct)
   case (1 r1 r2)
   then show ?case
   proof (cases "join_conditions (r1 else r2)")
@@ -1272,7 +1279,7 @@ lemma lift_common_valid:
   next
     case (Some a)
     then obtain m1 m2 r1' r2' where ex: "(r1 else r2) = (m1 ? r1' else m2 ? r2')"
-      by (metis eliminate_empty.cases join_conditions.simps(10) join_conditions.simps(11) join_conditions.simps(12) join_conditions.simps(13) join_conditions.simps(14) join_conditions.simps(15) join_conditions.simps(8) join_conditions.simps(9) option.distinct(1))
+      by (smt (z3) join_conditions.elims option.distinct(1))
     then have "m1 = m2"
       by (metis Some join_conditions.simps(1) option.distinct(1))
     then show ?thesis using 1
@@ -1281,6 +1288,8 @@ lemma lift_common_valid:
 next
   case (2 m r)
   then show ?case
+    by (simp add: monotonic_cond)
+(*
   proof (cases "join_conditions (m ? r)")
     case None
     then have "(lift_common (m ? r)) = (m ? lift_common r)"
@@ -1296,6 +1305,7 @@ next
     then show ?thesis using 2
       by (simp add: ex join_conditions_valid)
   qed
+*)
 next
   case (3 rules)
   then show ?case by (simp add: monotonic_choice)
@@ -1306,7 +1316,7 @@ next
   case (5 r1 r2)
   then show ?case by (simp add: monotonic_seq)
 qed
-end
+
   (*subgoal for r1 r2 apply (cases "join_conditions (r1 else r2)")
     apply (smt (verit, del_insts) elseE eval_rules.intros(4) eval_rules.intros(5) lift_common.simps(1) option.case_eq_if valid_rules.simps(2))
     unfolding lift_common.simps valid_rules.simps 
@@ -2230,18 +2240,14 @@ lemma eliminate_choice_valid:
   by (smt (verit) Collect_cong eval_rules.intros(10) eval_rules.intros(9) mem_Collect_eq seqE)
 
 
-(*definition optimized_export where
-  "optimized_export = eliminate_choice o combine_conditions o lift_common o lift_match o eliminate_noop o eliminate_empty"
-*)
-
 definition optimized_export where
-  "optimized_export = eliminate_choice o combine_conditions o lift_match o eliminate_noop o eliminate_empty"
+  "optimized_export = eliminate_choice o combine_conditions o lift_common o lift_match o eliminate_noop o eliminate_empty"
 
 
 lemma optimized_export_valid:
   "{e. eval_rules r u e} = {e. eval_rules (optimized_export r) u e}"
   unfolding optimized_export_def comp_def
-  using lift_match_valid eliminate_noop_valid eliminate_empty_valid 
+  using lift_common_valid lift_match_valid eliminate_noop_valid eliminate_empty_valid 
   using combine_conditions_valid eliminate_choice_valid by simp
 
 thm_oracles optimized_export_valid
@@ -2643,6 +2649,7 @@ corollary
           (VariableExpr STR ''az'' VoidStamp)))))))"
   by eval
 
+(*
 corollary
   "lift_common (lift_match (RedundantSub else AddLeftNegateToSub)) =
    (MATCH.match STR ''e'' (BinaryPattern BinAdd STR ''a'' STR ''b'') ?
@@ -2656,9 +2663,8 @@ corollary
        base
         (BinaryExpr BinSub (VariableExpr STR ''a'' VoidStamp)
           (VariableExpr STR ''az'' VoidStamp)))))))"
-  by eval
+  by eval*)
 
-(* lift_common removed from optimized export 
 corollary
   "optimized_export (RedundantSub else AddLeftNegateToSub) =
    MATCH.match STR ''e'' (BinaryPattern BinAdd STR ''a'' STR ''b'') ?
@@ -2668,7 +2674,7 @@ corollary
     else
     MATCH.match STR ''b'' (UnaryPattern UnaryNeg STR ''az'') ?
      base (BinaryExpr BinSub (VariableExpr STR ''a'' VoidStamp) (VariableExpr STR ''az'' VoidStamp)))"
-  by eval*)
+  by eval
 
 subsubsection \<open>Java Generation\<close>
 
