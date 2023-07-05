@@ -8,6 +8,7 @@ session Graph in Graph = "HOL-Library" +
   theories
     JavaWords
     JavaLong
+
     Values
     ValueThms
     Stamp
@@ -24,9 +25,10 @@ session Semantics in Semantics = Graph +
   description
     "Semantics of the GraalVM IR"
   options [document = pdf, document_output = "output",
-           show_question_marks = false]
+           show_question_marks = false, quick_and_dirty]
   sessions
     "HOL-Eisbach"
+    Snippets
   theories
     Form
     IRGraphFrames
@@ -34,7 +36,7 @@ session Semantics in Semantics = Graph +
     IRStepThms
     IRTreeEval
     IRTreeEvalThms
-    (*TermRewrites*)
+    TermRewrites
     TreeToGraph
     TreeToGraphThms
   document_files (in "../latex")
