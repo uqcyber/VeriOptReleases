@@ -829,7 +829,7 @@ fun lift_common :: "Rules \<Rightarrow> Rules" where
   "lift_common (m ? r) = (m ? (lift_common r))" |
   "lift_common (base e) = base e"*)
 
-fun join_conditions :: "Rules \<Rightarrow> Rules option" where
+fun   join_conditions :: "Rules \<Rightarrow> Rules option" where
   "join_conditions (m1 ? r1 else m2 ? r2) = 
     (if m1 = m2
       then Some (m1 ? (r1 else r2)) else None)" |
@@ -887,22 +887,29 @@ fun pattern_variables :: "PatternExpr \<Rightarrow> String.literal set" where
   "pattern_variables (UnaryPattern op e) = {e}" |
   "pattern_variables (BinaryPattern op e1 e2) = {e1, e2}" |
   "pattern_variables (ConditionalPattern c t f) = {c, t, f}" |
-  "pattern_variables (VariablePattern v) = {v}" |
+  "pattern_variables (VariablePattern v) = {}" |
   "pattern_variables (ConstantPattern v) = {}" |
-  "pattern_variables (ConstantVarPattern v) = {v}"
+  "pattern_variables (ConstantVarPattern v) = {}"
 
-fun match_variables :: "MATCH \<Rightarrow> String.literal set" where
-  "match_variables (match v p) = {v} \<union> pattern_variables p" |
-  "match_variables (equality e1 e2) = {e1, e2}" |
-  "match_variables (m1 && m2) = match_variables m1 \<union> match_variables m2" |
-  "match_variables (condition c) = {}" |
-  "match_variables noop = {}"
+fun def_vars :: "MATCH \<Rightarrow> String.literal set" where
+  "def_vars (match v p) = pattern_variables p" |
+  "def_vars (equality e1 e2) = {e1, e2}" |
+  "def_vars (m1 && m2) = def_vars m1 \<union> def_vars m2" |
+  "def_vars (condition c) = {}" |
+  "def_vars noop = {}"
+
+fun use_vars :: "MATCH \<Rightarrow> String.literal set" where
+  "use_vars (match v p) = {v}" |
+  "use_vars (equality e1 e2) = {}" |
+  "use_vars (m1 && m2) = use_vars m1 \<union> (use_vars m2 - def_vars m1)" |
+  "use_vars (condition c) = {}" |
+  "use_vars noop = {}"
 
 fun valid_match :: "MATCH \<Rightarrow> bool" where
   "valid_match (match v (UnaryPattern op e)) = (v \<noteq> e)" |
   "valid_match (match v (BinaryPattern op e1 e2)) = (v \<noteq> e1 \<and> v \<noteq> e2 \<and> e1 \<noteq> e2)" |
   "valid_match (match v (ConditionalPattern c t f)) = (v \<noteq> c \<and> v \<noteq> t \<and> v \<noteq> f \<and> c \<noteq> t \<and> c \<noteq> f \<and> t \<noteq> f)" |
-  "valid_match (m1 && m2) = (valid_match m1 \<and> valid_match m2 \<and> match_variables m1 \<inter> match_variables m2 = {})" |
+  "valid_match (m1 && m2) = (valid_match m1 \<and> valid_match m2 \<and> use_vars m1 \<inter> def_vars m2 = {})" |
   "valid_match _ = True"
 
 fun valid_rules :: "Rules \<Rightarrow> bool" where
@@ -913,17 +920,138 @@ fun valid_rules :: "Rules \<Rightarrow> bool" where
   "valid_rules _ = True"
 
 experiment begin
-lemma match_affect:
+lemma match_def_affect:
   assumes "eval_match m u = Some a"
-  shows "\<forall>v. v \<notin> match_variables m \<longrightarrow> u v = a v"
+  shows "\<forall>v. v \<notin> def_vars m \<longrightarrow> u v = a v"
 using assms proof (induction m u arbitrary: a rule: eval_match.induct)
   case (1 v op1 x s)
-  have "match_variables (MATCH.match v (UnaryPattern op1 x)) = {v, x}"
-    by auto
   have "\<exists>e. a = s(x\<mapsto>e)"
     by (smt (verit, ccfv_threshold) "1" IRExpr.case_eq_if eval_match.simps(1) option.case_eq_if option.distinct(1) option.inject)
   then show ?case
+    unfolding def_vars.simps by auto
+next
+  case (2 v op1 x y s)
+  have "\<exists>e1 e2. a = s(y\<mapsto>e1, x\<mapsto>e2)"
+    by (smt (verit) "2" IRExpr.case_eq_if eval_match.simps(2) fun_upd_twist option.case_eq_if option.distinct(1) option.sel)
+  then show ?case
     by fastforce
+next
+  case (3 v c tb fb s)
+  have "\<exists>e1 e2 e3. a = s(c\<mapsto>e1, tb\<mapsto>e2, fb\<mapsto>e3)"
+    by (smt (verit, best) "3" IRExpr.case_eq_if eval_match.simps(3) option.case_eq_if option.distinct(1) option.inject)  
+  then show ?case
+    by force
+next
+  case (4 v c1 s)
+  then show ?case
+    by (smt (verit, ccfv_SIG) IRExpr.case_eq_if eval_match.simps(4) option.case_eq_if option.distinct(1) option.sel)
+next
+  case (5 v1 v2 s)
+  then show ?case
+    by (metis eval_match.simps(5) option.distinct(1) option.sel)
+next
+  case (6 m1 m2 s)
+  then show ?case
+    by (metis (no_types, lifting) UnCI def_vars.simps(3) eval_match.simps(6) option.case_eq_if option.exhaust_sel)
+    (*by (smt (verit) UnCI def_vars.simps(3) eval_match.simps(6) option.case_eq_if option.exhaust_sel)*)
+next
+  case (7 s)
+  then show ?case
+    by simp
+next
+  case (8 sc s)
+  then show ?case
+    by (metis eval_match.simps(8) option.distinct(1) option.sel)
+next
+  case ("9_1" v vb s)
+  then show ?case
+    by simp
+next
+  case ("9_2" v vb s)
+  then show ?case
+    by simp
+qed
+
+lemma use_def:
+  assumes "valid_match m"
+  shows "def_vars m \<inter> use_vars m = {}"
+  using assms apply (induction m)
+  subgoal for v p apply (cases p) by simp+
+     apply simp
+  apply auto[1]
+  by simp+
+
+lemma match_use_affect:
+  assumes "eval_match m u = Some a"
+  assumes "valid_match m"
+  shows "\<forall>v \<in> use_vars m. u v = a v"
+  using assms apply (induction m u arbitrary: u a rule: eval_match.induct)
+  by (meson disjoint_iff_not_equal match_def_affect use_def)+
+(*  case (1 v op1 x s)
+  then show ?case
+    by (meson disjoint_iff_not_equal match_def_affect use_def)
+next
+  case (2 v op1 x y s)
+  then show ?case
+    by (meson disjoint_iff_not_equal match_def_affect use_def)
+next
+  case (3 v c tb fb s)
+  then show ?case
+    by (meson disjoint_iff_not_equal match_def_affect use_def)
+next
+  case (4 v c1 s)
+  then show ?case
+    by (meson disjoint_iff_not_equal match_def_affect use_def)
+next
+  case (5 v1 v2 s)
+  then show ?case
+    by (meson disjoint_iff_not_equal match_def_affect use_def)
+next
+  case (6 m1 m2 s)
+  then show ?case
+    by (meson disjoint_iff_not_equal match_def_affect use_def)
+  have drops: "\<exists>u a. (\<exists>s x2. eval_match m1 s = Some x2) \<longrightarrow>
+    eval_match m2 u = Some a \<longrightarrow> valid_match m2 \<longrightarrow> (\<forall>v. v \<in> use_vars m2 \<longrightarrow> u v = a v)"
+    by blast
+  obtain a' where a': "eval_match m1 u = Some a'"
+    using "6.prems"(1) by fastforce
+  then have m1: "\<forall>v. v \<in> use_vars m1 \<longrightarrow> u v = a' v"
+    using "6.IH"(1) "6.prems"(2) valid_match.simps(4) by blast
+  have validm2: "valid_match m2"
+    using "6.prems"(2) by auto
+  obtain a'' where a'': "eval_match m2 a' = Some a''"
+    using "6.prems"(1) \<open>eval_match m1 u = Some a'\<close> by fastforce
+  then have "\<forall>v. v \<in> use_vars m2 \<longrightarrow> a' v = a'' v"
+    using drops a' validm2
+    by (meson disjoint_iff match_def_affect use_def)
+  then show ?case unfolding use_vars.simps using m1 6(3) unfolding eval_match.simps
+    using a' a''
+    by (metis "6.prems"(2) disjoint_iff eval_match.simps(6) match_def_affect use_def use_vars.simps(3))
+next
+  case (7 s)
+  then show ?case sorry
+next
+  case (8 sc s)
+  then show ?case sorry
+next
+  case ("9_1" v vb s)
+  then show ?case sorry
+next
+  case ("9_2" v vb s)
+  then show ?case sorry
+qed*)
+
+
+lemma use_unchange:
+  assumes "eval_match m u = Some a"
+  assumes "eval_match m u' = Some a'"
+  assumes "valid_match m"
+  assumes "\<forall>v \<in> use_vars m. u v = u' v"
+  shows "\<forall>v \<in> def_vars m. a v = a' v"
+  using assms proof (induction m u arbitrary: u a u' a' rule: eval_match.induct)
+  case (1 v op1 x s)
+  then show ?case
+    by (smt (verit) IRExpr.case_eq_if def_vars.simps(1) eval_match.simps(1) insertCI map_upd_Some_unfold option.case_eq_if option.sel pattern_variables.simps(1) singletonD use_vars.simps(1))
 next
   case (2 v op1 x y s)
   then show ?case sorry
@@ -938,7 +1066,115 @@ next
   then show ?case sorry
 next
   case (6 m1 m2 s)
+  obtain a'' where m1eval: "eval_match m1 u = Some a''"
+    using "6.prems"(1)
+    by fastforce
+  obtain a''' where m1eval': "eval_match m1 u' = Some a'''"
+    using "6.prems"(2)
+    by fastforce
+  have "valid_match m1"
+    using "6.prems"(3) valid_match.simps(4) by blast
+  then have "\<forall>v \<in> use_vars m1. u v = u' v"
+    using m1eval match_use_affect
+    by (simp add: "6.prems"(4))
+  then have m1def: "\<forall>v\<in>def_vars m1. a'' v = a''' v"
+    using "6.IH"(1) \<open>valid_match m1\<close> m1eval m1eval' by presburger
+  have drops: "\<forall>u u' a a'. \<exists>s x2. (eval_match m1 s = Some x2 \<longrightarrow>
+    eval_match m2 u = Some a \<longrightarrow>
+    eval_match m2 u' = Some a' \<longrightarrow>
+    valid_match m2 \<longrightarrow> (\<forall>v\<in>use_vars m2. u v = u' v) \<longrightarrow> (\<forall>v\<in>def_vars m2. a v = a' v))"
+    by (meson "6.IH"(2))
+  obtain b'' where m2eval: "eval_match m2 a'' = Some b''"
+    using "6.prems"(1) m1eval by auto
+  obtain b''' where m2eval': "eval_match m2 a''' = Some b'''"
+    using "6.prems"(2) m1eval' by force
+  have validm2: "valid_match m2"
+    using "6.prems"(3) valid_match.simps(4) by blast
+  then have m1use: "\<forall>v \<in> use_vars m2. a'' v = a''' v"
+    by (metis "6.prems"(4) Diff_iff UnI2 m1def m1eval m1eval' match_def_affect use_vars.simps(3))
+  then have m1def: "\<forall>v\<in>def_vars m2. b'' v = b''' v" 
+    using 6 m1eval m2eval m2eval' validm2 apply simp sorry
+  then show ?case unfolding valid_match.simps sorry
+    (*by (smt (verit, best) "6.IH"(1) "6.prems"(1) "6.prems"(2) Un_iff \<open>\<forall>v\<in>use_vars m1. u v = u' v\<close> \<open>valid_match m1\<close> def_vars.simps(3) eval_match.simps(6) m1eval m1eval' m2eval m2eval' match_def_affect option.inject option.simps(5))
+*)next
+  case (7 s)
   then show ?case sorry
+next
+  case (8 sc s)
+  then show ?case sorry
+next
+  case ("9_1" v vb s)
+  then show ?case sorry
+next
+  case ("9_2" v vb s)
+  then show ?case sorry
+qed
+
+lemma match_use_idemp:
+  assumes "eval_match m u = Some a"
+  assumes "valid_match m"
+  shows "eval_match m a = Some a"
+  using assms proof (induction m u arbitrary: u a rule: eval_match.induct)
+  case (1 v op1 x s)
+  then have "u v = a v"
+    by (metis insertI1 match_use_affect use_vars.simps(1))
+  then show ?case
+    using 1(1) unfolding eval_match.simps
+    by (smt (verit) IRExpr.case_eq_if fun_upd_idem_iff map_upd_Some_unfold option.case_eq_if option.sel)
+next
+  case (2 v op1 x y s)
+  then show ?case sorry
+next
+  case (3 v c tb fb s)
+  then show ?case sorry
+next
+  case (4 v c1 s)
+  then show ?case sorry
+next
+  case (5 v1 v2 s)
+  then show ?case sorry
+next
+  case (6 m1 m2 s)
+  (*have "\<forall>v. v \<in> use_vars m1 \<longrightarrow> s v = a v"
+    by (simp add: "6.prems"(1))
+  have "\<forall>v. v \<in> use_vars m2 \<longrightarrow> s v = a v"
+    by (simp add: "6.prems"(1))*)
+  obtain a' where m1eval: "eval_match m1 u = Some a'"
+    using "6.prems"(1)
+    by fastforce
+  have "valid_match m1"
+    using "6.prems"(2) by auto
+  then have "\<forall>v \<in> use_vars m1. u v = a' v"
+    using m1eval match_use_affect by blast
+  then have m1idem: "eval_match m1 a' = Some a'"
+    using "6.IH"(1) \<open>valid_match m1\<close> m1eval by blast
+  have drops: "\<forall>u a x2. (\<exists>s. (eval_match m1 s = Some x2 \<longrightarrow>
+    eval_match m2 u = Some a \<longrightarrow>
+    valid_match m2 \<longrightarrow> eval_match m2 a = Some a))"
+    using "6"(2)
+    by blast
+  obtain a'' where m2eval: "eval_match m2 a' = Some a''"
+    using "6.prems"(1) m1eval by auto
+  have validm2: "valid_match m2"
+    using "6.prems"(2) by auto
+  then have m1use: "\<forall>v \<in> use_vars m2. a' v = a'' v"
+    using m2eval
+    by (simp add: match_use_affect)
+  have existm1: "(\<exists>s x2. eval_match m1 s = Some x2)"
+    using \<open>eval_match m1 a' = Some a'\<close> by auto
+  have m2idem: "eval_match m2 a'' = Some a''"
+    using drops existm1 m2eval validm2 m1eval sorry
+    (*by blast
+    by (simp add: "6.IH"(2) \<open>valid_match m2\<close> m1eval m2eval)*)
+  have "a = a''"
+    using "6.prems"(1) m1eval m2eval by auto
+  (*have "eval_match m1 a'' = Some a''"
+    using 6(4) unfolding valid_match.simps using use_unchange sledgehammer*)
+  have "eval_match (m1 && m2) a'' = Some a''"
+    unfolding eval_match.simps using m1eval m1idem m2eval m2idem using use_unchange sorry
+    (*by (simp add: \<open>eval_match m1 a'' = Some a''\<close>)*)
+  then show ?case using 6(3) m1eval m1idem m2idem
+    unfolding eval_match.simps valid_match.simps sorry
 next
   case (7 s)
   then show ?case sorry
@@ -953,10 +1189,22 @@ next
   then show ?case sorry
 qed
 
+lemma disjoint_match_use:
+  assumes "valid_match m"
+  shows "use_vars m \<inter> def_vars m = {}"
+  using assms apply (induction m)
+  unfolding use_vars.simps def_vars.simps
+  subgoal for x1 x2
+    apply (cases x2) by simp+
+     apply simp+
+  sorry
+
 lemma idempotent_match:
   assumes "valid_match m"
   assumes "eval_match m u = Some a"
   shows "eval_match m a = Some a"
+  using assms match_def_affect match_use_idemp disjoint_match_use
+  by (metis (no_types, opaque_lifting) disjoint_iff_not_equal) (*
   using assms proof (induction m u arbitrary: u a rule: eval_match.induct)
   case (1 v op1 x s)
   then obtain e where e: "u v = Some (UnaryExpr op1 e)"
@@ -1006,7 +1254,7 @@ next
     using "6.prems"(2) a' a'' by auto
   have "eval_match m1 a = Some a"
     sorry*)
-  then show ?case sorry(*using "6.prems"(2) unfolding eval_match.simps
+  then show ?case sorry (*using "6.prems"(2) unfolding eval_match.simps
     by (simp add: \<open>a = a''\<close> s2)*)
 next
   case (7 s)
@@ -1021,10 +1269,14 @@ next
   case ("9_2" v vb s)
   then show ?case sorry
 qed
+*)
 
 lemma match_eq:
   assumes "valid_match m"
   shows "eval_match (m && m) u = eval_match m u"
+  using assms
+  by (simp add: idempotent_match option.case_eq_if)
+(*
 proof (cases "eval_match m u")
   case None
   then show ?thesis by simp
@@ -1160,7 +1412,7 @@ next
     qed
   then show ?thesis
     by (simp add: Some)
-qed
+qed*)
 end
 (*
       case (match x1 x2)
@@ -2241,7 +2493,7 @@ lemma eliminate_choice_valid:
 
 
 definition optimized_export where
-  "optimized_export = eliminate_choice o combine_conditions o lift_common o lift_match o eliminate_noop o eliminate_empty"
+  "optimized_export = eliminate_choice \<circ> combine_conditions o lift_common o lift_match o eliminate_noop o eliminate_empty"
 
 
 lemma optimized_export_valid:
@@ -2528,6 +2780,15 @@ corollary
     (MATCH.match STR ''a'' (UnaryPattern UnaryNot STR ''az'') && noop) && condition Empty) ?
       base (VariableExpr STR ''az'' VoidStamp)"
   by eval
+
+value "
+generate 
+    (BinaryExpr BinAdd
+      (var ''x'')
+      (var ''x''))
+    (BinaryExpr BinSub (var ''x'') (var ''e''))
+    (Empty)
+"
 
 corollary
   "RedundantSub =
