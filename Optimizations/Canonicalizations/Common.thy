@@ -9,7 +9,6 @@ begin
 lemma size_pos[size_simps]: "0 < size y"
   apply (induction y; auto?)
   by (smt (z3) One_nat_def gr0I n_not_Suc_n pos2 size.elims trans_less_add2)
-  (*by (smt (z3) add_2_eq_Suc' add_is_0 not_gr0 size.elims size.simps(12) size.simps(13) size.simps(14) size.simps(15) zero_neq_numeral zero_neq_one)*)
 
 lemma size_non_add[size_simps]: "size (BinaryExpr op a b) = size a + size b + 2 \<longleftrightarrow> \<not>(is_ConstantExpr b)"
   by (induction b; induction op; auto simp: is_ConstantExpr_def)
@@ -25,7 +24,7 @@ lemma size_binary_const[size_simps]:
 
 lemma size_flip_binary[size_simps]:
   "\<not>(is_ConstantExpr y) \<longrightarrow> size (BinaryExpr op (ConstantExpr x) y) > size (BinaryExpr op y (ConstantExpr x))"
-  by (metis add_Suc not_less_eq order_less_asym plus_1_eq_Suc size.simps(11) size.simps(2) size_non_add)
+  by (metis add_Suc not_less_eq order_less_asym plus_1_eq_Suc size.simps(2,11) size_non_add)
 
 lemma size_binary_lhs_a[size_simps]:
   "size (BinaryExpr op (BinaryExpr op' a b) c) > size a"
@@ -41,12 +40,13 @@ lemma size_binary_lhs_c[size_simps]:
 
 lemma size_binary_rhs_a[size_simps]:
   "size (BinaryExpr op c (BinaryExpr op' a b)) > size a"
-  by (smt (verit, best) less_Suc_eq less_add_Suc2 less_add_same_cancel1 linorder_neqE_nat not_add_less1 order_less_trans pos2 size.simps(4) size_binary_const size_non_add)
-
+  apply auto
+  by (metis trans_less_add2 less_Suc_eq less_add_same_cancel1 linorder_neqE_nat not_add_less1 pos2
+      order_less_trans size_binary_const size_non_add)
 
 lemma size_binary_rhs_b[size_simps]:
   "size (BinaryExpr op c (BinaryExpr op' a b)) > size b"
-  by (metis add.left_commute add.right_neutral is_ConstantExpr_def lessI numeral_2_eq_2 plus_1_eq_Suc size.simps(11) size.simps(4) size_non_add trans_less_add2)
+  by (metis add.left_commute add.right_neutral is_ConstantExpr_def lessI numeral_2_eq_2 plus_1_eq_Suc size.simps(4,11) size_non_add trans_less_add2)
 
 lemma size_binary_rhs_c[size_simps]:
   "size (BinaryExpr op c (BinaryExpr op' a b)) > size c"

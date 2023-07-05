@@ -19,21 +19,18 @@ lemma annihilator_rewrite_helper:
   and   "valid_value x (IntegerStamp b lo hi) \<Longrightarrow> intval_and x (IntVal b 0) = IntVal b 0"
   using valid_int_stamp_gives by fastforce+
 
-
 text \<open>The -1 annihilator of OR is a bit harder to prove, because the upper bits are zeroed.\<close>
+
 lemma annihilator_rewrite_helper2:
-     "valid_value x (IntegerStamp b lo hi) \<Longrightarrow> intval_or x (IntVal b (neg_one b)) = IntVal b (neg_one b)"
-  using valid_int_stamp_gives
-  by (metis intval_or.simps(1) neg_one.simps neg_one_value new_int_bin.simps take_bit_eq_mask word_ao_absorbs(4))
-
-
+     "valid_value x (IntegerStamp b lo hi) \<Longrightarrow>
+      intval_or x (IntVal b (neg_one b)) = IntVal b (neg_one b)"
+  by (metis intval_or.simps(1) neg_one.simps neg_one_value new_int_bin.simps take_bit_eq_mask
+      word_ao_absorbs(4) valid_int_stamp_gives)
 
 lemma idempotent_rewrite_helper:
   shows "valid_value x (IntegerStamp b lo hi) \<Longrightarrow> intval_and x x = x"
   and   "valid_value x (IntegerStamp b lo hi) \<Longrightarrow> intval_or  x x = x"
-  using valid_int_stamp_gives 
-  by fastforce+
-
+  using valid_int_stamp_gives by fastforce+
 
 value "size (v::32 word)"
 
@@ -46,7 +43,8 @@ lemma CanonicalizeBinaryProof:
   using assms
 proof (induct rule: CanonicalizeBinaryOp.induct)
   case (binary_const_fold x val1 y val2 val op)
-  then show ?case by auto
+  then show ?case
+    by auto
 next
   case (binary_fold_yneutral y c op stampx x stampy)
   obtain xval where x_eval: "[m, p] \<turnstile> x \<mapsto> xval"
@@ -55,8 +53,8 @@ next
     using neutral_rewrite_helper binary_fold_yneutral.hyps(2-3,6-) is_IntegerStamp_def
     sorry (*by (metis ConstantExpr Value.distinct(5) valid_value.simps(34))*)
   then show ?case
-    by (metis binary_fold_yneutral.hyps(1) binary_fold_yneutral.prems(1) binary_fold_yneutral.prems(2) x_eval
-          BinaryExprE ConstantExprE evalDet)
+    by (metis binary_fold_yneutral.hyps(1) binary_fold_yneutral.prems(1,2) x_eval BinaryExprE
+        ConstantExprE evalDet)
 next
   case (binary_fold_yzero32 y c op stampx x stampy)
   obtain xval where x_eval: "[m, p] \<turnstile> x \<mapsto> xval"
@@ -65,8 +63,8 @@ next
     using annihilator_rewrite_helper binary_fold_yzero32.hyps is_IntegerStamp_def
     sorry
   then show ?case
-    by (metis BinaryExprE ConstantExprE binary_fold_yzero32.hyps(1) binary_fold_yzero32.prems(1) binary_fold_yzero32.prems(2) evalDet x_eval)
-
+    by (metis BinaryExprE ConstantExprE binary_fold_yzero32.hyps(1) binary_fold_yzero32.prems(1,2)
+        evalDet x_eval)
 next
   case (binary_fold_yzero64 y c op stampx x stampy)
   obtain xval where x_eval: "[m, p] \<turnstile> x \<mapsto> xval"
@@ -75,19 +73,16 @@ next
     using annihilator_rewrite_helper
     sorry
   then show ?case
-    by (metis BinaryExprE ConstantExprE binary_fold_yzero64.hyps(1) 
-        binary_fold_yzero64.prems(1) binary_fold_yzero64.prems(2) evalDet x_eval)
-
+    by (metis binary_fold_yzero64.hyps(1) evalDet binary_fold_yzero64.prems(1,2) ConstantExprE
+        BinaryExprE x_eval)
 next
   case (binary_idempotent op x)
   obtain xval where x_eval: "[m, p] \<turnstile> x \<mapsto> xval"
     using binary_idempotent.prems(1) by auto
   then have "bin_eval op xval xval = xval"
-    using idempotent_rewrite_helper binary_idempotent.hyps 
-    sorry
+    using idempotent_rewrite_helper binary_idempotent.hyps sorry
   then show ?case
-    by (metis BinaryExprE binary_idempotent.prems(1) binary_idempotent.prems(2) evalDet x_eval)
-
+    by (metis BinaryExprE binary_idempotent.prems(1,2) evalDet x_eval)
 qed
 end
 
@@ -99,7 +94,8 @@ lemma CanonicalizeUnaryProof:
   using assms
 proof (induct rule: CanonicalizeUnaryOp.induct)
   case (unary_const_fold val' op val)
-  then show ?case by auto
+  then show ?case
+    by auto
 qed
 
 lemma mul_rewrite_helper:
@@ -108,9 +104,26 @@ lemma mul_rewrite_helper:
 
 text \<open>As usual, the general case is harder to prove, because upper bits are zeroed.\<close>
 lemma mul_rewrite_helper32:
-  shows "valid_value x (IntegerStamp b lo hi) \<Longrightarrow> intval_mul x (IntVal b (neg_one b)) = intval_negate x" 
-  using valid_int_stamp_gives
-  by (smt (verit, ccfv_threshold) intval_mul.simps(1) intval_negate.simps(1) mult_minus1_right neg_one.simps new_int.simps new_int_bin.simps take_bit_minus_one_eq_mask take_bit_mult take_bit_of_int unsigned_take_bit_eq word_mult_def) 
+  shows "valid_value x (IntegerStamp b lo hi) \<Longrightarrow>
+         intval_mul x (IntVal b (neg_one b)) = intval_negate x"
+  apply auto
+  subgoal premises p
+  proof -
+    obtain y where y: "y = IntVal b (neg_one b)"
+      by simp
+    obtain xvv where xvv: "x = IntVal b xvv"
+      using p valid_int by blast
+    have notUndef: "intval_mul x y \<noteq> UndefVal"
+      by (simp add: xvv y)
+    have unfoldMul: "intval_mul x y = (new_int b (mask b * xvv))"
+      by (simp add: mult.commute xvv y)
+    have unfoldNegate: "intval_negate x = new_int b (- xvv)"
+      using xvv by auto
+    then show ?thesis
+      by (metis (no_types, opaque_lifting) mask_eqs(5) take_bit_eq_mask mult.commute unfoldMul y
+          mult_minus1_right neg_one.simps new_int.simps take_bit_minus_one_eq_mask)
+  qed
+  done
 
 (* or a more manual proof:
 lemma mul_rewrite_helper32:
@@ -125,7 +138,6 @@ proof -
 qed
 *)
 
-
 experiment begin
 lemma CanonicalizeMulProof:
   assumes "CanonicalizeMul before after"
@@ -135,21 +147,19 @@ lemma CanonicalizeMulProof:
   using assms
 proof (induct rule: CanonicalizeMul.induct)
   show ?thesis
-    using ConstantExprE BinaryExprE bin_eval.simps evalDet mul_rewrite_helper 
+    using ConstantExprE BinaryExprE bin_eval.simps evalDet mul_rewrite_helper
     sorry
 qed
 end
-
 
 lemma valid_int_stamp_both:
   assumes 1: "valid_value x (IntegerStamp b lox hix)"
   and     2: "valid_value y (IntegerStamp b loy hiy)"
   obtains ix iy where "x = IntVal b ix"
-     and "take_bit b ix = ix"
-     and "y = IntVal b iy"
-     and "take_bit b iy = iy"
-  using assms valid_int_stamp_gives by metis
-
+  and "take_bit b ix = ix"
+  and "y = IntVal b iy"
+  and "take_bit b iy = iy"
+  by (metis valid_int_stamp_gives assms)
 
 (* (x - y) + y \<Rightarrow> x *)
 (*  x + (y - x) \<Rightarrow> y *)
@@ -162,10 +172,7 @@ lemma add_rewrites_helper:
          intval_add x (intval_sub y x) = y \<and>
          intval_add (intval_negate x) y = intval_sub y x \<and>
          intval_add x (intval_negate y) = intval_sub x y"
-  using valid_int_stamp_both[OF 1 2]
-  by fastforce 
-
-
+  using valid_int_stamp_both[OF 1 2] by fastforce
 
 experiment begin
 lemma CanonicalizeAddProof:
@@ -177,8 +184,8 @@ lemma CanonicalizeAddProof:
 proof (induct rule: CanonicalizeAdd.induct)
   case (add_xsub x a y stampa stampy)
   then show ?case 
-    using BinaryExprE Stamp.collapse(1) bin_eval.simps(1) bin_eval.simps(3) 
-        evalDet intval_add_sym add_rewrites_helper(1)
+    using BinaryExprE Stamp.collapse(1) bin_eval.simps(1,3) intval_add_sym add_rewrites_helper(1)
+          evalDet
     sorry
 next
   case (add_ysub y a x stampa stampx)
@@ -286,14 +293,16 @@ lemma negate_xsuby_helper:
   and "valid_value y (IntegerStamp b loy hiy)"
   shows "intval_negate (intval_sub x y) = intval_sub y x"
   using valid_int_stamp_both[OF assms] 
-  by (smt (verit, ccfv_threshold) ab_group_add_class.ab_diff_conv_add_uminus add.commute add_diff_cancel_left' diff_0 intval_negate.simps(1) intval_sub.simps(1) new_int.simps new_int_bin.simps take_bit_dist_subR)
+  by (smt (verit, ccfv_threshold) ab_group_add_class.ab_diff_conv_add_uminus add.commute diff_0
+      add_diff_cancel_left' intval_negate.simps(1) intval_sub.simps(1) take_bit_dist_subR
+      new_int_bin.simps new_int.simps)
 
 (* -(-x) = x *)
 lemma negate_negate_helper:
   assumes "valid_value x (IntegerStamp b lox hix)"
   shows "intval_negate (intval_negate x) = x" 
-  using valid_int_stamp_gives
-  by (metis (no_types, opaque_lifting) add.inverse_inverse assms diff_0 intval_negate.simps(1) new_int.simps take_bit_dist_subR) 
+  by (metis (no_types, opaque_lifting) add.inverse_inverse assms diff_0 intval_negate.simps(1)
+      new_int.simps take_bit_dist_subR valid_int_stamp_gives)
 
 lemma CanonicalizeNegateProof:
   assumes "CanonicalizeNegate before after"
@@ -335,7 +344,6 @@ lemma abs_rewrite_helper:
   done
 *)
 
-
 lemma abs_abs_is_abs:
   assumes 1: "valid_value x (IntegerStamp b lox hix)"
   shows "intval_abs (intval_abs x) = intval_abs x"
@@ -345,14 +353,13 @@ lemma abs_abs_is_abs:
 *)
   sorry
 
-
 lemma abs_neg_is_neg:
   assumes "valid_value x (IntegerStamp b lox hix)"
   shows "intval_abs (intval_negate x) = intval_abs x"
-  apply (case_tac[!] "x")
-  using word_helper 
-    (* apply auto+
-  done *)
+  apply (case_tac[!] "x") using intval_negate.simps(2)
+  apply presburger defer
+  apply (metis valid_value.simps(5) assms)
+  apply simp
   sorry
 end
 
@@ -394,8 +401,8 @@ qed
 lemma not_rewrite_helper:
   assumes "valid_value x (IntegerStamp b lox hix)"
   shows "intval_not (intval_not x) = x"
-  using assms valid_int_stamp_gives
-  by (metis bit.double_compl intval_not.simps(1) new_int.simps take_bit_not_take_bit) 
+  by (metis bit.double_compl intval_not.simps(1) new_int.simps take_bit_not_take_bit assms
+      valid_int_stamp_gives)
 
 experiment begin
 lemma CanonicalizeNotProof:
@@ -420,8 +427,12 @@ lemma demorgans_rewrites_helper:
   and   "intval_or (intval_not x) (intval_not y) = intval_not (intval_and x y)"
   and   "x = y \<Longrightarrow> intval_and x y = x"
   and   "x = y \<Longrightarrow> intval_or x y = x"
-  using assms valid_int_stamp_both 
-  sorry  (* was: fastforce+ *)
+  using assms
+  apply (cases x; cases y; auto; presburger)
+  apply (cases x; cases y; auto; simp add: take_bit_not_take_bit)
+  apply (cases x; cases y; auto)
+  using assms(1) apply auto apply presburger
+  using idempotent_rewrite_helper(2) by blast
 
 experiment begin
 lemma CanonicalizeAndProof:
@@ -487,38 +498,61 @@ lemma CanonicalizeConditionalProof:
   using assms
 proof (induct rule: CanonicalizeConditional.induct)
   case (eq_branches t f c)
-  then show ?case using evalDet by auto
+  then show ?case
+    using evalDet by force
 next
   case (cond_eq c x y stampx stampy)
   obtain xval where xeval: "[m,p] \<turnstile> x \<mapsto> xval"
-    using cond_eq.hyps(1) cond_eq.prems(1) by blast
+    using cond_eq.hyps(1) cond_eq.prems(1) by fast
   obtain yval where yeval: "[m,p] \<turnstile> y \<mapsto> yval"
-    using cond_eq.prems(2) by auto
+    using cond_eq.prems(2) by fast
   show ?case proof (cases "xval = yval")
     case True
     then show ?thesis
-      by (smt (verit, ccfv_threshold) ConditionalExprE cond_eq.prems(1) cond_eq.prems(2) evalDet xeval yeval)
+      by (smt (verit, ccfv_threshold) ConditionalExprE cond_eq.prems(1,2) evalDet xeval yeval)
   next
     case False
     then have "\<not>(val_to_bool(intval_equals xval yval))"
-      using ConstantExpr Value.distinct(9) valid_value.simps
       apply (cases "intval_equals xval yval")
-      using val_to_bool.simps(2) sorry
+      prefer 2 defer using val_to_bool.simps apply presburger+
+      subgoal premises p for b v
+      proof -
+        have notUndef: "intval_equals xval yval \<noteq> UndefVal"
+          by (simp add: p(2))
+        have notUndefImpliesIntVal: "intval_equals xval yval \<noteq> UndefVal
+                                                              \<Longrightarrow> (is_IntVal xval \<and> is_IntVal yval)"
+          by (metis bin_eval.simps(11) defined_eval_is_intval)
+        obtain xb xvv where xvv: "xval = IntVal xb xvv"
+          by (meson is_IntVal_def notUndef notUndefImpliesIntVal)
+        obtain yb yvv where yvv: "yval = IntVal yb yvv"
+          by (meson is_IntVal_def notUndef notUndefImpliesIntVal)
+        have sameWidth: "xb = yb"
+          by (metis bool_to_val_bin.elims intval_equals.simps(1) notUndef xvv yvv)
+        then have unfoldEquals: "intval_equals xval yval = (bool_to_val (xvv = yvv))"
+          by (simp add: xvv yvv)
+        then have notEqual: "(bool_to_val (xvv = yvv)) = bool_to_val False"
+          using False sameWidth xvv yvv by auto
+        then show ?thesis
+          by (simp add: unfoldEquals)
+      qed
+      done
     then have "res = yval"
-      by (smt (verit, ccfv_threshold) BinaryExprE ConditionalExprE bin_eval.simps(11) cond_eq.hyps(1) cond_eq.prems(1) evalDet xeval yeval)
+      by (smt (verit, ccfv_threshold) BinaryExprE ConditionalExprE bin_eval.simps(11) evalDet yeval
+          cond_eq.hyps(1) cond_eq.prems(1) xeval)
     then show ?thesis
-      using cond_eq.prems(1) cond_eq.prems(2) xeval yeval evalDet by auto
+      using cond_eq.prems(1,2) xeval yeval evalDet by presburger
   qed
 next
   case (condition_bounds_x c x y stampx stampy)
   obtain xval where xeval: "[m,p] \<turnstile> x \<mapsto> xval"
-    using condition_bounds_x.prems(2) by auto
+    using condition_bounds_x.prems(2) by simp
   obtain yval where yeval: "[m,p] \<turnstile> y \<mapsto> yval"
     using condition_bounds_x.hyps(1) condition_bounds_x.prems(1) by blast
   then show ?case proof (cases "val_to_bool(intval_less_than xval yval)")
     case True
     then show ?thesis
-      by (smt (verit, best) BinaryExprE ConditionalExprE bin_eval.simps(12) condition_bounds_x.hyps(1) condition_bounds_x.prems(1) condition_bounds_x.prems(2) evalDet xeval yeval)
+      by (smt (verit, best) BinaryExprE ConditionalExprE bin_eval.simps(12) evalDet xeval yeval
+          condition_bounds_x.hyps(1) condition_bounds_x.prems(1,2))
   next
     case False
     then have "stpi_upper stampx = stpi_lower stampy"
@@ -531,20 +565,21 @@ next
       by (metis False condition_bounds_x.hyps(2-3,6) stamp_implies_valid_value
           stamps_touch_but_not_less_than_implies_equal xeval yeval) *)
     then have "res = xval \<and> res' = xval"
-      using ConditionalExprE condition_bounds_x.prems(1) \<open>[m,p] \<turnstile> x \<mapsto> res'\<close> evalDet xeval yeval
-      by force
-    then show ?thesis by simp
+      using condition_bounds_x.prems(1) \<open>[m,p] \<turnstile> x \<mapsto> res'\<close> evalDet xeval yeval by force
+    then show ?thesis
+      by simp
   qed
 next
   case (condition_bounds_y c x y stampx stampy)
   obtain xval where xeval: "[m,p] \<turnstile> x \<mapsto> xval"
-    using condition_bounds_y.hyps(1) condition_bounds_y.prems(1) by auto
+    using condition_bounds_y.hyps(1) condition_bounds_y.prems(1) by blast
   obtain yval where yeval: "[m,p] \<turnstile> y \<mapsto> yval"
     using condition_bounds_y.hyps(1) condition_bounds_y.prems(1) by blast
   then show ?case proof (cases "val_to_bool(intval_less_than xval yval)")
     case True
     then show ?thesis
-      by (smt (verit, best) BinaryExprE ConditionalExprE bin_eval.simps(12) condition_bounds_y.hyps(1) condition_bounds_y.prems(1) condition_bounds_y.prems(2) evalDet xeval yeval)
+      by (smt (verit, best) BinaryExprE ConditionalExprE bin_eval.simps(12) evalDet xeval yeval
+          condition_bounds_y.hyps(1) condition_bounds_y.prems(1,2))
   next
     case False
     have "stpi_upper stampx = stpi_lower stampy"
@@ -558,20 +593,20 @@ next
           stamp_implies_valid_value stamps_touch_but_not_less_than_implies_equal xeval yeval)
       *)
     then have "res = yval \<and> res' = yval"
-      using ConditionalExprE condition_bounds_y.prems(1) \<open>[m,p] \<turnstile> y \<mapsto> res'\<close> evalDet xeval yeval
-      by force
-    then show ?thesis by simp
+      using condition_bounds_y.prems(1) \<open>[m,p] \<turnstile> y \<mapsto> res'\<close> evalDet xeval yeval by force
+    then show ?thesis
+      by simp
   qed
 next
   case (negate_condition nc c stampc lo hi stampx x stampy y)
   obtain cval where ceval: "[m,p] \<turnstile> c \<mapsto> cval"
     using negate_condition.prems(2) by auto
   obtain ncval where nceval: "[m,p] \<turnstile> nc \<mapsto> ncval"
-    using negate_condition.prems negate_condition.prems by blast
+    using negate_condition.prems by blast
   then show ?case using assms proof (cases "(val_to_bool ncval)")
     case True
     obtain xval where xeval: "[m,p] \<turnstile> x \<mapsto> xval"
-      by (metis (full_types) ConditionalExprE nceval evalDet True negate_condition.prems(1))
+      by (metis (full_types) ConditionalExprE negate_condition.prems(1))
     then have "res = xval"
       by (metis (full_types) ConditionalExprE True evalDet nceval negate_condition.prems(1))
     have "c \<noteq> nc"
@@ -581,32 +616,33 @@ next
       by (metis True UnaryExprE ceval evalDet intval_logic_negation.simps(1) nceval negate_condition.hyps(1) negate_condition.hyps(2) negate_condition.hyps(3) stamp_implies_valid_value unary_eval.simps(4) val_to_bool.simps(1) valid_int32)
       *)
     then have "res' = xval"
-      using nceval ceval True negate_condition(1) negate_condition(9)
-      by (metis (full_types) ConditionalExprE evalDet xeval)
+      by (metis (full_types) ConditionalExprE evalDet xeval negate_condition(9) ceval)
     then show ?thesis
       by (simp add: \<open>res = xval\<close>)
   next
     case False
     obtain yval where yeval: "[m,p] \<turnstile> y \<mapsto> yval"
-      by (metis (full_types) ConditionalExprE nceval evalDet False negate_condition.prems(1))
-    then have "res = yval" 
-      using False nceval negate_condition.prems(1) evaltree.ConditionalExpr yeval evalDet
-      by (metis (full_types) ConditionalExprE)
+      by (metis (full_types) ConditionalExprE negate_condition.prems(1))
+    then have "res = yval"
+      by (metis (full_types) False nceval negate_condition.prems(1) yeval evalDet ConditionalExprE)
     moreover have "val_to_bool(cval)"
       sorry (*
       by (metis False UnaryExprE ceval evalDet intval_logic_negation.simps(1) nceval negate_condition.hyps(1) negate_condition.hyps(2) negate_condition.hyps(3) stamp_implies_valid_value unary_eval.simps(4) val_to_bool.simps(1) valid_int32 zero_neq_one)
       *)
     moreover have "res' = yval"
-      using calculation(2) ceval negate_condition.prems evaltree.ConditionalExpr yeval evalDet  unary_eval.simps(4)
-      by (metis (full_types) ConditionalExprE)
-    ultimately show ?thesis by simp
+      by (metis (full_types) calculation(2) ceval negate_condition.prems evalDet ConditionalExprE
+          yeval)
+    ultimately show ?thesis
+      by simp
   qed
 next
   case (const_true c val t f)
-  then show ?case using evalDet by auto
+  then show ?case
+    by (auto simp add: evalDet)
 next
   case (const_false c val t f)
-  then show ?case using evalDet by auto
+  then show ?case
+    by (auto simp add: evalDet)
 qed
 end
 

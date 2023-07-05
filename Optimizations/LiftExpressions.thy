@@ -37,7 +37,10 @@ fun un_expr_to_node :: "IRUnaryOp \<Rightarrow> (nat \<Rightarrow> IRNode)" wher
   "un_expr_to_node UnaryLogicNegation = LogicNegationNode" |
   "un_expr_to_node (UnaryNarrow inp res) = NarrowNode inp res" |
   "un_expr_to_node (UnarySignExtend inp res) = SignExtendNode inp res" |
-  "un_expr_to_node (UnaryZeroExtend inp res) = ZeroExtendNode inp res"
+  "un_expr_to_node (UnaryZeroExtend inp res) = ZeroExtendNode inp res" |
+  "un_expr_to_node UnaryIsNull = IsNullNode" |
+  "un_expr_to_node UnaryReverseBytes = ReverseBytesNode" |
+  "un_expr_to_node UnaryBitCount = BitCountNode"
 
 fun bin_expr_to_node :: "IRBinaryOp \<Rightarrow> (nat \<Rightarrow> nat \<Rightarrow> IRNode)" where
   "bin_expr_to_node BinAdd = AddNode" |
@@ -52,7 +55,10 @@ fun bin_expr_to_node :: "IRBinaryOp \<Rightarrow> (nat \<Rightarrow> nat \<Right
   "bin_expr_to_node BinURightShift = UnsignedRightShiftNode" |
   "bin_expr_to_node BinIntegerEquals = IntegerEqualsNode" |
   "bin_expr_to_node BinIntegerLessThan = IntegerLessThanNode" |
-  "bin_expr_to_node BinIntegerBelow = IntegerBelowNode"
+  "bin_expr_to_node BinIntegerBelow = IntegerBelowNode" |
+  "bin_expr_to_node BinIntegerTest = IntegerTestNode" |
+  "bin_expr_to_node BinIntegerNormalizeCompare = IntegerNormalizeCompareNode" |
+  "bin_expr_to_node BinIntegerMulHigh = IntegerMulHighNode"
 
 fun gen_pattern :: "IRExpr \<Rightarrow> (nat \<times> Pattern) \<Rightarrow> (nat \<times> Pattern)" where
   "gen_pattern (UnaryExpr op x) (n, p) =
@@ -75,30 +81,29 @@ fun gen_pattern :: "IRExpr \<Rightarrow> (nat \<times> Pattern) \<Rightarrow> (n
   "gen_pattern (ConstantVar v) (n, p) = (n, p)" |
   "gen_pattern (LeafExpr nid s) (n, p) = (n, p)"
 
-
 lemma de_bruijn_increases:
   assumes "(n', p') = gen_pattern e (n, p)"
   shows "n' \<ge> n"
   using assms 
 proof (induction e "(n, p)" arbitrary: n p n' p' rule: gen_pattern.induct)
   case (1 op x n p)
-  then show ?case unfolding gen_pattern.simps
-    by (smt (verit, ccfv_threshold) Pair_inject add.commute add_leD2 case_prod_conv surj_pair)
+  then show ?case
+    by (smt (verit, ccfv_threshold) Pair_inject add_leD2 case_prod_conv surj_pair gen_pattern.simps
+        add.commute)
 next
   case (2 op x y n p)
   obtain n' p' where x_def: "(n', p') = gen_pattern x (n + 1, p)"
     by (metis surj_pair)
   then have le1: "n + 1 \<le> n'"
-    using 2
-    by blast
+    using 2 by blast
   obtain n'' p'' where y_def: "(n'', p'') = gen_pattern y (n' + 1, p')"
     by (metis surj_pair)
   then have le2: "n' + 1 \<le> n''"
     using 2(2) x_def by blast
   have "n \<le> n''"
     using le1 le2 by simp
-  then show ?case using 2 unfolding gen_pattern.simps
-    by (metis Pair_inject case_prod_conv x_def y_def)
+  then show ?case
+    using 2 unfolding gen_pattern.simps by (metis Pair_inject case_prod_conv x_def y_def)
 next
   case (3 c t f n p)
   obtain n' p' where c_def: "(n', p') = gen_pattern c (n + 1, p)"
@@ -114,28 +119,32 @@ next
   obtain n''' p''' where f_def: "(n''', p''') = gen_pattern f (n'' + 1, p'')"
     by (metis surj_pair)
   then have le3: "n'' + 1 \<le> n'''"
-    using 3 c_def t_def
-    by meson
+    by (meson t_def c_def 3)
   have "n \<le> n'''"
     using le1 le2 le3 by simp
-  then show ?case using 3 c_def t_def f_def
-    unfolding gen_pattern.simps
-    by (metis (no_types, lifting) Pair_inject prod.simps(2))
+  then show ?case
+    using 3 by (metis (no_types, lifting) Pair_inject prod.simps(2) f_def t_def gen_pattern.simps(3)
+                c_def)
 next
   case (4 i s n p)
-  then show ?case by simp
+  then show ?case
+    by simp
 next
   case (5 v n p)
-  then show ?case by simp
+  then show ?case
+    by simp
 next
   case (6 v s n p)
-  then show ?case by simp
+  then show ?case
+    by simp
 next
   case (7 v n p)
-  then show ?case by simp
+  then show ?case
+    by simp
 next
   case (8 v va)
-  then show ?case by simp
+  then show ?case
+    by simp
 qed
 
 lemma domain_within_de_bruijn:
@@ -151,14 +160,11 @@ proof (induction e "(n, p)" arbitrary: n p n' p' rule: gen_pattern.induct)
     using 1 unfolding gen_pattern.simps
     by (metis case_prod_conv fmdom_fmupd funion_fempty_right funion_finsert_right prod.inject x_def)
   have xnmore: "fMax (fmdom xp) \<le> xn"
-    using 1 x_def by simp
+    using 1 x_def by force
   have nless: "xn > n"
-    using 1 x_def
-    using de_bruijn_increases
-    using discrete by blast
+    using x_def de_bruijn_increases discrete by blast
   have "fMax (fmdom xp |\<union>| {|n|}) \<le> xn"
-    using nless xnmore
-    by simp
+    using nless xnmore by fastforce
   then show ?case
     by (metis "1.prems"(1) p'def case_prod_conv gen_pattern.simps(1) prod.inject x_def)
 next
@@ -169,20 +175,18 @@ next
     by (metis surj_pair)
   have p'def: "fmdom p' = fmdom yp |\<union>| {|n|}"
     using 2 unfolding gen_pattern.simps
-    by (metis (mono_tags, lifting) Pair_inject fmdom_fmupd funion_finsert_right old.prod.case sup_bot_right x_def y_def)
+    by (metis (mono_tags, lifting) Pair_inject fmdom_fmupd funion_finsert_right old.prod.case y_def
+        sup_bot_right x_def)
   have ynmore: "fMax (fmdom yp) \<le> yn"
-    using 2 y_def
-    using trans_le_add1 x_def by presburger
+    using 2 y_def trans_le_add1 x_def by presburger
   have "xn > n"
-    using x_def de_bruijn_increases discrete
-    by metis
+    by (metis x_def de_bruijn_increases discrete)
   then have nless: "yn > n"
-    using y_def de_bruijn_increases discrete
-    by (metis order.strict_trans)
+    by (metis y_def de_bruijn_increases discrete order.strict_trans)
   have "fMax (fmdom p') \<le> yn"
-    using nless ynmore p'def by simp
-  then show ?case using 2(3) unfolding gen_pattern.simps
-    by (metis Pair_inject case_prod_conv x_def y_def)
+    using nless by (auto simp add: p'def ynmore)
+  then show ?case
+    using 2(3) unfolding gen_pattern.simps by (metis Pair_inject case_prod_conv x_def y_def)
 next
   case (3 c t f n p)
   obtain cn cp where c_def: "(cn, cp) = gen_pattern c (n + 1, p)"
@@ -192,42 +196,42 @@ next
   obtain fn fp where f_def: "(fn, fp) = gen_pattern f (tn + 1, tp)"
     by (metis surj_pair)
   have p'def: "fmdom p' = fmdom fp |\<union>| {|n|}"
-    using 3 unfolding gen_pattern.simps
-    using c_def t_def f_def
-    by (smt (verit, del_insts) Pair_inject finsert_is_funion fmdom_fmupd funion_commute old.prod.case)
+    by (smt (verit, del_insts) Pair_inject finsert_is_funion fmdom_fmupd funion_commute f_def t_def
+        old.prod.case c_def gen_pattern.simps 3)
   have fnmore: "fMax (fmdom fp) \<le> fn"
-    using 3 f_def
-    using trans_le_add1 c_def t_def by presburger
+    using 3 f_def trans_le_add1 c_def t_def by presburger
   have "cn > n"
-    using c_def de_bruijn_increases discrete
-    by metis
+    by (metis c_def de_bruijn_increases discrete)
   then have "tn > n"
-    using t_def de_bruijn_increases discrete
-    by (metis order.strict_trans)
+    by (metis t_def de_bruijn_increases discrete order.strict_trans)
   then have nless: "fn > n"
-    using f_def de_bruijn_increases discrete
-    by (metis order.strict_trans)
+    by (metis f_def de_bruijn_increases discrete order.strict_trans)
   have "fMax (fmdom p') \<le> fn"
-    using nless fnmore p'def by simp
-  then show ?case using 3(4) unfolding gen_pattern.simps
-    by (metis (no_types, lifting) c_def case_prod_conv f_def old.prod.inject t_def)
+    using nless fnmore p'def by force
+  then show ?case
+    by (metis (no_types, lifting) c_def case_prod_conv f_def old.prod.inject gen_pattern.simps(3)
+        3(4) t_def)
 next
   case (4 i s n p)
-  then show ?case by auto
+  then show ?case
+    by auto
 next
   case (5 v n p)
-  then show ?case by auto
+  then show ?case
+    by auto
 next
   case (6 v s n p)
-  then show ?case by auto
+  then show ?case
+    by auto
 next
   case (7 v n p)
-  then show ?case by auto
+  then show ?case
+    by auto
 next
   case (8 nid s n p)
-  then show ?case by auto
+  then show ?case
+    by auto
 qed
-
 
 type_synonym Transformation = "(nat \<times> nat)"
 
@@ -271,7 +275,7 @@ lemma match_none:
 
 lemma match_false:
   "fcard (fmdom p) > 0 \<longrightarrow> is_match g p = False"
-  unfolding is_match.simps using match_none by simp
+  using is_match.simps match_none by presburger
 
 fun replace :: "(Pattern \<times> Transformation) \<Rightarrow> IRGraph \<Rightarrow> IRGraph" where
   "replace (p, t) g = 
@@ -307,16 +311,13 @@ theorem
   using assms
 proof (cases "is_match g\<^sub>1 (fst (gen_opt e\<^sub>1 e\<^sub>2))")
   case True
-  then show ?thesis using assms using apply_opt.simps using match_false
+  then show ?thesis
     by (metis is_match.elims(1) match_none)
 next
   case False
-  then show ?thesis using assms using apply_opt.simps
-    by (metis apply_opt.elims dual_order.refl fst_conv subset_refines)
+  then show ?thesis
+    by (metis assms(2,3) apply_opt.elims dual_order.refl fst_conv subset_refines)
 qed
-
-
-
 
 definition ex1 :: "(IRExpr \<times> IRExpr)" where
   "ex1 = (
@@ -351,7 +352,6 @@ value "{fmlookup (snd (gen_pattern (fst ex2)
 value "{fmlookup (snd (gen_pattern (fst ex3)
         (0, fmempty))) x | x . x \<in> {0, 1, 2, 3, 4}}"
 
-
 value "(snd (gen_opt (fst ex1) (snd ex1)))"
 value "{fmlookup (fst (gen_opt (fst ex1) (snd ex1))) x | x . x \<in> {0, 1, 2, 3, 4}}"
 
@@ -370,6 +370,5 @@ definition exg1 :: "IRGraph" where
    ]"
 
 value "apply_opt (gen_opt (fst ex1) (snd ex1)) exg1"
-
 
 end

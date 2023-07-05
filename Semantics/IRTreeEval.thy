@@ -33,7 +33,6 @@ type_synonym Params = "Value list"
 definition new_map_state :: "MapState" where
   "new_map_state = (\<lambda>x. UndefVal)"
 
-
 (* ======================== START OF NEW TREE STUFF ==========================*)
 subsection \<open>Data-flow Tree Representation\<close>
 
@@ -45,6 +44,9 @@ datatype IRUnaryOp =
   | UnaryNarrow (ir_inputBits: nat) (ir_resultBits: nat)
   | UnarySignExtend (ir_inputBits: nat) (ir_resultBits: nat)
   | UnaryZeroExtend (ir_inputBits: nat) (ir_resultBits: nat)
+  | UnaryIsNull
+  | UnaryReverseBytes
+  | UnaryBitCount
 
 datatype IRBinaryOp =
     BinAdd
@@ -60,6 +62,9 @@ datatype IRBinaryOp =
   | BinIntegerEquals
   | BinIntegerLessThan
   | BinIntegerBelow
+  | BinIntegerTest
+  | BinIntegerNormalizeCompare
+  | BinIntegerMulHigh
 
 datatype (discs_sels) IRExpr =
     UnaryExpr (ir_uop: IRUnaryOp) (ir_value: IRExpr)
@@ -97,8 +102,6 @@ fun is_ground :: "IRExpr \<Rightarrow> bool" where
 typedef GroundExpr = "{ e :: IRExpr . is_ground e }"
   using is_ground.simps(6) by blast
 
-
-
 subsection \<open>Functions for re-calculating stamps\<close> 
 
 text \<open>Note: in Java all integer calculations are done as 32 or 64 bit calculations.
@@ -112,14 +115,61 @@ text \<open>Note: in Java all integer calculations are done as 32 or 64 bit calc
   and (3) other operators output the same number of bits as both their inputs.
 \<close>
 
+abbreviation binary_normal :: "IRBinaryOp set" where
+  "binary_normal \<equiv> {BinAdd, BinMul, BinSub, BinAnd, BinOr, BinXor}"
+
 abbreviation binary_fixed_32_ops :: "IRBinaryOp set" where
-  "binary_fixed_32_ops \<equiv> {BinShortCircuitOr, BinIntegerEquals, BinIntegerLessThan, BinIntegerBelow}"
+  "binary_fixed_32_ops \<equiv> {BinShortCircuitOr, BinIntegerEquals, BinIntegerLessThan, BinIntegerBelow, BinIntegerTest, BinIntegerNormalizeCompare}"
 
 abbreviation binary_shift_ops :: "IRBinaryOp set" where
   "binary_shift_ops \<equiv> {BinLeftShift, BinRightShift, BinURightShift}"
 
+(* TODO add a note into the text above about this?
+
+  Describes operators whose output width matches the input (for 32 or 64), otherwise the output is
+  UndefVal.
+*)
+abbreviation binary_fixed_ops :: "IRBinaryOp set" where
+  "binary_fixed_ops \<equiv> {BinIntegerMulHigh}"
+
 abbreviation normal_unary :: "IRUnaryOp set" where
-  "normal_unary \<equiv> {UnaryAbs, UnaryNeg, UnaryNot, UnaryLogicNegation}"
+  "normal_unary \<equiv> {UnaryAbs, UnaryNeg, UnaryNot, UnaryLogicNegation, UnaryReverseBytes}"
+
+(* TODO add a note into the text above about this ? *)
+abbreviation unary_fixed_32_ops :: "IRUnaryOp set" where
+  "unary_fixed_32_ops \<equiv> {UnaryBitCount}"
+
+(* TODO add a note into the text above about this ? *)
+abbreviation boolean_unary :: "IRUnaryOp set" where
+  "boolean_unary \<equiv> {UnaryIsNull}"
+
+(* Helpful set lemmas *)
+
+lemma binary_ops_all:
+  shows "op \<in> binary_normal \<or> op \<in> binary_fixed_32_ops \<or> op \<in> binary_fixed_ops \<or> op \<in> binary_shift_ops"
+  by (cases op; auto)
+
+lemma binary_ops_distinct_normal:
+  shows "op \<in> binary_normal \<Longrightarrow> op \<notin> binary_fixed_32_ops \<and> op \<notin> binary_fixed_ops \<and> op \<notin> binary_shift_ops"
+  by auto
+
+lemma binary_ops_distinct_fixed_32:
+  shows "op \<in> binary_fixed_32_ops \<Longrightarrow> op \<notin> binary_normal \<and> op \<notin> binary_fixed_ops \<and> op \<notin> binary_shift_ops"
+  by auto
+
+lemma binary_ops_distinct_fixed:
+  shows "op \<in> binary_fixed_ops \<Longrightarrow> op \<notin> binary_fixed_32_ops \<and> op \<notin> binary_normal \<and> op \<notin> binary_shift_ops"
+  by auto
+
+lemma binary_ops_distinct_shift:
+  shows  "op \<in> binary_shift_ops \<Longrightarrow> op \<notin> binary_fixed_32_ops \<and> op \<notin> binary_fixed_ops \<and> op \<notin> binary_normal"
+  by auto
+
+lemma unary_ops_distinct:
+  shows "op \<in> normal_unary \<Longrightarrow> op \<notin> boolean_unary \<and> op \<notin> unary_fixed_32_ops"
+  and   "op \<in> boolean_unary \<Longrightarrow> op \<notin> normal_unary \<and> op \<notin> unary_fixed_32_ops"
+  and   "op \<in> unary_fixed_32_ops \<Longrightarrow> op \<notin> boolean_unary \<and> op \<notin> normal_unary"
+  by auto
 
 fun stamp_unary :: "IRUnaryOp \<Rightarrow> Stamp \<Rightarrow> Stamp" where
 (* WAS:
@@ -129,8 +179,14 @@ fun stamp_unary :: "IRUnaryOp \<Rightarrow> Stamp \<Rightarrow> Stamp" where
                  else (ir_resultBits op)) in
     unrestricted_stamp (IntegerStamp bits lo hi))" |
 *)
+(* TODO update to generalise all boolean_unary operators to return IntegerStamp 32 0 1 *)
+  "stamp_unary UnaryIsNull _ = (IntegerStamp 32 0 1)" |
   "stamp_unary op (IntegerStamp b lo hi) =
-     unrestricted_stamp (IntegerStamp (if op \<in> normal_unary then b else (ir_resultBits op)) lo hi)" |
+     unrestricted_stamp (IntegerStamp 
+                        (if op \<in> normal_unary       then b  else
+                         if op \<in> boolean_unary      then 32 else
+                         if op \<in> unary_fixed_32_ops then 32 else
+                          (ir_resultBits op)) lo hi)" |
   (* for now... *)
   "stamp_unary op _ = IllegalStamp"
 
@@ -163,7 +219,10 @@ fun unary_eval :: "IRUnaryOp \<Rightarrow> Value \<Rightarrow> Value" where
   "unary_eval UnaryLogicNegation v = intval_logic_negation v" |
   "unary_eval (UnaryNarrow inBits outBits) v = intval_narrow inBits outBits v" |
   "unary_eval (UnarySignExtend inBits outBits) v = intval_sign_extend inBits outBits v" |
-  "unary_eval (UnaryZeroExtend inBits outBits) v = intval_zero_extend inBits outBits v"
+  "unary_eval (UnaryZeroExtend inBits outBits) v = intval_zero_extend inBits outBits v" |
+  "unary_eval UnaryIsNull v = intval_is_null v" |
+  "unary_eval UnaryReverseBytes v = intval_reverse_bytes v" |
+  "unary_eval UnaryBitCount v = intval_bit_count v"
 (*  "unary_eval op v1 = UndefVal" *)
 
 fun bin_eval :: "IRBinaryOp \<Rightarrow> Value \<Rightarrow> Value \<Rightarrow> Value" where
@@ -179,8 +238,15 @@ fun bin_eval :: "IRBinaryOp \<Rightarrow> Value \<Rightarrow> Value \<Rightarrow
   "bin_eval BinURightShift v1 v2 = intval_uright_shift v1 v2" |
   "bin_eval BinIntegerEquals v1 v2 = intval_equals v1 v2" |
   "bin_eval BinIntegerLessThan v1 v2 = intval_less_than v1 v2" |
-  "bin_eval BinIntegerBelow v1 v2 = intval_below v1 v2"
+  "bin_eval BinIntegerBelow v1 v2 = intval_below v1 v2" |
+  "bin_eval BinIntegerTest v1 v2 = intval_test v1 v2" |
+  "bin_eval BinIntegerNormalizeCompare v1 v2 = intval_normalize_compare v1 v2" |
+  "bin_eval BinIntegerMulHigh v1 v2 = intval_mul_high v1 v2"
 (*  "bin_eval op v1 v2 = UndefVal" *)
+
+lemma defined_eval_is_intval:
+  shows "bin_eval op x y \<noteq> UndefVal \<Longrightarrow> (is_IntVal x \<and> is_IntVal y)"
+  by (cases op; cases x; cases y; auto)
 
 lemmas eval_thms =
   intval_abs.simps intval_negate.simps intval_not.simps
@@ -218,7 +284,10 @@ inductive
     cond \<noteq> UndefVal;
     branch = (if val_to_bool cond then te else fe);
     [m,p] \<turnstile> branch \<mapsto> result;
-    result \<noteq> UndefVal\<rbrakk>
+    result \<noteq> UndefVal;
+
+    [m,p] \<turnstile> te \<mapsto> true;  true  \<noteq> UndefVal;
+    [m,p] \<turnstile> fe \<mapsto> false; false \<noteq> UndefVal\<rbrakk>
     \<Longrightarrow> [m,p] \<turnstile> (ConditionalExpr ce te fe) \<mapsto> result" |
 
   UnaryExpr:
@@ -313,14 +382,11 @@ text \<open>We define the induced semantic equivalence relation between expressi
 definition equiv_exprs :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> bool" ("_ \<doteq> _" 55) where
   "(e1 \<doteq> e2) = (\<forall> m p v. (([m,p] \<turnstile> e1 \<mapsto> v) \<longleftrightarrow> ([m,p] \<turnstile> e2 \<mapsto> v)))"
 
-
 text \<open>We also prove that this is a total equivalence relation (@{term "equivp equiv_exprs"})
   (HOL.Equiv\_Relations), so that we can reuse standard results about equivalence relations.
 \<close>
 lemma "equivp equiv_exprs"
-  apply (auto simp add: equivp_def equiv_exprs_def)
-  by (metis equiv_exprs_def)+
-
+  apply (auto simp add: equivp_def equiv_exprs_def) by (metis equiv_exprs_def)+
 
 text \<open>We define a refinement ordering over IRExpr and show that it is a preorder.
   Note that it is asymmetric because e2 may refer to fewer variables than e1.
@@ -348,7 +414,6 @@ end
 
 abbreviation (output) Refines :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> bool" (infix "\<sqsupseteq>" 64)
   where "e\<^sub>1 \<sqsupseteq> e\<^sub>2 \<equiv> (e\<^sub>2 \<le> e\<^sub>1)"
-
 
 subsection \<open>Stamp Masks\<close>
 
@@ -383,14 +448,12 @@ lemma may_implies_either:
 
 lemma not_may_implies_false:
   "[m, p] \<turnstile> e \<mapsto> IntVal b v \<Longrightarrow> \<not>(bit (\<up>e) n) \<Longrightarrow> bit v n = False"
-  using up_spec
-  using bit_and_iff bit_eq_iff bit_not_iff bit_unsigned_iff down_spec
-  by (smt (verit, best) bit.double_compl)
+  by (metis (no_types, lifting) bit.double_compl up_spec bit_and_iff bit_not_iff bit_unsigned_iff 
+      down_spec)
 
 lemma must_implies_true:
   "[m, p] \<turnstile> e \<mapsto> IntVal b v \<Longrightarrow> bit (\<down>e) n \<Longrightarrow> bit v n = True"
-  using down_spec
-  by (metis bit.compl_one bit_and_iff bit_minus_1_iff bit_not_iff impossible_bit ucast_id)
+  by (metis bit.compl_one bit_and_iff bit_minus_1_iff bit_not_iff impossible_bit ucast_id down_spec)
 
 lemma not_must_implies_either:
   "[m, p] \<turnstile> e \<mapsto> IntVal b v \<Longrightarrow> \<not>(bit (\<down>e) n) \<Longrightarrow> bit v n = False \<or> bit v n = True"
@@ -400,22 +463,23 @@ lemma must_implies_may:
   "[m, p] \<turnstile> e \<mapsto> IntVal b v \<Longrightarrow> n < 32 \<Longrightarrow> bit (\<down>e) n \<Longrightarrow> bit (\<up>e) n"
   by (meson must_implies_true not_may_implies_false)
 
-
 lemma up_mask_and_zero_implies_zero:
   assumes "and (\<up>x) (\<up>y) = 0"
   assumes "[m, p] \<turnstile> x \<mapsto> IntVal b xv"
   assumes "[m, p] \<turnstile> y \<mapsto> IntVal b yv"
   shows "and xv yv = 0"
-  using assms
-  by (smt (z3) and.commute and.right_neutral and_zero_eq bit.compl_zero bit.conj_cancel_right bit.conj_disj_distribs(1) ucast_id up_spec word_bw_assocs(1) word_not_dist(2))
+  by (smt (z3) assms and.commute and.right_neutral bit.compl_zero bit.conj_cancel_right ucast_id
+      bit.conj_disj_distribs(1) up_spec word_bw_assocs(1) word_not_dist(2) word_ao_absorbs(8)
+      and_eq_not_not_or)
 
 lemma not_down_up_mask_and_zero_implies_zero:
   assumes "and (not (\<down>x)) (\<up>y) = 0"
   assumes "[m, p] \<turnstile> x \<mapsto> IntVal b xv"
   assumes "[m, p] \<turnstile> y \<mapsto> IntVal b yv"
   shows "and xv yv = yv"
-  using assms
-  by (smt (z3) and_zero_eq bit.conj_cancel_left bit.conj_disj_distribs(1) bit.conj_disj_distribs(2) bit.de_Morgan_disj down_spec or_eq_not_not_and ucast_id up_spec word_ao_absorbs(2) word_ao_absorbs(8) word_bw_lcs(1) word_not_dist(2))
+  by (metis (no_types, opaque_lifting) assms bit.conj_cancel_left bit.conj_disj_distribs(1,2)
+      bit.de_Morgan_disj ucast_id down_spec or_eq_not_not_and up_spec word_ao_absorbs(2,8)
+      word_bw_lcs(1) word_not_dist(2))
 
 end
 
@@ -434,8 +498,7 @@ lemma ucast_minus_one: "(ucast (-1::int64)::int32) = -1"
 interpretation simple_mask: stamp_mask
   "IRExpr_up :: IRExpr \<Rightarrow> int64"
   "IRExpr_down :: IRExpr \<Rightarrow> int64"
-  unfolding IRExpr_up_def IRExpr_down_def
   apply unfold_locales
-  by (simp add: ucast_minus_one)+
+  by (simp add: ucast_minus_one IRExpr_up_def IRExpr_down_def)+
 
 end

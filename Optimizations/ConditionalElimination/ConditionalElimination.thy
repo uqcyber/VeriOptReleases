@@ -58,47 +58,97 @@ lemma eq_impliesnot_less_helper:
 
 lemma eq_impliesnot_less_val:
   "val_to_bool(intval_equals v1 v2) \<longrightarrow> \<not>val_to_bool(intval_less_than v1 v2)"
-  using eq_impliesnot_less_helper bool_to_val.simps bool_to_val_bin.simps intval_equals.simps
-    intval_less_than.elims val_to_bool.elims val_to_bool.simps
-  by (smt (verit))
+proof -
+  have unfoldEqualDefined: "(intval_equals v1 v2 \<noteq> UndefVal) \<Longrightarrow>
+        (val_to_bool(intval_equals v1 v2) \<longrightarrow> (\<not>(val_to_bool(intval_less_than v1 v2))))"
+    subgoal premises p
+  proof -
+    obtain v1b v1v where v1v: "v1 = IntVal v1b v1v"
+      by (metis array_length.cases intval_equals.simps(2,3,4,5) p)
+    obtain v2b v2v where v2v: "v2 = IntVal v2b v2v"
+      by (metis Value.exhaust_sel intval_equals.simps(6,7,8,9) p)
+    have sameWidth: "v1b=v2b"
+      by (metis bool_to_val_bin.simps intval_equals.simps(1) p v1v v2v)
+    have unfoldEqual: "intval_equals v1 v2 = (bool_to_val (v1v=v2v))"
+      by (simp add: sameWidth v1v v2v)
+    have unfoldLessThan: "intval_less_than v1 v2 = (bool_to_val (int_signed_value v1b v1v < int_signed_value v2b v2v))"
+      by (simp add: sameWidth v1v v2v)
+    have val: "((v1v=v2v)) \<longrightarrow> (\<not>((int_signed_value v1b v1v < int_signed_value v2b v2v)))"
+      using sameWidth by auto
+    have doubleCast0: "val_to_bool (bool_to_val ((v1v = v2v))) = (v1v = v2v)"
+      using bool_to_val.elims val_to_bool.simps(1) by fastforce
+    have doubleCast1: "val_to_bool (bool_to_val ((int_signed_value v1b v1v < int_signed_value v2b v2v))) =
+                                                 (int_signed_value v1b v1v < int_signed_value v2b v2v)"
+      using bool_to_val.elims val_to_bool.simps(1) by fastforce
+    then show ?thesis
+      using p val unfolding unfoldEqual unfoldLessThan doubleCast0 doubleCast1 by blast
+  qed done
+  show ?thesis
+    by (metis Value.distinct(1) val_to_bool.elims(2) unfoldEqualDefined)
+qed
 
 lemma eq_impliesnot_less_rev_val:
   "val_to_bool(intval_equals v1 v2) \<longrightarrow> \<not>val_to_bool(intval_less_than v2 v1)"
 proof -
   have a: "intval_equals v1 v2 = intval_equals v2 v1"
-    using bool_to_val_bin.simps intval_equals.simps intval_equals.elims
-    by (smt (verit))
-  show ?thesis using a eq_impliesnot_less_val by presburger 
+    apply (cases "intval_equals v1 v2 = UndefVal")
+    apply (smt (z3) bool_to_val_bin.simps intval_equals.elims intval_equals.simps)
+    subgoal premises p
+    proof -
+      obtain v1b v1v where v1v: "v1 = IntVal v1b v1v"
+        by (metis Value.exhaust_sel intval_equals.simps(2,3,4,5) p)
+      obtain v2b v2v where v2v: "v2 = IntVal v2b v2v"
+        by (metis Value.exhaust_sel intval_equals.simps(6,7,8,9) p)
+      then show ?thesis
+        by (smt (verit) bool_to_val_bin.simps intval_equals.simps(1) v1v)
+    qed done
+  show ?thesis
+    using a eq_impliesnot_less_val by presburger
 qed
 
 lemma less_impliesnot_rev_less_val:
   "val_to_bool(intval_less_than v1 v2) \<longrightarrow> \<not>val_to_bool(intval_less_than v2 v1)"
-  by (smt (verit, del_insts) Value.exhaust Value.inject(1) bool_to_val.simps(2)
-      bool_to_val_bin.simps intval_less_than.simps(1) intval_less_than.simps(5)
-      intval_less_than.simps(6) intval_less_than.simps(7) val_to_bool.elims(2)) 
+  apply (rule impI)
+  subgoal premises p
+  proof -
+    obtain v1b v1v where v1v: "v1 = IntVal v1b v1v"
+      by (metis Value.exhaust_sel intval_less_than.simps(2,3,4,5) p val_to_bool.simps(2))
+    obtain v2b v2v where v2v: "v2 = IntVal v2b v2v"
+      by (metis Value.exhaust_sel intval_less_than.simps(6,7,8,9) p val_to_bool.simps(2))
+    then have unfoldLessThanRHS: "intval_less_than v2 v1 =
+                                 (bool_to_val (int_signed_value v2b v2v < int_signed_value v1b v1v))"
+      using p v1v by force
+    then have unfoldLessThanLHS: "intval_less_than v1 v2 =
+                                 (bool_to_val (int_signed_value v1b v1v < int_signed_value v2b v2v))"
+      using bool_to_val_bin.simps intval_less_than.simps(1) p v1v v2v val_to_bool.simps(2) by auto
+    then have symmetry: "(int_signed_value v2b v2v < int_signed_value v1b v1v) \<longrightarrow>
+                       (\<not>(int_signed_value v1b v1v < int_signed_value v2b v2v))"
+      by simp
+    then show ?thesis
+      using p unfoldLessThanLHS unfoldLessThanRHS by fastforce
+  qed done
 
 lemma less_impliesnot_eq_val:
   "val_to_bool(intval_less_than v1 v2) \<longrightarrow> \<not>val_to_bool(intval_equals v1 v2)"
-  using eq_impliesnot_less_val by blast 
+  using eq_impliesnot_less_val by blast
 
 lemma logic_negate_type:
   assumes "[m, p] \<turnstile> UnaryExpr UnaryLogicNegation x \<mapsto> v"
   shows "\<exists>b v2. [m, p] \<turnstile> x \<mapsto> IntVal b v2"
-  using assms
-  by (metis UnaryExprE intval_logic_negation.elims unary_eval.simps(4))
+  by (metis assms UnaryExprE intval_logic_negation.elims unary_eval.simps(4))
 
 lemma intval_logic_negation_inverse:
   assumes "b > 0"
   assumes "x = IntVal b v"
   shows "val_to_bool (intval_logic_negation x) \<longleftrightarrow> \<not>(val_to_bool x)"
-  using assms by (cases x; auto simp: logic_negate_def) 
+  by (cases x; auto simp: logic_negate_def assms)
 
 lemma logic_negation_relation_tree:
   assumes "[m, p] \<turnstile> y \<mapsto> val"
   assumes "[m, p] \<turnstile> UnaryExpr UnaryLogicNegation y \<mapsto> invval"
   shows "val_to_bool val \<longleftrightarrow> \<not>(val_to_bool invval)"
-  using assms using intval_logic_negation_inverse
-  by (metis UnaryExprE evalDet eval_bits_1_64 logic_negate_type unary_eval.simps(4))
+  by (metis UnaryExprE evalDet eval_bits_1_64 logic_negate_type unary_eval.simps(4) assms
+      intval_logic_negation_inverse)
 
 text \<open>The following theorem shows that the known true/false rules are valid.\<close>
 
@@ -112,32 +162,33 @@ proof (induct q1 q2  rule: impliesx_impliesnot.induct)
     using evalDet by fastforce
 next
   case (eq_impliesnot_less x y)
-  then show ?case apply auto using eq_impliesnot_less_val evalDet by blast
+  then show ?case
+    apply auto using eq_impliesnot_less_val evalDet by blast
 next
   case (eq_impliesnot_less_rev x y)
-  then show ?case apply auto using eq_impliesnot_less_rev_val evalDet by blast
+  then show ?case
+    apply auto using eq_impliesnot_less_rev_val evalDet by blast
 next
   case (less_impliesnot_rev_less x y)
-  then show ?case apply auto using less_impliesnot_rev_less_val evalDet by blast
+  then show ?case
+    apply auto using less_impliesnot_rev_less_val evalDet by blast
 next
   case (less_impliesnot_eq x y)
-  then show ?case apply auto using less_impliesnot_eq_val evalDet by blast
+  then show ?case
+    apply auto using less_impliesnot_eq_val evalDet by blast
 next
   case (less_impliesnot_eq_rev x y)
-  then show ?case apply auto using eq_impliesnot_less_rev_val evalDet by metis 
+  then show ?case
+    apply auto by (metis eq_impliesnot_less_rev_val evalDet)
 next
   case (negate_true x y)
-  then show ?case apply auto
-    by (metis logic_negation_relation_tree unary_eval.simps(4) unfold_unary)
+  then show ?case
+    apply auto by (metis logic_negation_relation_tree unary_eval.simps(4) unfold_unary)
 next
   case (negate_false x y)
-  then show ?case apply auto 
-    by (metis UnaryExpr logic_negation_relation_tree unary_eval.simps(4)) 
+  then show ?case
+    apply auto by (metis UnaryExpr logic_negation_relation_tree unary_eval.simps(4))
 qed
-
-
-
-
 
 text \<open>
 We introduce a type @{term "TriState"} (as in the GraalVM compiler) to represent when static
@@ -179,7 +230,6 @@ inductive condition_implies :: "IRGraph \<Rightarrow> IRNode \<Rightarrow> IRNod
   "\<lbrakk>\<not>(g \<turnstile> a & b \<hookrightarrow> imp)\<rbrakk> \<Longrightarrow> (g \<turnstile> a & b \<rightharpoonup> Unknown)" |
   "\<lbrakk>(g \<turnstile> a & b \<hookrightarrow> imp)\<rbrakk> \<Longrightarrow> (g \<turnstile> a & b \<rightharpoonup> imp)"
 
-
 inductive implies_tree :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> bool \<Rightarrow> bool"
   ("_ & _ \<hookrightarrow> _") where
   eq_imp_less: 
@@ -210,9 +260,7 @@ lemma logic_negation_relation:
   assumes "[g, m, p] \<turnstile> neg \<mapsto> invval"
   assumes "invval \<noteq> UndefVal"
   shows "val_to_bool val \<longleftrightarrow> \<not>(val_to_bool invval)"
-  using assms
-  by (metis LogicNegationNode encodeeval_def logic_negation_relation_tree repDet)
-
+  by (metis assms(1,2,3) LogicNegationNode encodeeval_def logic_negation_relation_tree repDet)
 
 lemma implies_valid:
   assumes "x & y \<hookrightarrow> imp"
@@ -227,27 +275,32 @@ proof -
   show ?TC
   using assms(1) KnownTrue assms(2-) proof (induct x y imp rule: implies_tree.induct)
     case (eq_imp_less x y)
-    then show ?case by simp
+    then show ?case
+      by simp
   next
     case (eq_imp_less_rev x y)
-    then show ?case by simp
+    then show ?case
+      by simp
   next
     case (less_imp_rev_less x y)
-    then show ?case by simp
+    then show ?case
+      by simp
   next
     case (less_imp_not_eq x y)
-    then show ?case by simp
+    then show ?case
+      by simp
   next
     case (less_imp_not_eq_rev x y)
-    then show ?case by simp
+    then show ?case
+      by simp
   next
     case (x_imp_x)
     then show ?case
       by (metis evalDet)
   next
     case (negate_false x1)
-    then show ?case using evalDet
-      using assms(2,3) by blast
+    then show ?case
+      using evalDet assms(2,3) by fast
   next
     case (negate_true x y)
     then show ?case
@@ -258,109 +311,89 @@ next
   show ?FC using assms KnownFalse proof (induct x y imp rule: implies_tree.induct)
     case (eq_imp_less x y)
     obtain xval where xval: "[m, p] \<turnstile> x \<mapsto> xval"
-      using eq_imp_less(1) eq_imp_less.prems(3)
-      by blast
+      using eq_imp_less(1) by blast
     then obtain yval where yval: "[m, p] \<turnstile> y \<mapsto> yval"
-      using eq_imp_less.prems(3)
       using eq_imp_less.prems(2) by blast
     have eqeval: "[m, p] \<turnstile> (BinaryExpr BinIntegerEquals x y) \<mapsto> intval_equals xval yval"
-      using xval yval evaltree.BinaryExpr
-      by (metis BinaryExprE bin_eval.simps(11) eq_imp_less.prems(1) evalDet)
+      by (metis xval yval BinaryExprE bin_eval.simps(11) eq_imp_less.prems(1) evalDet)
     have lesseval: "[m, p] \<turnstile> (BinaryExpr BinIntegerLessThan x y) \<mapsto> intval_less_than xval yval"
-      using xval yval evaltree.BinaryExpr
-      by (metis BinaryExprE bin_eval.simps(12) eq_imp_less.prems(2) evalDet)
+      by (metis xval yval BinaryExprE bin_eval.simps(12) eq_imp_less.prems(2) evalDet)
     have "val_to_bool (intval_equals xval yval) \<longrightarrow> \<not>(val_to_bool (intval_less_than xval yval))"
       apply (cases xval; cases yval; auto)
       by (smt (verit, best) bool_to_val.simps(2) val_to_bool.simps(1))
     then show ?case
-      using eqeval lesseval
-      by (metis eq_imp_less.prems(1) eq_imp_less.prems(2) evalDet)
+      by (metis eqeval lesseval eq_imp_less.prems(1,2) evalDet)
   next
     case (eq_imp_less_rev x y)
     obtain xval where xval: "[m, p] \<turnstile> x \<mapsto> xval"
-      using eq_imp_less_rev.prems(3)
       using eq_imp_less_rev.prems(2) by blast
     obtain yval where yval: "[m, p] \<turnstile> y \<mapsto> yval"
-      using eq_imp_less_rev.prems(3)
       using eq_imp_less_rev.prems(2) by blast
     have eqeval: "[m, p] \<turnstile> (BinaryExpr BinIntegerEquals x y) \<mapsto> intval_equals xval yval"
-      using xval yval evaltree.BinaryExpr
-      by (metis BinaryExprE bin_eval.simps(11) eq_imp_less_rev.prems(1) evalDet)
+      by (metis xval yval BinaryExprE bin_eval.simps(11) eq_imp_less_rev.prems(1) evalDet)
     have lesseval: "[m, p] \<turnstile> (BinaryExpr BinIntegerLessThan y x) \<mapsto> intval_less_than yval xval"
-      using xval yval evaltree.BinaryExpr
-      by (metis BinaryExprE bin_eval.simps(12) eq_imp_less_rev.prems(2) evalDet)
+      by (metis xval yval BinaryExprE bin_eval.simps(12) eq_imp_less_rev.prems(2) evalDet)
     have "val_to_bool (intval_equals xval yval) \<longrightarrow> \<not>(val_to_bool (intval_less_than yval xval))"
       apply (cases xval; cases yval; auto)
       by (metis (full_types) bool_to_val.simps(2) less_irrefl val_to_bool.simps(1))
     then show ?case
-      using eqeval lesseval
-      by (metis eq_imp_less_rev.prems(1) eq_imp_less_rev.prems(2) evalDet)
+      by (metis eq_imp_less_rev.prems(1) eq_imp_less_rev.prems(2) evalDet eqeval lesseval)
   next
     case (less_imp_rev_less x y)
     obtain xval where xval: "[m, p] \<turnstile> x \<mapsto> xval"
-      using less_imp_rev_less.prems(3)
       using less_imp_rev_less.prems(2) by blast
     obtain yval where yval: "[m, p] \<turnstile> y \<mapsto> yval"
-      using less_imp_rev_less.prems(3)
       using less_imp_rev_less.prems(2) by blast
     have lesseval: "[m, p] \<turnstile> (BinaryExpr BinIntegerLessThan x y) \<mapsto> intval_less_than xval yval"
-      using xval yval evaltree.BinaryExpr
-      by (metis BinaryExprE bin_eval.simps(12) evalDet less_imp_rev_less.prems(1))
+      by (metis BinaryExprE bin_eval.simps(12) evalDet less_imp_rev_less.prems(1) xval yval)
     have revlesseval: "[m, p] \<turnstile> (BinaryExpr BinIntegerLessThan y x) \<mapsto> intval_less_than yval xval"
-      using xval yval evaltree.BinaryExpr
-      by (metis BinaryExprE bin_eval.simps(12) evalDet less_imp_rev_less.prems(2))
+      by (metis BinaryExprE bin_eval.simps(12) evalDet less_imp_rev_less.prems(2) xval yval)
     have "val_to_bool (intval_less_than xval yval) \<longrightarrow> \<not>(val_to_bool (intval_less_than yval xval))"
       apply (cases xval; cases yval; auto)
       by (smt (verit) bool_to_val.simps(2) val_to_bool.simps(1))
     then show ?case
-      by (metis evalDet less_imp_rev_less.prems(1) less_imp_rev_less.prems(2) lesseval revlesseval)
+      by (metis evalDet less_imp_rev_less.prems(1,2) lesseval revlesseval)
   next
     case (less_imp_not_eq x y)
     obtain xval where xval: "[m, p] \<turnstile> x \<mapsto> xval"
-      using less_imp_not_eq.prems(3)
       using less_imp_not_eq.prems(1) by blast
     obtain yval where yval: "[m, p] \<turnstile> y \<mapsto> yval"
-      using less_imp_not_eq.prems(3)
       using less_imp_not_eq.prems(1) by blast
     have eqeval: "[m, p] \<turnstile> (BinaryExpr BinIntegerEquals x y) \<mapsto> intval_equals xval yval"
-      using xval yval evaltree.BinaryExpr
-      by (metis BinaryExprE bin_eval.simps(11) evalDet less_imp_not_eq.prems(2))
+      by (metis BinaryExprE bin_eval.simps(11) evalDet less_imp_not_eq.prems(2) xval yval)
     have lesseval: "[m, p] \<turnstile> (BinaryExpr BinIntegerLessThan x y) \<mapsto> intval_less_than xval yval"
-      using xval yval evaltree.BinaryExpr
-      by (metis BinaryExprE bin_eval.simps(12) evalDet less_imp_not_eq.prems(1))
+      by (metis BinaryExprE bin_eval.simps(12) evalDet less_imp_not_eq.prems(1) xval yval)
     have "val_to_bool (intval_less_than xval yval) \<longrightarrow> \<not>(val_to_bool (intval_equals xval yval))"
       apply (cases xval; cases yval; auto)
       by (smt (verit, best) bool_to_val.simps(2) val_to_bool.simps(1))
     then show ?case
-      by (metis eqeval evalDet less_imp_not_eq.prems(1) less_imp_not_eq.prems(2) lesseval)
+      by (metis eqeval evalDet less_imp_not_eq.prems(1,2) lesseval)
   next
     case (less_imp_not_eq_rev x y)
     obtain xval where xval: "[m, p] \<turnstile> x \<mapsto> xval"
-      using less_imp_not_eq_rev.prems(3)
       using less_imp_not_eq_rev.prems(1) by blast
     obtain yval where yval: "[m, p] \<turnstile> y \<mapsto> yval"
-      using less_imp_not_eq_rev.prems(3)
       using less_imp_not_eq_rev.prems(1) by blast
     have eqeval: "[m, p] \<turnstile> (BinaryExpr BinIntegerEquals y x) \<mapsto> intval_equals yval xval"
-      using xval yval evaltree.BinaryExpr
-      by (metis BinaryExprE bin_eval.simps(11) evalDet less_imp_not_eq_rev.prems(2))
+      by (metis xval yval BinaryExprE bin_eval.simps(11) evalDet less_imp_not_eq_rev.prems(2))
     have lesseval: "[m, p] \<turnstile> (BinaryExpr BinIntegerLessThan x y) \<mapsto> intval_less_than xval yval"
-      using xval yval evaltree.BinaryExpr
-      by (metis BinaryExprE bin_eval.simps(12) evalDet less_imp_not_eq_rev.prems(1))
+      by (metis xval yval BinaryExprE bin_eval.simps(12) evalDet less_imp_not_eq_rev.prems(1))
     have "val_to_bool (intval_less_than xval yval) \<longrightarrow> \<not>(val_to_bool (intval_equals yval xval))"
       apply (cases xval; cases yval; auto)
       by (smt (verit, best) bool_to_val.simps(2) val_to_bool.simps(1))
     then show ?case
-      by (metis eqeval evalDet less_imp_not_eq_rev.prems(1) less_imp_not_eq_rev.prems(2) lesseval)
+      by (metis eqeval evalDet less_imp_not_eq_rev.prems(1,2) lesseval)
   next
     case (x_imp_x x1)
-    then show ?case by simp
+    then show ?case
+      by simp
   next
     case (negate_false x y)
     then show ?case sorry
   next
     case (negate_true x1)
-    then show ?case by simp
+    then show ?case
+      by simp
   qed
 qed
 
@@ -370,8 +403,7 @@ lemma implies_true_valid:
   assumes "[m, p] \<turnstile> x \<mapsto> v1"
   assumes "[m, p] \<turnstile> y \<mapsto> v2"
   shows "val_to_bool v1 \<longrightarrow> val_to_bool v2"
-  using assms implies_valid
-  by blast
+  using assms implies_valid by blast
 
 lemma implies_false_valid:
   assumes "x & y \<hookrightarrow> imp"
@@ -380,7 +412,6 @@ lemma implies_false_valid:
   assumes "[m, p] \<turnstile> y \<mapsto> v2"
   shows "val_to_bool v1 \<longrightarrow> \<not>(val_to_bool v2)"
   using assms implies_valid by blast
-
 
 text \<open>
 The following relation corresponds to the UnaryOpLogicNode.tryFold
@@ -404,7 +435,6 @@ inductive tryFold :: "IRNode \<Rightarrow> (ID \<Rightarrow> Stamp) \<Rightarrow
     stpi_lower (stamps x) \<ge> stpi_upper (stamps y)\<rbrakk> 
     \<Longrightarrow> tryFold (IntegerLessThanNode x y) stamps False"
 
-
 text \<open>
 Proofs that show that when the stamp lookup function is well-formed,
 the tryFold relation correctly predicts the output value with respect to
@@ -417,11 +447,10 @@ lemma
   shows "val_to_bool (intval_equals xval yval) \<longleftrightarrow> v = IntVal 32 1"
 proof -
   have "v = intval_equals xval yval"
-    using assms(1, 2, 3) BinaryExprE IntegerEqualsNode bin_eval.simps(7)
-    by (smt (verit) bin_eval.simps(11) encodeeval_def evalDet repDet)
-  then show ?thesis using intval_equals.simps val_to_bool.simps
-    by (smt (verit) bool_to_val.simps(1) bool_to_val.simps(2) bool_to_val_bin.simps 
-        intval_equals.elims one_neq_zero)
+    by (smt (verit) bin_eval.simps(11) encodeeval_def evalDet repDet IntegerEqualsNode BinaryExprE
+        assms)
+  then show ?thesis
+    by (metis bool_to_val.simps(1,2) one_neq_zero val_to_bool.simps(1,2) intval_equals_result)
 qed
 
 lemma tryFoldIntegerEqualsAlwaysDistinct:
@@ -432,13 +461,14 @@ lemma tryFoldIntegerEqualsAlwaysDistinct:
   shows "v = IntVal 32 0"
 proof -
   have "\<forall> val. \<not>(valid_value val (join (stamps x) (stamps y)))"
-    using assms(1,4) unfolding alwaysDistinct.simps
-    by (smt (verit, best) is_stamp_empty.elims(2) valid_int valid_value.simps(1))
+    by (smt (verit, best) is_stamp_empty.elims(2) valid_int valid_value.simps(1) assms(1,4)
+        alwaysDistinct.simps)
   obtain xv where "[g, m, p] \<turnstile> x \<mapsto> xv"
-    using assms using assms(2,3) unfolding encodeeval_def sorry
+    using assms unfolding encodeeval_def sorry
   have "\<not>(\<exists> val . ([g, m, p] \<turnstile> x \<mapsto> val) \<and> ([g, m, p] \<turnstile> y \<mapsto> val))"
     using assms(1,4) unfolding alwaysDistinct.simps wf_stamp.simps encodeeval_def sorry
-  then show ?thesis sorry
+  then show ?thesis
+    sorry
 qed
 
 lemma tryFoldIntegerEqualsNeverDistinct:
@@ -480,15 +510,13 @@ lemma tryFoldIntegerLessThanFalse:
   shows "v = IntVal 32 0"
   proof -
   have stamp_type: "is_IntegerStamp (stamps x)"
-    using assms
-    sorry
+    using assms sorry
   obtain xval where xval: "[g, m, p] \<turnstile> x \<mapsto> xval"
     using assms(2,3) sorry
   obtain yval where yval: "[g, m, p] \<turnstile> y \<mapsto> yval"
     using assms(2,3) sorry
   have "is_IntegerStamp (stamps x) \<and> is_IntegerStamp (stamps y)"
-    using assms(4)
-    sorry
+    using assms(4) sorry
   then have "\<not>(val_to_bool (intval_less_than xval yval))"
     sorry
   then show ?thesis
@@ -502,19 +530,22 @@ theorem tryFoldProofTrue:
   shows "val_to_bool v"
   using assms(2) proof (induction "kind g nid" stamps True rule: tryFold.induct)
 case (1 stamps x y)
-  then show ?case using tryFoldIntegerEqualsAlwaysDistinct assms
-    by force
+  then show ?case
+    using tryFoldIntegerEqualsAlwaysDistinct assms by force
 next
   case (2 stamps x y)
-  then show ?case using tryFoldIntegerEqualsAlwaysDistinct assms
-    by (smt (verit, best) one_neq_zero tryFold.cases tryFoldIntegerEqualsNeverDistinct tryFoldIntegerLessThanTrue val_to_bool.simps(1))
+  then show ?case
+    by (smt (verit, best) one_neq_zero tryFold.cases tryFoldIntegerEqualsNeverDistinct assms
+        tryFoldIntegerLessThanTrue val_to_bool.simps(1))
 next
   case (3 stamps x y)
-  then show ?case using tryFoldIntegerLessThanTrue assms
-    by (smt (verit, best) one_neq_zero tryFold.cases tryFoldIntegerEqualsNeverDistinct val_to_bool.simps(1))
+  then show ?case
+    by (smt (verit, best) one_neq_zero tryFold.cases tryFoldIntegerEqualsNeverDistinct assms
+        val_to_bool.simps(1) tryFoldIntegerLessThanTrue)
 next
 case (4 stamps x y)
-  then show ?case using tryFoldIntegerLessThanFalse assms sorry
+  then show ?case
+    by force
 qed
 
 theorem tryFoldProofFalse:
@@ -524,20 +555,23 @@ theorem tryFoldProofFalse:
   shows "\<not>(val_to_bool v)"
 using assms(2) proof (induction "kind g nid" stamps False rule: tryFold.induct)
 case (1 stamps x y)
-  then show ?case using tryFoldIntegerEqualsAlwaysDistinct assms sorry
+  then show ?case
+    by (smt (verit) tryFoldIntegerLessThanFalse tryFoldIntegerEqualsAlwaysDistinct tryFold.cases
+        tryFoldIntegerEqualsNeverDistinct val_to_bool.simps(1) assms)
 next
 case (2 stamps x y)
-  then show ?case using tryFoldIntegerEqualsNeverDistinct assms sorry
+  then show ?case
+    by blast
 next
   case (3 stamps x y)
-  then show ?case using tryFoldIntegerLessThanTrue assms sorry
+  then show ?case
+    by blast
 next
   case (4 stamps x y)
-  then show ?case using tryFoldIntegerLessThanFalse assms sorry
-
+  then show ?case
+    by (smt (verit, del_insts) tryFold.cases tryFoldIntegerEqualsAlwaysDistinct val_to_bool.simps(1)
+        tryFoldIntegerLessThanFalse assms)
 qed
-
-
 
 inductive_cases StepE:
   "g, p \<turnstile> (nid,m,h) \<rightarrow> (nid',m',h)"
@@ -739,7 +773,6 @@ inductive Step
   "\<lbrakk>nid \<in> seen\<rbrakk> \<Longrightarrow> Step g (nid, seen, conds, flow) None"
 
 code_pred (modes: i \<Rightarrow> i \<Rightarrow> o \<Rightarrow> bool) Step .
-
 
 text \<open>
 The ConditionalEliminationPhase relation is responsible for combining

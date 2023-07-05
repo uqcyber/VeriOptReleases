@@ -10,8 +10,7 @@ lemma ExpandShortCircuitVal:
   assumes "x \<noteq> UndefVal \<and> y \<noteq> UndefVal"
   assumes "val[(x || y)] \<noteq> UndefVal"
   shows "val[((x || y) ? t : f)] = val[(x ? t : (y ? t : f))]"
-  using assms apply (cases x; cases y; auto)
-  using or_eq_0_iff by blast+
+  using assms by (cases x; cases y; auto)
 
 optimization ExpandShortCircuit:
   "((x || y) ? t : f) \<longmapsto> (x ? t : (y ? t : f))"
@@ -20,13 +19,11 @@ optimization ExpandShortCircuit:
   apply (smt (verit, ccfv_threshold) ConditionalExpr ConditionalExprE bin_eval.simps(7) evaltree_not_undef intval_conditional.elims unfold_binary)
   sorry
 
-
 lemma swap_branches:
   assumes "x \<noteq> UndefVal \<and> \<not>x \<noteq> UndefVal"
   shows "val[(\<not>x) ? t : f] = val[x ? f : t]"
   using assms
   by simp
-
 
 optimization ExpandShortCircuitXNeg:
   "(((\<not>x) || y) ? t : f) \<longmapsto> (x ? (y ? t : f) : t)"

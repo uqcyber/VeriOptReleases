@@ -51,15 +51,13 @@ lemma val_EliminateRHS_642:
   subgoal
     proof -
        have 3: "(vx << 0) = vx"
-        unfolding shiftl_def
-        by simp
+        unfolding shiftl_def by simp
       then have "take_bit LENGTH(64) ((vx << 0)::64 word) = vx"
         unfolding Word.take_bit_length_eq by auto
       then show ?thesis
         by simp    
      qed
-     done
-
+  done
 
 (* All bit-widths *)
 lemma val_EliminateRHS:
@@ -77,16 +75,14 @@ lemma val_EliminateRHS:
     then have "take_bit 32 (vx << (0::nat)) = vx"
       unfolding Word.take_bit_length_eq 1 
       apply (cases vx; simp) 
-      
       sorry
-      then show ?thesis
-        by simp    
+    then show ?thesis
+       by simp
     qed
     subgoal (* 64-bit *)
     proof -
        have 3: "(vx << 0) = vx"
-        unfolding shiftl_def
-        by simp
+        unfolding shiftl_def by simp
       then have "take_bit LENGTH(64) ((vx << 0)::64 word) = vx"
         unfolding Word.take_bit_length_eq by auto
       then show ?thesis
@@ -105,13 +101,13 @@ lemma exp_EliminateRHS:
   subgoal premises p for m p xa
     proof -
       obtain xa where xa: "[m,p] \<turnstile> x \<mapsto> xa"
-        using p by blast
+        using p by auto
       then have 1: "wf_value y"
-        using p(3) by auto
+        by (auto simp: p(3))
       then have 2: "val[xa << y] \<noteq> UndefVal"
-        using evalDet p(1) p(2) xa by blast
+        using evalDet p(1,2) xa by blast
       then have "val[xa << y] = xa" 
-        using assms val_EliminateRHS  sorry
+        using assms val_EliminateRHS sorry
       then show ?thesis
         using evalDet p(1) xa by fastforce
     qed
@@ -119,11 +115,11 @@ lemma exp_EliminateRHS:
 
 text \<open>Optimisations\<close>
 
-
 optimization EliminateRHS_64: "(x << const(y)) \<longmapsto> x when 
                                (IsStamp x (IntegerStamp 64 lo hi) && 
                                 WellFormed x)"
   using exp_EliminateRHS wf_stamp_def  bin_eval.simps(8)  sorry
+
 
 end (* End of ShiftNode *)
 

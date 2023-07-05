@@ -27,31 +27,29 @@ lemma bin_eliminate_redundant_false:
 lemma val_xor_self_is_false:
   assumes "val[x \<oplus> x] \<noteq> UndefVal"
   shows "val_to_bool (val[x \<oplus> x]) = False"
-  using assms by (cases x; auto)
+  by (cases x; auto simp: assms)
 
 lemma val_xor_self_is_false_2:
-  assumes "(val[x \<oplus> x]) \<noteq> UndefVal"
+  assumes "val[x \<oplus> x] \<noteq> UndefVal"
   and     "x = IntVal 32 v" 
   shows "val[x \<oplus> x] = bool_to_val False"
-  using assms by (cases x; auto)
+  by (auto simp: assms)
 
 (* Not sure if I need this; Optimization uses ConstantExpr False which is IntVal32 0 *)
 lemma val_xor_self_is_false_3:
   assumes "val[x \<oplus> x] \<noteq> UndefVal \<and> x = IntVal 64 v" 
   shows "val[x \<oplus> x] = IntVal 64 0"
-  using assms by (cases x; auto)
+  by (auto simp: assms)
 
 lemma val_xor_commute:
    "val[x \<oplus> y] = val[y \<oplus> x]"
-   apply (cases x; cases y; auto)
-  by (simp add: xor.commute)+
+  by (cases x; cases y; auto simp: xor.commute)
 
 lemma val_eliminate_redundant_false:
   assumes "x = new_int b v"
   assumes "val[x \<oplus> (bool_to_val False)] \<noteq> UndefVal"
   shows   "val[x \<oplus> (bool_to_val False)] = x"
-  using assms apply (cases x; auto)
-  by meson
+  using assms by (auto; meson)
 
 (* Exp level proofs *)
 lemma exp_xor_self_is_false:
@@ -70,9 +68,9 @@ lemma exp_eliminate_redundant_false:
       obtain xa where xa: "[m, p] \<turnstile> x \<mapsto> xa"
         using p(2) by blast
       then have "val[xa \<oplus> (IntVal 32 0)] \<noteq> UndefVal"
-        using evalDet p(2) p(3) by blast
+        using evalDet p(2,3) by blast
       then have "[m, p] \<turnstile> x \<mapsto> val[xa \<oplus> (IntVal 32 0)]"
-        apply (cases xa; auto) using eval_unused_bits_zero xa by auto
+        using eval_unused_bits_zero xa by (cases xa; auto)
       then show ?thesis
         using evalDet p(2) xa by blast
     qed
@@ -82,16 +80,13 @@ text \<open>Optimisations\<close>
 
 optimization XorSelfIsFalse: "(x \<oplus> x) \<longmapsto> false when 
                       (wf_stamp x \<and> stamp_expr x = default_stamp)"
-  using size_non_const apply force
-  using exp_xor_self_is_false by auto 
+  using size_non_const exp_xor_self_is_false by auto 
 
 optimization XorShiftConstantRight: "((const x) \<oplus> y) \<longmapsto> y \<oplus> (const x) when \<not>(is_ConstantExpr y)"
-  using size_flip_binary apply force 
-  unfolding le_expr_def using val_xor_commute
-  by auto
+  using size_flip_binary val_xor_commute by auto
 
 optimization EliminateRedundantFalse: "(x \<oplus> false) \<longmapsto> x"
-    using exp_eliminate_redundant_false by blast 
+    using exp_eliminate_redundant_false by auto 
 
 (* BW: this doesn't seem right *)
 (* Doesn't have any subgoals *)

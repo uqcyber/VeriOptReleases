@@ -16,28 +16,27 @@ lemma bin_negative_cancel:
 
 (* Value level proofs *)
 lemma val_negative_cancel:
-  assumes "intval_negate (new_int b v) \<noteq> UndefVal"
+  assumes "val[-(new_int b v)] \<noteq> UndefVal"
   shows   "val[-(-(new_int b v))] = val[new_int b v]"
-  using assms by simp
+  by simp
 
 lemma val_distribute_sub:
   assumes "x \<noteq> UndefVal \<and> y \<noteq> UndefVal"
   shows   "val[-(x - y)] = val[y - x]"
-  using assms by (cases x; cases y; auto)
+  by (cases x; cases y; auto)
 
 (* Exp level proofs *)
 lemma exp_distribute_sub:
   shows "exp[-(x - y)] \<ge> exp[y - x]"
-  using val_distribute_sub apply auto[1]
-  using evaltree_not_undef by auto
+  by (auto simp: val_distribute_sub evaltree_not_undef)
 
 thm_oracles exp_distribute_sub
 
 lemma exp_negative_cancel:
   shows "exp[-(-x)] \<ge> exp[x]"
-  using val_negative_cancel apply auto[1]
-  by (metis (no_types, opaque_lifting) eval_unused_bits_zero intval_negate.elims 
-      intval_negate.simps(1) minus_equation_iff new_int.simps take_bit_dist_neg) 
+  apply auto
+  by (metis (no_types, opaque_lifting) eval_unused_bits_zero intval_negate.elims new_int.simps
+      intval_negate.simps(1) minus_equation_iff take_bit_dist_neg) 
  
 lemma exp_negative_shift: 
   assumes "stamp_expr x = IntegerStamp b' lo hi" 
@@ -48,14 +47,13 @@ lemma exp_negative_shift:
   proof - 
     obtain xa where xa: "[m,p] \<turnstile> x \<mapsto> xa"
       using p(2) by auto
-    then have 1: "intval_negate (intval_right_shift xa (IntVal b (take_bit b y))) \<noteq> UndefVal"
-      using evalDet p(1) p(2) by blast
-    then have 2: "intval_right_shift xa (IntVal b (take_bit b y)) \<noteq> UndefVal"
+    then have 1: "val[-(xa >> (IntVal b (take_bit b y)))] \<noteq> UndefVal"
+      using evalDet p(1,2) by blast
+    then have 2: "val[xa >> (IntVal b (take_bit b y))] \<noteq> UndefVal"
       by auto
-    then have 3: "- ((2::int) ^ b div (2::int)) \<sqsubseteq> sint (signed_take_bit (b - Suc (0::nat)) (take_bit b y))"
-      by (smt (verit, del_insts) One_nat_def diff_le_self gr0I half_nonnegative_int_iff linorder_not_le lower_bounds_equiv power_increasing_iff signed_0 signed_take_bit_int_greater_eq_minus_exp_word signed_take_bit_of_0 sint_greater_eq take_bit_0)
     then have 4: "sint (signed_take_bit (b - Suc (0::nat)) (take_bit b y)) < (2::int) ^ b div (2::int)"
-      by (metis Suc_le_lessD Suc_pred eval_bits_1_64 int_power_div_base p(4) signed_take_bit_int_less_exp_word size64 unfold_const wsst_TYs(3) zero_less_numeral)
+      by (metis Suc_le_lessD Suc_pred eval_bits_1_64 int_power_div_base p(4) zero_less_numeral
+          signed_take_bit_int_less_exp_word size64 unfold_const wsst_TYs(3))
     then have 5: "(0::nat) < b"
       using eval_bits_1_64 p(4) by blast
     then have 6: "b \<sqsubseteq> (64::nat)"
@@ -94,16 +92,17 @@ optimization NegateCancel: "-(-(x)) \<longmapsto> x"
 
 (* FloatStamp condition is omitted. Not 100% sure. *)
 optimization DistributeSubtraction: "-(x - y) \<longmapsto> (y - x)"
-   apply (smt (z3) add.left_commute add_2_eq_Suc' add_diff_cancel_left' is_ConstantExpr_def 
-          less_Suc_eq_0_disj plus_1_eq_Suc size.simps(11) size_binary_const size_non_add 
-          zero_less_diff)
-  using exp_distribute_sub by simp
+  apply (smt (verit, best) add.left_commute add_2_eq_Suc' add_diff_cancel_left' is_ConstantExpr_def
+         less_Suc_eq_0_disj plus_1_eq_Suc size.simps(11) size_binary_const size_non_add
+         zero_less_diff exp_distribute_sub nat_add_left_cancel_less less_add_eq_less add_Suc lessI
+         trans_less_add2 size_binary_rhs Suc_eq_plus1 Nat.add_0_right old.nat.inject
+         zero_less_Suc)
+   using exp_distribute_sub by simp
 
 (* Need to prove exp_negative_shift *)
 optimization NegativeShift: "-(x >> (const (new_int b y))) \<longmapsto> x >>> (const (new_int b y))
                                    when (stamp_expr x = IntegerStamp b' lo hi \<and> unat y = (b' - 1))"
   using exp_negative_shift by simp 
-
 
 end (* End of NegatePhase *)
 

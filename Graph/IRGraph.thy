@@ -81,22 +81,18 @@ lemma no_node_clears:
 lemma dom_eq:
   assumes "\<forall>x \<in> set xs. fst (snd x) \<noteq> NoNode"
   shows "filter_none (map_of xs) = dom (map_of xs)"
-  unfolding filter_none.simps using assms map_of_SomeD
-  by fastforce
+  using assms map_of_SomeD by fastforce
 
 lemma fil_eq:
   "filter_none (map_of (no_node xs)) = set (map fst (no_node xs))"
-  using no_node_clears
-  by (metis dom_eq dom_map_of_conv_image_fst list.set_map)
+  by (metis no_node_clears dom_eq dom_map_of_conv_image_fst list.set_map)
 
 lemma irgraph[code]: "ids (irgraph m) = set (map fst (no_node m))"
-  unfolding irgraph_def ids_def using fil_eq
-  by (smt Rep_IRGraph comp_apply eq_onp_same_args filter_none.simps ids.abs_eq ids_def irgraph.abs_eq irgraph.rep_eq irgraph_def mem_Collect_eq)
+  by (metis fil_eq Rep_IRGraph eq_onp_same_args filter_none.simps ids.abs_eq irgraph.abs_eq
+      irgraph.rep_eq mem_Collect_eq)
 
 lemma [code]: "Rep_IRGraph (irgraph m) = map_of (no_node m)"
-  using Abs_IRGraph_inverse
   by (simp add: irgraph.rep_eq)
-
 
 \<comment> \<open>Get the inputs set of a given node ID\<close>
 fun inputs :: "IRGraph \<Rightarrow> ID \<Rightarrow> ID set" where
@@ -135,45 +131,45 @@ fun any_usage :: "IRGraph \<Rightarrow> ID \<Rightarrow> ID" where
 lemma ids_some[simp]: "x \<in> ids g \<longleftrightarrow> kind g x \<noteq> NoNode" 
 proof -
   have that: "x \<in> ids g \<longrightarrow> kind g x \<noteq> NoNode"
-    using ids.rep_eq kind.rep_eq by force
+    by (auto simp add: kind.rep_eq ids.rep_eq)
   have "kind g x \<noteq> NoNode \<longrightarrow> x \<in> ids g"
-    unfolding with_default.simps kind_def ids_def
-    by (cases "Rep_IRGraph g x = None"; auto)
-  from this that show ?thesis by auto
+    by (cases "Rep_IRGraph g x = None"; auto simp add: ids_def kind_def)
+  from this that show ?thesis 
+    by auto
 qed
 
 lemma not_in_g: 
   assumes "nid \<notin> ids g"
   shows "kind g nid = NoNode"
-  using assms ids_some by blast
+  using assms by simp
 
 lemma valid_creation[simp]:
   "finite (dom g) \<longleftrightarrow> Rep_IRGraph (Abs_IRGraph g) = g"
-  using Abs_IRGraph_inverse by (metis Rep_IRGraph mem_Collect_eq)
+  by (metis Abs_IRGraph_inverse Rep_IRGraph mem_Collect_eq)
 
 lemma [simp]: "finite (ids g)" 
-  using Rep_IRGraph ids.rep_eq by simp
+  using Rep_IRGraph by (simp add: ids.rep_eq)
 
 lemma [simp]: "finite (ids (irgraph g))" 
   by (simp add: finite_dom_map_of)
 
 lemma [simp]: "finite (dom g) \<longrightarrow> ids (Abs_IRGraph g) = {nid \<in> dom g . \<nexists>s. g nid = Some (NoNode, s)}"
-  using ids.rep_eq by simp
+  by (simp add: ids.rep_eq)
 
 lemma [simp]: "finite (dom g) \<longrightarrow> kind (Abs_IRGraph g) = (\<lambda>x . (case g x of None \<Rightarrow> NoNode | Some n \<Rightarrow> fst n))"
   by (simp add: kind.rep_eq)
 
 lemma [simp]: "finite (dom g) \<longrightarrow> stamp (Abs_IRGraph g) = (\<lambda>x . (case g x of None \<Rightarrow> IllegalStamp | Some n \<Rightarrow> snd n))"
-  using stamp.abs_eq stamp.rep_eq by auto
+  by (simp add: stamp.rep_eq)
 
 lemma [simp]: "ids (irgraph g) = set (map fst (no_node g))" 
-  using irgraph by auto
+  by (simp add: irgraph)
 
 lemma [simp]: "kind (irgraph g) = (\<lambda>nid. (case (map_of (no_node g)) nid of None \<Rightarrow> NoNode | Some n \<Rightarrow> fst n))" 
-  using irgraph.rep_eq kind.transfer kind.rep_eq by auto
+  by (simp add: kind.rep_eq irgraph.rep_eq)
 
 lemma [simp]: "stamp (irgraph g) = (\<lambda>nid. (case (map_of (no_node g)) nid of None \<Rightarrow> IllegalStamp | Some n \<Rightarrow> snd n))" 
-  using irgraph.rep_eq stamp.transfer stamp.rep_eq by auto
+  by (simp add: stamp.rep_eq irgraph.rep_eq)
 
 lemma map_of_upd: "(map_of g)(k \<mapsto> v) = (map_of ((k, v) # g))"
   by simp
@@ -183,15 +179,19 @@ lemma [code]: "replace_node nid k (irgraph g) = (irgraph ( ((nid, k) # g)))"
 proof (cases "fst k = NoNode")
   case True
   then show ?thesis
-    by (metis (mono_tags, lifting) Rep_IRGraph_inject filter.simps(2) irgraph.abs_eq no_node.simps replace_node.rep_eq snd_conv)
+    by (metis (mono_tags, lifting) Rep_IRGraph_inject filter.simps(2) irgraph.abs_eq no_node.simps 
+        replace_node.rep_eq snd_conv)
 next
   case False
-  then show ?thesis unfolding irgraph_def replace_node_def no_node.simps
-    by (smt (verit, best) Rep_IRGraph comp_apply eq_onp_same_args filter.simps(2) id_def irgraph.rep_eq map_fun_apply map_of_upd mem_Collect_eq no_node.elims replace_node.abs_eq replace_node_def snd_eqD)
+  then show ?thesis
+    by (smt (verit, ccfv_SIG) irgraph_def Rep_IRGraph comp_apply eq_onp_same_args filter.simps(2)
+        id_def irgraph.rep_eq map_fun_apply map_of_upd mem_Collect_eq no_node.elims replace_node_def
+        replace_node.abs_eq snd_eqD)
 qed
 
 lemma [code]: "add_node nid k (irgraph g) = (irgraph (((nid, k) # g)))"
-  by (smt (z3) Rep_IRGraph_inject add_node.rep_eq filter.simps(2) irgraph.rep_eq map_of_upd no_node.simps snd_conv)
+  by (smt (verit) Rep_IRGraph_inject add_node.rep_eq filter.simps(2) irgraph.rep_eq map_of_upd
+      snd_conv no_node.simps)
 
 lemma add_node_lookup:
   "gup = add_node nid (k, s) g \<longrightarrow> 

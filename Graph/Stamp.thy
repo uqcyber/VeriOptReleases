@@ -69,8 +69,6 @@ experiment begin
 corollary "bit_bounds 1 = (-1, 0)" by simp  (* this matches the compiler stamps. *)
 end
 
-
-
 (* NOTE: the FloatStamp has been commented out to allow use of code generation facilities *)
 (*
 definition pos_infinity :: "float" where
@@ -175,6 +173,8 @@ fun neverDistinct :: "Stamp \<Rightarrow> Stamp \<Rightarrow> bool" where
 
 fun constantAsStamp :: "Value \<Rightarrow> Stamp" where
   "constantAsStamp (IntVal b v) = (IntegerStamp b (int_signed_value b v) (int_signed_value b v))" |
+  "constantAsStamp (ObjRef (None)) = ObjectStamp '''' False False True" |
+  "constantAsStamp (ObjRef (Some n)) = ObjectStamp '''' False True False" |
   (* TODO: float *)
   "constantAsStamp _ = IllegalStamp"
 
@@ -219,7 +219,7 @@ definition wf_value :: "Value \<Rightarrow> bool" where
 
 lemma unfold_wf_value[simp]:
   "wf_value v \<Longrightarrow> valid_value v (constantAsStamp v)"
-  using wf_value_def by auto
+  by (simp add: wf_value_def)
 
 fun compatible :: "Stamp \<Rightarrow> Stamp \<Rightarrow> bool" where
   "compatible (IntegerStamp b1 lo1 hi1) (IntegerStamp b2 lo2 hi2) =

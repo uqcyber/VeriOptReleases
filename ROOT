@@ -4,7 +4,8 @@ session Graph in Graph = "HOL-Library" +
   description
     "GraalVM Intermediate Representation encoding"
   options [document = pdf, document_output = "output",
-           show_question_marks = false]
+           show_question_marks = false,
+           quick_and_dirty] (* Temporary sorry in Class for termination proof *)
   theories
     JavaWords
     JavaLong
@@ -17,6 +18,7 @@ session Graph in Graph = "HOL-Library" +
     IRGraph
     Comparison
     Traversal
+    Class
   document_files (in "../latex")
     "root.tex"
     "mathpartir.sty"
@@ -25,7 +27,8 @@ session Semantics in Semantics = Graph +
   description
     "Semantics of the GraalVM IR"
   options [document = pdf, document_output = "output",
-           show_question_marks = false, quick_and_dirty]
+           show_question_marks = false,
+           quick_and_dirty] (* IRStepObj imports Class, which is temporarily sorry'd *)
   sessions
     "HOL-Eisbach"
     Snippets

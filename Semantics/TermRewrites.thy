@@ -206,7 +206,6 @@ fun match :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> Substitution option" whe
       Some (subst [(name, (SubExpr e))])" |
   "match _ _ = None"
 
-
 fun vars :: "IRExpr \<Rightarrow> String.literal fset" where
   "vars (UnaryExpr op e) = vars e" |
   "vars (BinaryExpr op e1 e2) = vars e1 |\<union>| vars e2" |
@@ -222,7 +221,7 @@ typedef Rewrite = "{ (e1,e2,cond) :: IRExpr \<times> IRExpr \<times> (Substituti
 proof -
   have "\<exists>v. vars (ConstantExpr v) |\<subseteq>| vars (ConstantExpr v)" by simp
   then show ?thesis
-    by blast
+    by auto
 qed
 
 setup_lifting type_definition_Rewrite

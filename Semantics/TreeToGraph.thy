@@ -23,8 +23,12 @@ fun is_preevaluated :: "IRNode \<Rightarrow> bool" where
   "is_preevaluated (SignedDivNode n _ _ _ _ _) = True" |
   "is_preevaluated (SignedRemNode n _ _ _ _ _) = True" |
   "is_preevaluated (ValuePhiNode n _ _) = True" |
+  "is_preevaluated (BytecodeExceptionNode n _ _) = True" |
+  "is_preevaluated (NewArrayNode n _ _) = True" |
+  "is_preevaluated (ArrayLengthNode n _) = True" |
+  "is_preevaluated (LoadIndexedNode n _ _ _) = True" |
+  "is_preevaluated (StoreIndexedNode n _ _ _ _ _ _) = True" |
   "is_preevaluated _ = False"
-
 
 inductive
   rep :: "IRGraph \<Rightarrow> ID \<Rightarrow> IRExpr \<Rightarrow> bool" ("_ \<turnstile> _ \<simeq> _" 55)
@@ -51,6 +55,16 @@ inductive
   "\<lbrakk>kind g n = AbsNode x;
     g \<turnstile> x \<simeq> xe\<rbrakk>
     \<Longrightarrow> g \<turnstile> n \<simeq> (UnaryExpr UnaryAbs xe)" |
+
+  ReverseBytesNode:
+  "\<lbrakk>kind g n = ReverseBytesNode x;
+    g \<turnstile> x \<simeq> xe\<rbrakk>
+    \<Longrightarrow> g \<turnstile> n \<simeq> (UnaryExpr UnaryReverseBytes xe)" |
+
+  BitCountNode:
+  "\<lbrakk>kind g n = BitCountNode x;
+    g \<turnstile> x \<simeq> xe\<rbrakk>
+    \<Longrightarrow> g \<turnstile> n \<simeq> (UnaryExpr UnaryBitCount xe)" |
 
   NotNode:
   "\<lbrakk>kind g n = NotNode x;
@@ -146,6 +160,24 @@ inductive
     g \<turnstile> y \<simeq> ye\<rbrakk>
     \<Longrightarrow> g \<turnstile> n \<simeq> (BinaryExpr BinIntegerLessThan xe ye)" |
 
+  IntegerTestNode:
+  "\<lbrakk>kind g n = IntegerTestNode x y;
+    g \<turnstile> x \<simeq> xe;
+    g \<turnstile> y \<simeq> ye\<rbrakk>
+    \<Longrightarrow> g \<turnstile> n \<simeq> (BinaryExpr BinIntegerTest xe ye)" |
+
+  IntegerNormalizeCompareNode:
+  "\<lbrakk>kind g n = IntegerNormalizeCompareNode x y;
+    g \<turnstile> x \<simeq> xe;
+    g \<turnstile> y \<simeq> ye\<rbrakk>
+    \<Longrightarrow> g \<turnstile> n \<simeq> (BinaryExpr BinIntegerNormalizeCompare xe ye)" |
+
+  IntegerMulHighNode:
+  "\<lbrakk>kind g n = IntegerMulHighNode x y;
+    g \<turnstile> x \<simeq> xe;
+    g \<turnstile> y \<simeq> ye\<rbrakk>
+    \<Longrightarrow> g \<turnstile> n \<simeq> (BinaryExpr BinIntegerMulHigh xe ye)" |
+
 (* Convert Nodes *)
   NarrowNode:
   "\<lbrakk>kind g n = NarrowNode inputBits resultBits x;
@@ -162,20 +194,33 @@ inductive
     g \<turnstile> x \<simeq> xe\<rbrakk>
     \<Longrightarrow> g \<turnstile> n \<simeq> (UnaryExpr (UnaryZeroExtend inputBits resultBits) xe)" |
 
-(* Leaf Node *)
+(* Leaf Node
+    TODO: For now, BytecodeExceptionNode is treated as a LeafNode.
+*)
   LeafNode:
   "\<lbrakk>is_preevaluated (kind g n);
     stamp g n = s\<rbrakk>
     \<Longrightarrow> g \<turnstile> n \<simeq> (LeafExpr n s)" |
 
+(* TODO: For now, ignore narrowing. *)
+  PiNode:
+  "\<lbrakk>kind g n = PiNode n' guard;
+    g \<turnstile> n' \<simeq> e\<rbrakk>
+    \<Longrightarrow> g \<turnstile> n \<simeq> e" |
+
 (* Ref Node *)
   RefNode:
   "\<lbrakk>kind g n = RefNode n';
     g \<turnstile> n' \<simeq> e\<rbrakk>
-    \<Longrightarrow> g \<turnstile> n \<simeq> e"
+    \<Longrightarrow> g \<turnstile> n \<simeq> e" |
+
+(* IsNull Node *)
+  IsNullNode:
+  "\<lbrakk>kind g n = IsNullNode v;
+    g \<turnstile> v \<simeq> lfn\<rbrakk>
+    \<Longrightarrow> g \<turnstile> n \<simeq> (UnaryExpr UnaryIsNull lfn)"
 
 code_pred (modes: i \<Rightarrow> i \<Rightarrow> o \<Rightarrow> bool as exprE) rep .
-
 
 inductive
   replist :: "IRGraph \<Rightarrow> ID list \<Rightarrow> IRExpr list \<Rightarrow> bool" ("_ \<turnstile> _ \<simeq>\<^sub>L _" 55)
@@ -204,6 +249,10 @@ inductive_cases ConditionalNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
   "g \<turnstile> n \<simeq> (ConditionalExpr ce te fe)"
 inductive_cases AbsNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
   "g \<turnstile> n \<simeq> (UnaryExpr UnaryAbs xe)"
+inductive_cases ReverseBytesNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
+  "g \<turnstile> n \<simeq> (UnaryExpr UnaryReverseBytes xe)"
+inductive_cases BitCountNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
+  "g \<turnstile> n \<simeq> (UnaryExpr UnaryBitCount xe)"
 inductive_cases NotNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
   "g \<turnstile> n \<simeq> (UnaryExpr UnaryNot xe)"
 inductive_cases NegateNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
@@ -236,6 +285,12 @@ inductive_cases IntegerEqualsNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
   "g \<turnstile> n \<simeq> (BinaryExpr BinIntegerEquals xe ye)"
 inductive_cases IntegerLessThanNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
   "g \<turnstile> n \<simeq> (BinaryExpr BinIntegerLessThan xe ye)"
+inductive_cases IntegerMulHighNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
+  "g \<turnstile> n \<simeq> (BinaryExpr BinIntegerMulHigh xe ye)"
+inductive_cases IntegerTestNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
+  "g \<turnstile> n \<simeq> (BinaryExpr BinIntegerTest xe ye)"
+inductive_cases IntegerNormalizeCompareNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
+  "g \<turnstile> n \<simeq> (BinaryExpr BinIntegerNormalizeCompare xe ye)"
 inductive_cases NarrowNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
   "g \<turnstile> n \<simeq> (UnaryExpr (UnaryNarrow ib rb) xe)"
 inductive_cases SignExtendNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
@@ -244,6 +299,8 @@ inductive_cases ZeroExtendNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
   "g \<turnstile> n \<simeq> (UnaryExpr (UnaryZeroExtend ib rb) xe)"
 inductive_cases LeafNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
   "g \<turnstile> n \<simeq> (LeafExpr n s)"
+inductive_cases IsNullNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
+  "g \<turnstile> n \<simeq> (UnaryExpr UnaryIsNull lfn)"
 
 (* group those forward rules into a named set *)
 lemmas RepE\<^marker>\<open>tag invisible\<close> = 
@@ -251,6 +308,8 @@ lemmas RepE\<^marker>\<open>tag invisible\<close> =
   ParameterNodeE
   ConditionalNodeE
   AbsNodeE
+  ReverseBytesNodeE
+  BitCountNodeE
   NotNodeE
   NegateNodeE
   LogicNegationNodeE
@@ -267,11 +326,14 @@ lemmas RepE\<^marker>\<open>tag invisible\<close> =
   IntegerBelowNodeE
   IntegerEqualsNodeE
   IntegerLessThanNodeE
+  IntegerMulHighNodeE
+  IntegerTestNodeE
+  IntegerNormalizeCompareNodeE
   NarrowNodeE
   SignExtendNodeE
   ZeroExtendNodeE
   LeafNodeE
-
+  IsNullNodeE 
 
 subsection \<open>Data-flow Tree to Subgraph\<close>
 
@@ -282,8 +344,10 @@ fun unary_node :: "IRUnaryOp \<Rightarrow> ID \<Rightarrow> IRNode" where
   "unary_node UnaryLogicNegation v = LogicNegationNode v" |
   "unary_node (UnaryNarrow ib rb) v = NarrowNode ib rb v" |
   "unary_node (UnarySignExtend ib rb) v = SignExtendNode ib rb v" |
-  "unary_node (UnaryZeroExtend ib rb) v = ZeroExtendNode ib rb v"
-
+  "unary_node (UnaryZeroExtend ib rb) v = ZeroExtendNode ib rb v" |
+  "unary_node UnaryIsNull v = IsNullNode v" |
+  "unary_node UnaryReverseBytes v = ReverseBytesNode v" |
+  "unary_node UnaryBitCount v = BitCountNode v"
 
 (* Creates the appropriate IRNode for a given binary operator. *)
 fun bin_node :: "IRBinaryOp \<Rightarrow> ID \<Rightarrow> ID \<Rightarrow> IRNode" where
@@ -299,9 +363,10 @@ fun bin_node :: "IRBinaryOp \<Rightarrow> ID \<Rightarrow> ID \<Rightarrow> IRNo
   "bin_node BinURightShift x y = UnsignedRightShiftNode x y" |
   "bin_node BinIntegerEquals x y = IntegerEqualsNode x y" |
   "bin_node BinIntegerLessThan x y = IntegerLessThanNode x y" |
-  "bin_node BinIntegerBelow x y = IntegerBelowNode x y"
-
-
+  "bin_node BinIntegerBelow x y = IntegerBelowNode x y" |
+  "bin_node BinIntegerTest x y = IntegerTestNode x y" |
+  "bin_node BinIntegerNormalizeCompare x y = IntegerNormalizeCompareNode x y" |
+  "bin_node BinIntegerMulHigh x y = IntegerMulHighNode x y"
 
 inductive fresh_id :: "IRGraph \<Rightarrow> ID \<Rightarrow> bool" where
   "n \<notin> ids g \<Longrightarrow> fresh_id g n"
@@ -455,14 +520,12 @@ end
 
 values "{(n, g) . (eg2_sq \<oplus> sq_param0 \<leadsto> (g, n))}"
 
-
 subsection \<open>Lift Data-flow Tree Semantics\<close>
 
 definition encodeeval :: "IRGraph \<Rightarrow> MapState \<Rightarrow> Params \<Rightarrow> ID \<Rightarrow> Value \<Rightarrow> bool" 
   ("[_,_,_] \<turnstile> _ \<mapsto> _" 50)
   where
   "encodeeval g m p n v = (\<exists> e. (g \<turnstile> n \<simeq> e) \<and> ([m,p] \<turnstile> e \<mapsto> v))"
-
 
 subsection \<open>Graph Refinement\<close>
 
@@ -477,7 +540,8 @@ definition graph_refinement :: "IRGraph \<Rightarrow> IRGraph \<Rightarrow> bool
         (\<forall> n . n \<in> ids g\<^sub>1 \<longrightarrow> (\<forall>e. (g\<^sub>1 \<turnstile> n \<simeq> e) \<longrightarrow> (g\<^sub>2 \<turnstile> n \<unlhd> e))))"
 
 lemma graph_refinement:
-  "graph_refinement g1 g2 \<Longrightarrow> (\<forall>n m p v. n \<in> ids g1 \<longrightarrow> ([g1, m, p] \<turnstile> n \<mapsto> v) \<longrightarrow> ([g2, m, p] \<turnstile> n \<mapsto> v))"
+  "graph_refinement g1 g2 \<Longrightarrow> 
+   (\<forall>n m p v. n \<in> ids g1 \<longrightarrow> ([g1, m, p] \<turnstile> n \<mapsto> v) \<longrightarrow> ([g2, m, p] \<turnstile> n \<mapsto> v))"
   by (meson encodeeval_def graph_refinement_def graph_represents_expression_def le_expr_def)
 
 subsection \<open>Maximal Sharing\<close>

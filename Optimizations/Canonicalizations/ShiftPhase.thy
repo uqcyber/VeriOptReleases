@@ -19,18 +19,16 @@ fun in_bounds :: "Value \<Rightarrow> int \<Rightarrow> int \<Rightarrow> bool" 
 
 lemma
   assumes "in_bounds (intval_log2 val_c) 0 32"
-  shows "intval_left_shift x (intval_log2 val_c) = intval_mul x val_c"
+  shows "val[x << (intval_log2 val_c)] = val[x * val_c]"
   apply (cases val_c; auto) using intval_left_shift.simps(1) intval_mul.simps(1) intval_log2.simps(1)
   sorry
 
 lemma e_intval:
   "n = intval_log2 val_c \<and> in_bounds n 0 32 \<longrightarrow>
-    intval_left_shift x (intval_log2 val_c) =
-    intval_mul x val_c"
+    val[x << (intval_log2 val_c)] = val[x * val_c]"
 proof (rule impI)
   assume "n = intval_log2 val_c \<and> in_bounds n 0 32"
-  show "intval_left_shift x (intval_log2 val_c) =
-    intval_mul x val_c"
+  show "val[x << (intval_log2 val_c)] = val[x * val_c]"
     proof (cases "\<exists> v . val_c = IntVal 32 v")
       case True
       obtain vc where "val_c = IntVal 32 vc"
@@ -51,12 +49,9 @@ proof (rule impI)
 qed
 qed
 
-
-
 optimization e:
   "x * (const c) \<longmapsto> x << (const n) when (n = intval_log2 c \<and> in_bounds n 0 32)"
-  using e_intval
-  using BinaryExprE ConstantExprE bin_eval.simps(2,7) sorry
+  using e_intval BinaryExprE ConstantExprE bin_eval.simps(2,7) sorry
 
 end
 

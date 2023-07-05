@@ -25,9 +25,7 @@ definition less_void :: "void \<Rightarrow> void \<Rightarrow> bool" where
 
 instance
   apply standard
-     apply (simp add: less_eq_void_def less_void_def)
-    apply (simp add: less_eq_void_def)
-   apply (simp add: less_eq_void_def)
+  apply (simp add: less_eq_void_def less_void_def)+
   by (metis (full_types) void.exhaust)
 
 end
@@ -40,9 +38,7 @@ definition inf_void :: "void \<Rightarrow> void \<Rightarrow> void" where
 
 instance
   apply standard
-    apply (simp add: less_eq_void_def)
-   apply (simp add: less_eq_void_def)
-  by (metis (mono_tags) void.exhaust)
+  by (simp add: less_eq_void_def)+
 
 end
 
@@ -54,9 +50,7 @@ definition sup_void :: "void \<Rightarrow> void \<Rightarrow> void" where
 
 instance
   apply standard
-    apply (simp add: less_eq_void_def)
-   apply (simp add: less_eq_void_def)
-  by (metis (mono_tags) void.exhaust)
+  by (simp add: less_eq_void_def)+
 
 end
 
@@ -71,8 +65,7 @@ definition top_void :: "void" where
 
 instance
   apply standard
-   apply (simp add: less_eq_void_def)
-  by (simp add: less_eq_void_def)
+  by (simp add: less_eq_void_def)+
 
 end
 
@@ -107,14 +100,12 @@ fun less_stamp :: "stamp \<Rightarrow> stamp \<Rightarrow> bool" where
 lemma less_le_not_le:
   fixes x y :: stamp
   shows "(x < y) = (x \<le> y \<and> \<not> y \<le> x)"
-  using less_eq_stamp.simps less_stamp.simps
-  using stamp.exhaust subset_not_subset_eq by metis
+  by (metis subset_not_subset_eq stamp.exhaust less_stamp.simps less_eq_stamp.simps)
 
 lemma order_refl:
   fixes x :: stamp
   shows "x \<le> x"
-  using less_eq_stamp.simps less_stamp.simps
-  using dual_order.refl stamp.exhaust by metis
+  by (metis stamp.exhaust dual_order.refl less_eq_stamp.simps)
 
 lemma order_trans:
   fixes x y z :: stamp
@@ -124,23 +115,19 @@ proof -
   assume "x \<le> y"
   assume "y \<le> z"
   obtain l1 u1 where xdef: "x = intstamp l1 u1"
-    using stamp.exhaust 
-    by blast
+    using stamp.exhaust by auto
   obtain l2 u2 where ydef: "y = intstamp l2 u2"
-    using stamp.exhaust 
-    by blast
+    using stamp.exhaust by auto
   obtain l3 u3 where zdef: "z = intstamp l3 u3"
-    using stamp.exhaust 
-    by blast
+    using stamp.exhaust by auto
   have s1: "{l1..u1} \<le> {l2..u2}"
-    using \<open>x \<le> y\<close> less_eq_stamp.simps xdef ydef by blast
+    using \<open>x \<le> y\<close> by (simp add: ydef xdef)
   have s2: "{l2..u2} \<le> {l3..u3}"
-    using \<open>y \<le> z\<close> less_eq_stamp.simps ydef zdef by blast
+    using \<open>y \<le> z\<close> by (simp add: zdef ydef)
   from s1 s2 have "{l1..u1} \<le> {l3..u3}"
     by (meson dual_order.trans)
   then show "x \<le> z"
-    using less_eq_stamp.simps
-    using xdef zdef by presburger
+    by (simp add: zdef xdef)
 qed
 
 lemma antisym:
@@ -152,18 +139,15 @@ proof -
   assume xlessy: "x \<le> y"
   assume ylessx: "y \<le> x"
   obtain l1 u1 where xdef: "x = intstamp l1 u1"
-    using stamp.exhaust by blast
+    using stamp.exhaust by auto
   obtain l2 u2 where ydef: "y = intstamp l2 u2"
-    using stamp.exhaust by blast
-  
+    using stamp.exhaust by auto
   from xlessy have s1: "{l1..u1} \<subseteq> {l2..u2}"
-    using less_eq_stamp.simps
-    using xdef ydef by blast
+    by (simp add: ydef xdef)
   from ylessx have s2: "{l2..u2} \<subseteq> {l1..u1}"
-    using less_eq_stamp.simps
-    using xdef ydef by blast
+    by (simp add: ydef xdef)
   have "{l1..u1} \<subseteq> {l2..u2} \<Longrightarrow> {l2..u2} \<subseteq> {l1..u1} \<Longrightarrow> {l1..u1} = {l2..u2}"
-    by fastforce
+    by auto
   then have s3: "{l1..u1} = {l2..u2} \<Longrightarrow> (l1 = l2) \<and> (u1 = u2)"
     (* not true *)
     (* consider: 
@@ -178,10 +162,7 @@ qed
 
 instance
   apply standard
-  using less_le_not_le apply simp
-  using order_refl apply simp
-  using order_trans apply simp
-  using antisym by simp
+  by (simp add: antisym order_trans order_refl less_le_not_le)+
 end
 
 subsubsection \<open>Stamp Join\<close>
@@ -206,21 +187,18 @@ proof -
   fix x :: stamp
   fix y :: stamp
   obtain l1 u1 where xdef: "x = intstamp l1 u1"
-    using stamp.exhaust by blast
+    using stamp.exhaust by auto
   obtain l2 u2 where ydef: "y = intstamp l2 u2"
-    using stamp.exhaust by blast
+    using stamp.exhaust by auto
   have joindef: "x \<sqinter> y = intstamp (max l1 l2) (min u1 u2)"
     (is "?join = intstamp ?l3 ?u3")
-    using inf_stamp.simps xdef ydef
-    by force
+    by (simp add: ydef xdef)
   have leq: "{?l3..?u3} \<subseteq> {l1..u1}"
-    by force
+    by simp
   have "(x \<sqinter> y) \<le> x = ({?l3..?u3} \<subseteq> {l1..u1})"
-    using xdef joindef inf_stamp.simps
-    by force
+    using joindef by (simp add: xdef)
   then show "(x \<sqinter> y) \<le> x"
-    using leq
-    by fastforce
+    by (simp add: leq)
 qed
 
 lemma inf_le2:
@@ -230,21 +208,18 @@ proof -
   fix x :: stamp
   fix y :: stamp
   obtain l1 u1 where xdef: "x = intstamp l1 u1"
-    using stamp.exhaust by blast
+    using stamp.exhaust by auto
   obtain l2 u2 where ydef: "y = intstamp l2 u2"
-    using stamp.exhaust by blast
+    using stamp.exhaust by auto
   have joindef: "x \<sqinter> y = intstamp (max l1 l2) (min u1 u2)"
     (is "?join = intstamp ?l3 ?u3")
-    using inf_stamp.simps xdef ydef
-    by force
+    by (simp add: ydef xdef)
   have leq: "{?l3..?u3} \<subseteq> {l2..u2}"
-    by force
+    by simp
   have "(x \<sqinter> y) \<le> y = ({?l3..?u3} \<subseteq> {l2..u2})"
-    using ydef joindef
-    by force
+    using joindef by (simp add: ydef)
   then show "(x \<sqinter> y) \<le> y"
-    using leq
-    by fastforce
+    by (simp add: leq)
 qed
 
 lemma inf_greatest:
@@ -255,37 +230,32 @@ proof -
   assume xlessy: "x \<le> y"
   assume xlessz: "x \<le> z"
   obtain l1 u1 where xdef: "x = intstamp l1 u1"
-    using stamp.exhaust by blast
+    using stamp.exhaust by auto
   obtain l2 u2 where ydef: "y = intstamp l2 u2"
-    using stamp.exhaust by blast
+    using stamp.exhaust by auto
   obtain l3 u3 where zdef: "z = intstamp l3 u3"
-    using stamp.exhaust by blast
+    using stamp.exhaust by auto
   obtain l4 u4 where yzdef: "y \<sqinter> z = intstamp l4 u4"
     by (meson inf_stamp.elims)
   have max4: "l4 = max l2 l3"
-    using yzdef ydef zdef inf_stamp.simps by simp
+    using yzdef by (simp add: zdef ydef)
   have min4: "u4 = min u2 u3"
-    using yzdef ydef zdef inf_stamp.simps by simp
+    using yzdef by (simp add: zdef ydef)
   have "{l1..u1} \<subseteq> {l2..u2}"
-    using xlessy xdef ydef
-    using less_eq_stamp.simps by blast
+    using xlessy by (simp add: ydef xdef)
   have "{l1..u1} \<subseteq> {l3..u3}"
-    using xlessz xdef zdef
-    using less_eq_stamp.simps by blast
+    using xlessz by (simp add: zdef xdef)
   have leq: "{l1..u1} \<subseteq> {l4..u4}"
-    using \<open>{l1..u1} \<subseteq> {l2..u2}\<close> \<open>{l1..u1} \<subseteq> {l3..u3}\<close> max4 min4 by auto
+    using \<open>{l1..u1} \<subseteq> {l2..u2}\<close> \<open>{l1..u1} \<subseteq> {l3..u3}\<close> by (simp add: min4 max4)
   have "x \<le> (y \<sqinter> z) = ({l1..u1} \<subseteq> {l4..u4})"
     by (simp add: xdef yzdef)
   then show "x \<le> (y \<sqinter> z)"
-    using leq
-    by fastforce
+    using leq by simp
 qed
 
 instance
   apply standard
-  using inf_le1 apply simp
-  using inf_le2 apply simp
-  using inf_greatest by simp
+  by (simp add: inf_greatest inf_le2 inf_le1)+
 end
 
 
@@ -311,21 +281,18 @@ proof -
   fix x :: stamp
   fix y :: stamp
   obtain l1 u1 where xdef: "x = intstamp l1 u1"
-    using stamp.exhaust by blast
+    using stamp.exhaust by auto
   obtain l2 u2 where ydef: "y = intstamp l2 u2"
-    using stamp.exhaust by blast
+    using stamp.exhaust by auto
   have joindef: "x \<squnion> y = intstamp (min l1 l2) (max u1 u2)"
     (is "?join = intstamp ?l3 ?u3")
-    using inf_stamp.simps xdef ydef
-    by force
+    by (simp add: ydef xdef)
   have leq: "{l1..u1} \<subseteq> {?l3..?u3}"
     by simp
   have "x \<le> x \<squnion> y = ({l1..u1} \<subseteq> {?l3..?u3})"
-    using xdef joindef inf_stamp.simps
-    by force
+    using joindef by (simp add: xdef)
   then show "x \<le> x \<squnion> y"
-    using leq
-    by fastforce
+    by (simp add: leq)
 qed
 
 lemma sup_ge2:
@@ -335,21 +302,19 @@ proof -
   fix x :: stamp
   fix y :: stamp
   obtain l1 u1 where xdef: "x = intstamp l1 u1"
-    using stamp.exhaust by blast
+    using stamp.exhaust by auto
   obtain l2 u2 where ydef: "y = intstamp l2 u2"
-    using stamp.exhaust by blast
+    using stamp.exhaust by auto
   have joindef: "x \<squnion> y = intstamp (min l1 l2) (max u1 u2)"
     (is "?join = intstamp ?l3 ?u3")
-    using inf_stamp.simps xdef ydef
-    by force
+    by (simp add: ydef xdef)
   have leq: "{l2..u2} \<subseteq> {?l3..?u3}" (is "?subset_thesis")
     by simp
   have "?thesis = (?subset_thesis)"
-    using ydef joindef sup_stamp.simps less_eq_stamp.simps
-    by (metis StampLattice.sup_ge1 max.commute min.commute sup_stamp.elims)
+    by (metis StampLattice.sup_ge1 max.commute min.commute sup_stamp.elims less_eq_stamp.simps 
+        sup_stamp.simps)
   then show "?thesis"
-    using leq
-    by fastforce
+    by simp
 qed
 
 lemma sup_least:
@@ -360,37 +325,32 @@ proof -
   assume xlessy: "y \<le> x"
   assume xlessz: "z \<le> x"
   obtain l1 u1 where xdef: "x = intstamp l1 u1"
-    using stamp.exhaust by blast
+    using stamp.exhaust by auto
   obtain l2 u2 where ydef: "y = intstamp l2 u2"
-    using stamp.exhaust by blast
+    using stamp.exhaust by auto
   obtain l3 u3 where zdef: "z = intstamp l3 u3"
-    using stamp.exhaust by blast
+    using stamp.exhaust by auto
   have yzdef: "y \<squnion> z = intstamp (min l2 l3) (max u2 u3)"
     (is "?meet = intstamp ?l4 ?u4")
-    using sup_stamp.simps
     by (simp add: ydef zdef)
   have s1: "{l2..u2} \<subseteq> {l1..u1}"
-    using xlessy xdef ydef
-    using less_eq_stamp.simps by blast
+    using xlessy by (simp add: ydef xdef)
   have s2: "{l3..u3} \<subseteq> {l1..u1}"
-    using xlessz xdef zdef
-    using less_eq_stamp.simps by blast
+    using xlessz by (simp add: zdef xdef)
   have leq: "{?l4..?u4} \<subseteq> {l1..u1}" (is ?subset_thesis)
-    using s1 s2 unfolding atLeastatMost_subset_iff
     (* why is this such a hard proof? *)
-    by (metis (no_types, opaque_lifting) inf.orderE inf_stamp.simps max.bounded_iff max.cobounded2 min.bounded_iff min.cobounded2 stamp.inject xdef xlessy xlessz ydef zdef)
+    by (metis (no_types, opaque_lifting) inf.orderE inf_stamp.simps max.bounded_iff max.cobounded2 
+        min.bounded_iff min.cobounded2 stamp.inject xdef xlessy ydef zdef atLeastatMost_subset_iff 
+        xlessz)
   have "(y \<squnion> z \<le> x) = ?subset_thesis"
-    using yzdef xdef less_eq_stamp.simps 
-    by simp
+    by (simp add: xdef yzdef)
   then show "(y \<squnion> z \<le> x)"
-    using leq by fastforce
+    using leq by simp
 qed
 
 instance
   apply standard
-  using sup_ge1 apply simp
-  using sup_ge2 apply simp
-  using sup_least by simp
+  by (simp add: sup_least sup_ge2 sup_ge1)+
 end
 
 
@@ -428,7 +388,7 @@ lemma
   assumes "x = width_min 64"
   assumes "y = width_max 64"
   shows "sint x < sint y"
-  using assms unfolding width_min_def width_max_def by simp
+  by (simp add: assms width_max_def width_min_def)
 
 text \<open>
 Note that this definition is valid for unsigned integers only.
@@ -458,20 +418,13 @@ lemma bot_least:
   shows "(\<bottom>) \<le> a"
 proof -
   obtain min max where bot_def:"\<bottom> = intstamp max min"
-    using bot_stamp_def 
-    by force
+    by (simp add: bot_stamp_def)
   have "min < max"
-    using bot_def
-    unfolding bot_stamp_def width_min_def width_max_def
-    using word_gt_0 by fastforce
+    using bot_def word_gt_0 unfolding bot_stamp_def by fastforce
   then have "{max..min} = {}"
-    using bot_def
-    unfolding bot_stamp_def width_min_def width_max_def
-    by auto
+    by (simp add: bot_def)
   then show ?thesis
-    unfolding bot_stamp_def
-    using less_eq_stamp.simps
-    by (simp add: stamp.induct)
+    using less_eq_stamp.simps by (simp add: stamp.induct bot_stamp_def)
 qed
 
 lemma top_greatest:
@@ -479,25 +432,20 @@ lemma top_greatest:
   shows "a \<le> (\<top>)"
 proof -
   obtain min max where top_def:"\<top> = intstamp min max"
-    using top_stamp_def 
-    by force
+    by (simp add: top_stamp_def)
   have max_is_max: "\<not>(\<exists> n. n > max)"
     by (metis stamp.inject top_def top_stamp_def word_order.extremum_strict)
   have min_is_min: "\<not>(\<exists> n. n < min)"
     by (metis not_less_iff_gr_or_eq stamp.inject top_def top_stamp_def word_coorder.not_eq_extremum)
   have "\<not>(\<exists> l u. {min..max} < {l..u})"
-    using max_is_max min_is_min
-    by (metis atLeastatMost_psubset_iff not_less)
+    by (metis atLeastatMost_psubset_iff not_less min_is_min max_is_max)
   then show ?thesis
-    unfolding top_stamp_def
-    using less_eq_stamp.simps
-    using less_eq_stamp.elims(3) by fastforce
+    unfolding top_stamp_def using less_eq_stamp.elims(3) by fastforce
 qed
 
 instance
   apply standard
-  using bot_least apply simp
-  using top_greatest by simp
+  by (simp add: top_greatest bot_least)+
 end
 
 
@@ -524,7 +472,6 @@ definition never_distinct :: "stamp \<Rightarrow> stamp \<Rightarrow> bool" wher
   "never_distinct stamp1 stamp2 = 
     (as_constant stamp1 = as_constant stamp2 \<and> as_constant stamp1 \<noteq> None)"
 
-
 subsection \<open>Mapping to Values\<close>
 fun valid_value :: "stamp => Value => bool" where
   "valid_value (intstamp l u) (IntVal b v) = (v \<in> {l..u})" |
@@ -540,8 +487,7 @@ to prove some fairly simple properties.
 \<close>
 lemma bottom_range_empty:
   "\<not>(valid_value (\<bottom>) v)"
-  unfolding bot_stamp_def
-  using valid_value.elims(2) by fastforce
+  unfolding bot_stamp_def using valid_value.elims(2) by fastforce
 
 lemma join_values:
   assumes "joined = x_stamp \<sqinter> y_stamp"
@@ -549,7 +495,7 @@ lemma join_values:
 proof (cases x)
   case UndefVal
   then show ?thesis
-    using valid_value.elims(2) by blast
+    using valid_value.elims(2) by auto
 (* WAS:
 next
   case (IntVal32 x2)
@@ -559,24 +505,28 @@ next
 next
   case (IntVal b x3)
   obtain lx ux where xdef: "x_stamp = intstamp lx ux"
-    using stamp.exhaust by blast
+    using stamp.exhaust by auto
   obtain ly uy where ydef: "y_stamp = intstamp ly uy"
-    using stamp.exhaust by blast
+    using stamp.exhaust by auto
   obtain v where "x = IntVal b v"
-    using IntVal by blast
+    by (simp add: IntVal)
   have "joined = intstamp (max lx ly) (min ux uy)"
     (is "joined = intstamp ?lj ?uj")
     by (simp add: xdef ydef assms)
   then have "valid_value joined (IntVal b v) = (v \<in> {?lj..?uj})"
     by simp
   then show ?thesis
-    using \<open>x = IntVal b v\<close> xdef ydef by force
+    using \<open>x = IntVal b v\<close> by (auto simp add: ydef xdef)
 next
   case (ObjRef x5)
   then show ?thesis
-    using valid_value.elims(2) by blast
+    using valid_value.elims(2) by auto
 next
   case (ObjStr x6)
+  then show ?thesis
+    using valid_value.elims(2) by auto
+next
+  case (ArrayVal x51 x52)
   then show ?thesis
     using valid_value.elims(2) by blast
 qed
@@ -585,9 +535,7 @@ lemma disjoint_empty:
   fixes x_stamp y_stamp :: stamp
   assumes "\<bottom> = x_stamp \<sqinter> y_stamp"
   shows "\<not>(valid_value x_stamp x \<and> valid_value y_stamp x)"
-  using assms bottom_range_empty join_values
-  by blast
-
+  using bottom_range_empty by (simp add: join_values assms)
 
 experiment begin
 text \<open>A possible equivalent alternative to the definition of less\_eq\<close>
@@ -606,8 +554,6 @@ lemma
   shows "{l1..u1} \<subseteq> {l2..u2} = less_eq_alt (l1, u1) (l2, u2)"
   by simp
 end
-
-
 
 subsection \<open>Generic Integer Stamp\<close>
 
@@ -664,12 +610,14 @@ lemma max_signed:
   shows "sint a \<le> sint (max_signed_int::'a word)"
 proof (cases "sint a = sint (max_signed_int::'a word)")
   case True
-  then show ?thesis by simp
+  then show ?thesis 
+    by simp
 next
   case False
   have "sint a < sint (max_signed_int::'a word)"
     using False unfolding max_signed_int_def sorry
-  then show ?thesis by simp
+  then show ?thesis 
+    by simp
 qed
 
 lemma min_signed:
@@ -682,13 +630,11 @@ value "int_bottom::(32 word \<times> 32 word)"
 value "sint (2147483647::32 word)"
 value "sint (2147483648::32 word)"
 
-
-
 typedef (overloaded) ('a::len) intstamp = 
   "{bounds :: ('a word, 'a word) prod . ((fst bounds) \<le>s (snd bounds) \<or> bounds = int_bottom)}"
 proof -
   show ?thesis
-    by (smt (z3) mem_Collect_eq prod.sel(1) prod.sel(2) signed_minus_1 sint_0)
+    by blast
 qed
 
 setup_lifting type_definition_intstamp
@@ -717,7 +663,6 @@ lift_definition is_bottom :: "('a::len) intstamp \<Rightarrow> bool"
 lift_definition from_bounds :: "('a::len word \<times> 'a word) \<Rightarrow> 'a intstamp"
   is "Abs_intstamp" .
 
-
 instantiation intstamp :: (len) order
 begin
 
@@ -726,7 +671,6 @@ definition less_eq_intstamp :: "'a intstamp \<Rightarrow> 'a intstamp \<Rightarr
 
 definition less_intstamp :: "'a intstamp \<Rightarrow> 'a intstamp \<Rightarrow> bool" where
   "less_intstamp s1 s2 = (range s1 \<subset> range s2)"
-
 
 value "int_bottom::(1 word \<times> 1 word)"
 value "sint (0::1 word)"
@@ -746,14 +690,13 @@ proof -
   obtain min max where "bounds s = (max, min)"
     by fastforce
   then have "max \<noteq> min"
-    by (metis boundsdef dual_order.eq_iff fst_conv int_bottom_def less_minus_one_simps(1) max_signed min_signed not_less sint_0 sint_n1 snd_conv)
+    by (metis boundsdef dual_order.eq_iff fst_conv int_bottom_def less_minus_one_simps(1) max_signed 
+        min_signed not_less sint_0 sint_n1 snd_conv)
   then have "sint min < sint max"
-    unfolding boundsdef int_bottom_def 
-    using max_signed
-    by (metis \<open>bounds s = (max, min)\<close> boundsdef int_bottom_def order.not_eq_order_implies_strict prod.sel(1) signed_word_eqI)
+    by (metis \<open>bounds s = (max, min)\<close> boundsdef max_signed boundsdef int_bottom_def signed_word_eqI
+        order.not_eq_order_implies_strict prod.sel(1))
   then have "range s = {}"
-    unfolding range_def bounds_def
-    by (simp add: \<open>bounds s = (max, min)\<close> bounds.transfer)
+    by (simp add: \<open>bounds s = (max, min)\<close> bounds.transfer range_def)
   then show ?thesis
     by (simp add: StampLattice.less_eq_intstamp_def)
 qed
@@ -762,13 +705,13 @@ lemma bounds_has_value:
   fixes x y :: int
   assumes "x < y"
   shows "card {x..y} > 0"
-  using assms by auto
+  using assms by simp
 
 lemma bounds_has_no_value:
   fixes x y :: int
   assumes "x < y"
   shows "card {y..x} = 0"
-  using assms by auto
+  by (simp add: assms)
 
 lemma bottom_unique: 
   fixes a s :: "'a intstamp"
@@ -776,27 +719,25 @@ lemma bottom_unique:
   shows "a \<le> s \<longleftrightarrow> is_bottom a"
 proof -
   have "\<forall>x. sint (fst (bounds x)) \<le> sint (snd (bounds x)) \<or> is_bottom x"
-    unfolding bounds_def is_bottom_def
-    using Rep_intstamp
-    using word_sle_eq by auto
+    using Rep_intstamp by (auto simp add: word_sle_eq is_bottom_def bounds_def)
   then have "\<forall>x. (card (range x)) > 0 \<or> is_bottom x"
-    unfolding range_def using bounds_has_value
-    by (simp add: bounds.transfer case_prod_beta)
+    by (simp add: bounds.transfer case_prod_beta range_def)
   obtain min max where boundsdef: "bounds s = (max, min)"
     by fastforce
   have nooverlap: "sint min < sint max"
-    using max_signed
-    by (metis assms bounds.transfer boundsdef fst_conv int_bottom_def is_bottom.rep_eq min_signed order.not_eq_order_implies_strict signed_word_eqI sint_0 snd_conv verit_la_disequality zero_neq_one)
+    by (metis assms bounds.transfer boundsdef fst_conv int_bottom_def is_bottom.rep_eq min_signed 
+        order.not_eq_order_implies_strict signed_word_eqI sint_0 snd_conv verit_la_disequality 
+        zero_neq_one max_signed)
   have "range s = {sint max..sint min}"
     by (simp add: bounds.transfer boundsdef range.rep_eq)
   then have "card (range s) = 0"
-    using nooverlap bounds_has_no_value by simp
+    by (simp add: nooverlap)
   then have "\<forall>x. (card (range x)) > 0 \<longrightarrow> s < x"
-    using \<open>StampLattice.range s = {sint max..sint min}\<close> atLeastatMost_empty less_intstamp_def by auto
+    by (auto simp add: less_intstamp_def \<open>StampLattice.range s = {sint max..sint min}\<close>)
   then show ?thesis
-    by (meson \<open>\<forall>x. 0 < card (StampLattice.range x) \<or> is_bottom x\<close> bottom_is_bottom leD less_eq_intstamp_def less_intstamp_def)
+    by (meson \<open>\<forall>x. 0 < card (StampLattice.range x) \<or> is_bottom x\<close> bottom_is_bottom less_intstamp_def
+        less_eq_intstamp_def leD)
 qed
-
 
 lemma bottom_antisym:
   assumes "is_bottom x"
@@ -809,10 +750,9 @@ next
   case False
   assume "y \<le> x"
   have "\<not>(y \<le> x)"
-    using bottom_unique False assms
-    by simp
+    by (simp add: assms False bottom_unique)
   then show ?thesis
-    using \<open>y \<le> x\<close> by auto
+    by (simp add: \<open>y \<le> x\<close>)
 qed
 
 lemma int_antisym:
@@ -827,30 +767,25 @@ proof -
     by fastforce
   obtain l2 u2 where ydef: "bounds y = (l2, u2)"
     by fastforce
-  
   from xlessy have s1: "{sint l1..sint u1} \<subseteq> {sint l2..sint u2}" (is "?xlessy")
-    using xdef ydef unfolding bounds_def range_def less_eq_intstamp_def
-    by simp
+    using xdef ydef less_eq_intstamp_def by (simp add: range_def bounds_def)
   from ylessx have s2: "{sint l2..sint u2} \<subseteq> {sint l1..sint u1}" (is "?ylessx")
-    using xdef ydef unfolding bounds_def range_def less_eq_intstamp_def
-    by simp
+    using xdef ydef less_eq_intstamp_def by (simp add: range_def bounds_def)
   show "x = y" proof (cases "is_bottom x")
     case True
-    then show ?thesis using bottom_antisym xlessy ylessx
-      by simp
+    then show ?thesis 
+      by (simp add: ylessx xlessy bottom_antisym)
   next
     case False
-    then show ?thesis sorry
+    then show ?thesis
+      sorry
   qed
 qed
 
 instance
   apply standard
-     apply (simp add: less_eq_intstamp_def less_intstamp_def less_le_not_le)
-  apply blast
-  using less_eq_intstamp_def apply force
-  using less_eq_intstamp_def apply force
-  by (simp add: int_antisym)
+  using less_eq_intstamp_def less_intstamp_def apply (simp; blast)
+  by (simp add: int_antisym less_eq_intstamp_def)+
 end
 
 value "take_bit LENGTH(63) 20::int"
@@ -867,7 +802,6 @@ lift_definition smax :: "'a::len word \<Rightarrow> 'a word \<Rightarrow> 'a wor
 
 lift_definition smin :: "'a::len word \<Rightarrow> 'a word \<Rightarrow> 'a word"
   is "\<lambda> a b. (if (sint a) \<le> (sint b) then a else b)" .
-
 
 instantiation intstamp :: (len) semilattice_inf
 begin
@@ -887,16 +821,15 @@ definition inf_intstamp :: "'a intstamp \<Rightarrow> 'a intstamp \<Rightarrow> 
 lemma always_valid:
   fixes s1 s2 :: "'a intstamp"
   shows "Rep_intstamp (from_bounds (join_or_bottom s1 s2)) = join_or_bottom s1 s2"
-  unfolding join_or_bottom_def join_bounds_def from_bounds_def
-  using Abs_intstamp_inverse
-  by (smt (z3) from_bounds.transfer from_bounds_def mem_Collect_eq word_sle_eq)
+  by (smt (z3) join_or_bottom_def from_bounds.transfer from_bounds_def mem_Collect_eq word_sle_eq 
+      Abs_intstamp_inverse)
 
 lemma invalid_join:
   fixes s1 s2 :: "'a intstamp"
   assumes "bound = join_bounds s1 s2"
   assumes "sint (fst bound) \<ge> sint (snd bound)"
   shows "from_bounds int_bottom = s1 \<sqinter> s2"
-  using assms(1) assms(2) inf_intstamp_def join_or_bottom_def by presburger
+  using assms by (simp add: join_or_bottom_def inf_intstamp_def)
 
 lemma unfold_bounds:
   "bounds x = (lower x, upper x)"
@@ -914,21 +847,21 @@ next
   then show ?thesis
   using False proof -
   obtain l1 u1 where xdef: "lower x = l1 \<and> upper x = u1"
-    by fastforce
+    by simp
   obtain l2 u2 where ydef: "lower y = l2 \<and> upper y = u2"
-    by fastforce
+    by simp
   have joindef: "x \<sqinter> y = from_bounds ((smax l1 l2, smin u1 u2))"
     (is "x \<sqinter> y = from_bounds (?l3, ?u3)")
-    using False
-    by (smt (z3) StampLattice.inf_intstamp_def StampLattice.join_bounds_def always_valid is_bottom.rep_eq join_or_bottom_def xdef ydef)
+    by (smt (z3) StampLattice.inf_intstamp_def StampLattice.join_bounds_def always_valid False
+        is_bottom.rep_eq join_or_bottom_def xdef ydef)
   have leq: "{sint ?l3..sint ?u3} \<subseteq> {sint l1..sint u1}"
     by (smt (z3) atLeastatMost_subset_iff smax.transfer smin.transfer)
   have "(x \<sqinter> y) \<le> x = ({sint ?l3..sint ?u3} \<subseteq> {sint l1..sint u1})"
-    using xdef joindef range_def less_eq_intstamp_def
-    by (smt (z3) False StampLattice.always_valid StampLattice.join_or_bottom_def bounds.abs_eq case_prod_conv inf_intstamp_def is_bottom.rep_eq join_bounds_def range.rep_eq unfold_bounds ydef)
+    by (smt (z3) xdef less_eq_intstamp_def StampLattice.always_valid unfold_bounds ydef range.rep_eq
+        StampLattice.join_or_bottom_def bounds.abs_eq case_prod_conv inf_intstamp_def False
+        is_bottom.rep_eq join_bounds_def)
   then show "(x \<sqinter> y) \<le> x"
-    using leq
-    by fastforce
+    using leq by simp
 qed
 qed
 
@@ -944,20 +877,20 @@ next
   then show ?thesis
   using False proof -
   obtain l1 u1 where xdef: "lower x = l1 \<and> upper x = u1"
-    by fastforce
+    by simp
   obtain l2 u2 where ydef: "lower y = l2 \<and> upper y = u2"
-    by fastforce
+    by simp
   have joindef: "x \<sqinter> y = from_bounds ((smax l1 l2, smin u1 u2))"
     (is "x \<sqinter> y = from_bounds (?l3, ?u3)")
-    using False
-    by (smt (z3) StampLattice.inf_intstamp_def StampLattice.join_bounds_def always_valid is_bottom.rep_eq join_or_bottom_def xdef ydef)
+    by (smt (z3) False StampLattice.inf_intstamp_def StampLattice.join_bounds_def always_valid ydef
+        is_bottom.rep_eq join_or_bottom_def xdef)
   have leq: "{sint ?l3..sint ?u3} \<subseteq> {sint l1..sint u1}"
     by (smt (z3) atLeastatMost_subset_iff smax.transfer smin.transfer)
   have "(x \<sqinter> y) \<le> y = ({sint ?l3..sint ?u3} \<subseteq> {sint l2..sint u2})"
-    using xdef joindef range_def less_eq_intstamp_def
-    by (smt (z3) False StampLattice.always_valid StampLattice.join_or_bottom_def bounds.abs_eq case_prod_conv inf_intstamp_def is_bottom.rep_eq join_bounds_def range.rep_eq unfold_bounds ydef)
+    by (smt (z3) less_eq_intstamp_def False StampLattice.always_valid unfold_bounds range.rep_eq
+        StampLattice.join_or_bottom_def bounds.abs_eq case_prod_conv inf_intstamp_def xdef ydef
+        is_bottom.rep_eq join_bounds_def)
   then show "(x \<sqinter> y) \<le> y"
-    using leq
     by (smt (z3) atLeastatMost_subset_iff smax.transfer smin.transfer)
 qed
 qed
@@ -966,8 +899,7 @@ lemma
   assumes "x \<le> y"
   assumes "is_bottom y"
   shows "is_bottom x"
-  using bottom_is_bottom assms
-  using bottom_unique by auto
+  using assms by (auto simp add: bottom_unique bottom_is_bottom)
 
 lemma int_inf_greatest:
   fixes x y :: "'a intstamp"
@@ -976,19 +908,16 @@ lemma int_inf_greatest:
 
 instance
   apply standard
-    apply (simp add: local.int_inf_le1)
-   apply (simp add: local.int_inf_le2)
-  by (simp add: local.int_inf_greatest)
+  by (simp add: local.int_inf_greatest local.int_inf_le2 local.int_inf_le1)+
 
 end
-
 
 instantiation intstamp :: (len) semilattice_sup
 begin
 
 notation sup (infix "\<squnion>" 65)
 
-instance sorry
+instance apply standard sorry
 
 end
 
@@ -1001,7 +930,7 @@ notation top ("\<top>" 50)
 definition "bot_intstamp = int_bottom"
 definition "top_intstamp = int_top"
 
-instance sorry
+instance apply standard sorry
 
 end
 
@@ -1067,7 +996,6 @@ instance
   apply standard sorry
 end
 
-
 instantiation Stamp :: semilattice_sup
 begin
 
@@ -1088,7 +1016,6 @@ instance
   apply standard sorry
 end
 
-
 instantiation Stamp :: bounded_lattice
 begin
 
@@ -1101,7 +1028,10 @@ definition bot_Stamp :: "Stamp" where
   "bot_Stamp = BottomStamp"
 
 instance
-  apply standard sorry
+  apply standard apply (simp add: bot_Stamp_def)
+  by (smt (verit, del_insts) less_eq_Stamp.simps(13) less_eq_Stamp.simps(2) sup.coboundedI1
+      sup_Stamp.simps(2))
+
 end
 
 lemma [code]: "Rep_intstamp (from_bounds (l, u)) = (l, u)"

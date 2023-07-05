@@ -26,6 +26,22 @@ SUCC instead of ID for control-flow successor edges.
 Optional edges are handled as "INPUT option" etc.
 \<close>
 
+(* Represents the InvokeKind of a CallTargetNode *)
+datatype IRInvokeKind = 
+  Interface | Special | Static | Virtual
+
+(* Mimics isDirect in the compiler *)
+fun isDirect :: "IRInvokeKind \<Rightarrow> bool" where
+  "isDirect Interface = False" |
+  "isDirect Special = True" |
+  "isDirect Static = True" |
+  "isDirect Virtual = False"
+
+(* Mimics hasReceiver in the compiler *)
+fun hasReceiver :: "IRInvokeKind \<Rightarrow> bool" where
+  "hasReceiver Static = False" |
+  "hasReceiver _ = True"
+
 type_synonym ID = "nat"
 type_synonym INPUT = "ID"   (* InputType.Value is the default *)
 type_synonym INPUT_ASSOC = "ID" (* InputType.Association *)
@@ -40,30 +56,38 @@ datatype (discs_sels) IRNode =
   AbsNode (ir_value: "INPUT") 
   | AddNode (ir_x: "INPUT") (ir_y: "INPUT") 
   | AndNode (ir_x: "INPUT") (ir_y: "INPUT") 
+  | ArrayLengthNode (ir_value: "INPUT") (ir_next: "SUCC")
   | BeginNode (ir_next: "SUCC") 
+  | BitCountNode (ir_value: "INPUT")
   | BytecodeExceptionNode (ir_arguments: "INPUT list") (ir_stateAfter_opt: "INPUT_STATE option") (ir_next: "SUCC") 
   | ConditionalNode (ir_condition: "INPUT_COND") (ir_trueValue: "INPUT") (ir_falseValue: "INPUT") 
   | ConstantNode (ir_const: Value) 
+  | ControlFlowAnchorNode (ir_next: "SUCC")
   | DynamicNewArrayNode (ir_elementType: "INPUT") (ir_length: "INPUT") (ir_voidClass_opt: "INPUT option") (ir_stateBefore_opt: "INPUT_STATE option") (ir_next: "SUCC") 
   | EndNode 
   | ExceptionObjectNode (ir_stateAfter_opt: "INPUT_STATE option") (ir_next: "SUCC") 
+  | FixedGuardNode (ir_condition: "INPUT_COND") (ir_stateBefore_opt: "INPUT_STATE option") (ir_next: "SUCC")
   | FrameState (ir_monitorIds: "INPUT_ASSOC list") (ir_outerFrameState_opt: "INPUT_STATE option") (ir_values_opt: "INPUT list option") (ir_virtualObjectMappings_opt: "INPUT_STATE list option") 
   | IfNode (ir_condition: "INPUT_COND") (ir_trueSuccessor: "SUCC") (ir_falseSuccessor: "SUCC") 
   | IntegerBelowNode (ir_x: "INPUT") (ir_y: "INPUT") 
   | IntegerEqualsNode (ir_x: "INPUT") (ir_y: "INPUT") 
   | IntegerLessThanNode (ir_x: "INPUT") (ir_y: "INPUT") 
+  | IntegerMulHighNode (ir_x: "INPUT") (ir_y: "INPUT")
+  | IntegerNormalizeCompareNode (ir_x: "INPUT") (ir_y: "INPUT")
+  | IntegerTestNode (ir_x: "INPUT") (ir_y: "INPUT")
   | InvokeNode (ir_nid: ID) (ir_callTarget: "INPUT_EXT") (ir_classInit_opt: "INPUT option") (ir_stateDuring_opt: "INPUT_STATE option") (ir_stateAfter_opt: "INPUT_STATE option") (ir_next: "SUCC") 
   | InvokeWithExceptionNode (ir_nid: ID) (ir_callTarget: "INPUT_EXT") (ir_classInit_opt: "INPUT option") (ir_stateDuring_opt: "INPUT_STATE option") (ir_stateAfter_opt: "INPUT_STATE option") (ir_next: "SUCC") (ir_exceptionEdge: "SUCC") 
   | IsNullNode (ir_value: "INPUT") 
   | KillingBeginNode (ir_next: "SUCC") 
   | LeftShiftNode (ir_x: "INPUT") (ir_y: "INPUT") 
   | LoadFieldNode (ir_nid: ID) (ir_field: string) (ir_object_opt: "INPUT option") (ir_next: "SUCC") 
+  | LoadIndexedNode (ir_index: "INPUT") (ir_guard_opt: "INPUT_GUARD option") (ir_value: "INPUT") (ir_next: "SUCC")
   | LogicNegationNode (ir_value: "INPUT_COND") 
   | LoopBeginNode (ir_ends: "INPUT_ASSOC list") (ir_overflowGuard_opt: "INPUT_GUARD option") (ir_stateAfter_opt: "INPUT_STATE option") (ir_next: "SUCC") 
   | LoopEndNode (ir_loopBegin: "INPUT_ASSOC") 
   | LoopExitNode (ir_loopBegin: "INPUT_ASSOC") (ir_stateAfter_opt: "INPUT_STATE option") (ir_next: "SUCC") 
   | MergeNode (ir_ends: "INPUT_ASSOC list") (ir_stateAfter_opt: "INPUT_STATE option") (ir_next: "SUCC") 
-  | MethodCallTargetNode (ir_targetMethod: string) (ir_arguments: "INPUT list") 
+  | MethodCallTargetNode (ir_targetMethod: string) (ir_arguments: "INPUT list") (ir_invoke_kind: "IRInvokeKind") 
   | MulNode (ir_x: "INPUT") (ir_y: "INPUT") 
   | NarrowNode (ir_inputBits: nat) (ir_resultBits: nat) (ir_value: "INPUT") 
   | NegateNode (ir_value: "INPUT") 
@@ -74,6 +98,7 @@ datatype (discs_sels) IRNode =
   | ParameterNode (ir_index: nat) 
   | PiNode (ir_object: "INPUT") (ir_guard_opt: "INPUT_GUARD option") 
   | ReturnNode (ir_result_opt: "INPUT option") (ir_memoryMap_opt: "INPUT_EXT option") 
+  | ReverseBytesNode (ir_value: "INPUT")
   | RightShiftNode (ir_x: "INPUT") (ir_y: "INPUT") 
   | ShortCircuitOrNode (ir_x: "INPUT_COND") (ir_y: "INPUT_COND") 
   | SignExtendNode (ir_inputBits: nat) (ir_resultBits: nat) (ir_value: "INPUT") 
@@ -81,6 +106,7 @@ datatype (discs_sels) IRNode =
   | SignedRemNode (ir_nid: ID) (ir_x: "INPUT") (ir_y: "INPUT") (ir_zeroCheck_opt: "INPUT_GUARD option") (ir_stateBefore_opt: "INPUT_STATE option") (ir_next: "SUCC") 
   | StartNode (ir_stateAfter_opt: "INPUT_STATE option") (ir_next: "SUCC") 
   | StoreFieldNode (ir_nid: ID) (ir_field: string) (ir_value: "INPUT") (ir_stateAfter_opt: "INPUT_STATE option") (ir_object_opt: "INPUT option") (ir_next: "SUCC") 
+  | StoreIndexedNode (ir_storeCheck: "INPUT_GUARD option") (ir_value: ID) (ir_stateAfter_opt: "INPUT_STATE option") (ir_index: "INPUT") (ir_guard_opt: "INPUT_GUARD option") (ir_array: "INPUT") (ir_next: "SUCC")
   | SubNode (ir_x: "INPUT") (ir_y: "INPUT") 
   | UnsignedRightShiftNode (ir_x: "INPUT") (ir_y: "INPUT") 
   | UnwindNode (ir_exception: "INPUT") 
@@ -117,20 +143,28 @@ fun inputs_of :: "IRNode \<Rightarrow> ID list" where
   "inputs_of (AddNode x y) = [x, y]" |
   inputs_of_AndNode:
   "inputs_of (AndNode x y) = [x, y]" |
+  inputs_of_ArrayLengthNode:
+  "inputs_of (ArrayLengthNode x next) = [x]" |
   inputs_of_BeginNode:
   "inputs_of (BeginNode next) = []" |
+  inputs_of_BitCountNode:
+  "inputs_of (BitCountNode value) = [value]" |
   inputs_of_BytecodeExceptionNode:
   "inputs_of (BytecodeExceptionNode arguments stateAfter next) = arguments @ (opt_to_list stateAfter)" |
   inputs_of_ConditionalNode:
   "inputs_of (ConditionalNode condition trueValue falseValue) = [condition, trueValue, falseValue]" |
   inputs_of_ConstantNode:
   "inputs_of (ConstantNode const) = []" |
+  inputs_of_ControlFlowAnchorNode:
+  "inputs_of (ControlFlowAnchorNode n) = []" |
   inputs_of_DynamicNewArrayNode:
   "inputs_of (DynamicNewArrayNode elementType length0 voidClass stateBefore next) = [elementType, length0] @ (opt_to_list voidClass) @ (opt_to_list stateBefore)" |
   inputs_of_EndNode:
   "inputs_of (EndNode) = []" |
   inputs_of_ExceptionObjectNode:
   "inputs_of (ExceptionObjectNode stateAfter next) = (opt_to_list stateAfter)" |
+  inputs_of_FixedGuardNode:
+  "inputs_of (FixedGuardNode condition stateBefore next) = [condition]" |
   inputs_of_FrameState:
   "inputs_of (FrameState monitorIds outerFrameState values virtualObjectMappings) = monitorIds @ (opt_to_list outerFrameState) @ (opt_list_to_list values) @ (opt_list_to_list virtualObjectMappings)" |
   inputs_of_IfNode:
@@ -141,6 +175,12 @@ fun inputs_of :: "IRNode \<Rightarrow> ID list" where
   "inputs_of (IntegerEqualsNode x y) = [x, y]" |
   inputs_of_IntegerLessThanNode:
   "inputs_of (IntegerLessThanNode x y) = [x, y]" |
+  inputs_of_IntegerMulHighNode:
+  "inputs_of (IntegerMulHighNode x y) = [x, y]" |
+  inputs_of_IntegerNormalizeCompareNode:
+  "inputs_of (IntegerNormalizeCompareNode x y) = [x, y]" |
+  inputs_of_IntegerTestNode:
+  "inputs_of (IntegerTestNode x y) = [x, y]" |
   inputs_of_InvokeNode:
   "inputs_of (InvokeNode nid0 callTarget classInit stateDuring stateAfter next) = callTarget # (opt_to_list classInit) @ (opt_to_list stateDuring) @ (opt_to_list stateAfter)" |
   inputs_of_InvokeWithExceptionNode:
@@ -153,6 +193,8 @@ fun inputs_of :: "IRNode \<Rightarrow> ID list" where
   "inputs_of (LeftShiftNode x y) = [x, y]" |
   inputs_of_LoadFieldNode:
   "inputs_of (LoadFieldNode nid0 field object next) = (opt_to_list object)" |
+  inputs_of_LoadIndexedNode:
+  "inputs_of (LoadIndexedNode index guard x next) = [x]" |
   inputs_of_LogicNegationNode:
   "inputs_of (LogicNegationNode value) = [value]" |
   inputs_of_LoopBeginNode:
@@ -164,7 +206,7 @@ fun inputs_of :: "IRNode \<Rightarrow> ID list" where
   inputs_of_MergeNode:
   "inputs_of (MergeNode ends stateAfter next) = ends @ (opt_to_list stateAfter)" |
   inputs_of_MethodCallTargetNode:
-  "inputs_of (MethodCallTargetNode targetMethod arguments) = arguments" |
+  "inputs_of (MethodCallTargetNode targetMethod arguments invoke_kind) = arguments" |
   inputs_of_MulNode:
   "inputs_of (MulNode x y) = [x, y]" |
   inputs_of_NarrowNode:
@@ -185,6 +227,8 @@ fun inputs_of :: "IRNode \<Rightarrow> ID list" where
   "inputs_of (PiNode object guard) = object # (opt_to_list guard)" |
   inputs_of_ReturnNode:
   "inputs_of (ReturnNode result memoryMap) = (opt_to_list result) @ (opt_to_list memoryMap)" |
+  inputs_of_ReverseBytesNode:
+  "inputs_of (ReverseBytesNode value) = [value]" |
   inputs_of_RightShiftNode:
   "inputs_of (RightShiftNode x y) = [x, y]" |
   inputs_of_ShortCircuitOrNode:
@@ -199,6 +243,8 @@ fun inputs_of :: "IRNode \<Rightarrow> ID list" where
   "inputs_of (StartNode stateAfter next) = (opt_to_list stateAfter)" |
   inputs_of_StoreFieldNode:
   "inputs_of (StoreFieldNode nid0 field value stateAfter object next) = value # (opt_to_list stateAfter) @ (opt_to_list object)" |
+  inputs_of_StoreIndexedNode:
+  "inputs_of (StoreIndexedNode check val st index guard array nid') = [val, array]" |
   inputs_of_SubNode:
   "inputs_of (SubNode x y) = [x, y]" |
   inputs_of_UnsignedRightShiftNode:
@@ -226,20 +272,28 @@ fun successors_of :: "IRNode \<Rightarrow> ID list" where
   "successors_of (AddNode x y) = []" |
   successors_of_AndNode:
   "successors_of (AndNode x y) = []" |
+  successors_of_ArrayLengthNode:
+  "successors_of (ArrayLengthNode x next) = [next]" |
   successors_of_BeginNode:
   "successors_of (BeginNode next) = [next]" |
+  successors_of_BitCountNode:
+  "successors_of (BitCountNode value) = []" |
   successors_of_BytecodeExceptionNode:
   "successors_of (BytecodeExceptionNode arguments stateAfter next) = [next]" |
   successors_of_ConditionalNode:
   "successors_of (ConditionalNode condition trueValue falseValue) = []" |
   successors_of_ConstantNode:
   "successors_of (ConstantNode const) = []" |
+  successors_of_ControlFlowAnchorNode:
+  "successors_of (ControlFlowAnchorNode next) = [next]" |
   successors_of_DynamicNewArrayNode:
   "successors_of (DynamicNewArrayNode elementType length0 voidClass stateBefore next) = [next]" |
   successors_of_EndNode:
   "successors_of (EndNode) = []" |
   successors_of_ExceptionObjectNode:
   "successors_of (ExceptionObjectNode stateAfter next) = [next]" |
+  successors_of_FixedGuardNode:
+  "successors_of (FixedGuardNode condition stateBefore next) = [next]" |
   successors_of_FrameState:
   "successors_of (FrameState monitorIds outerFrameState values virtualObjectMappings) = []" |
   successors_of_IfNode:
@@ -250,6 +304,12 @@ fun successors_of :: "IRNode \<Rightarrow> ID list" where
   "successors_of (IntegerEqualsNode x y) = []" |
   successors_of_IntegerLessThanNode:
   "successors_of (IntegerLessThanNode x y) = []" |
+  successors_of_IntegerMulHighNode:
+  "successors_of (IntegerMulHighNode x y) = []" |
+  successors_of_IntegerNormalizeCompareNode:
+  "successors_of (IntegerNormalizeCompareNode x y) = []" |
+  successors_of_IntegerTestNode:
+  "successors_of (IntegerTestNode x y) = []" |
   successors_of_InvokeNode:
   "successors_of (InvokeNode nid0 callTarget classInit stateDuring stateAfter next) = [next]" |
   successors_of_InvokeWithExceptionNode:
@@ -262,6 +322,8 @@ fun successors_of :: "IRNode \<Rightarrow> ID list" where
   "successors_of (LeftShiftNode x y) = []" |
   successors_of_LoadFieldNode:
   "successors_of (LoadFieldNode nid0 field object next) = [next]" |
+  successors_of_LoadIndexedNode:
+  "successors_of (LoadIndexedNode index guard x next) = [next]" |
   successors_of_LogicNegationNode:
   "successors_of (LogicNegationNode value) = []" |
   successors_of_LoopBeginNode:
@@ -273,7 +335,7 @@ fun successors_of :: "IRNode \<Rightarrow> ID list" where
   successors_of_MergeNode:
   "successors_of (MergeNode ends stateAfter next) = [next]" |
   successors_of_MethodCallTargetNode:
-  "successors_of (MethodCallTargetNode targetMethod arguments) = []" |
+  "successors_of (MethodCallTargetNode targetMethod arguments invoke_kind) = []" |
   successors_of_MulNode:
   "successors_of (MulNode x y) = []" |
   successors_of_NarrowNode:
@@ -294,6 +356,8 @@ fun successors_of :: "IRNode \<Rightarrow> ID list" where
   "successors_of (PiNode object guard) = []" |
   successors_of_ReturnNode:
   "successors_of (ReturnNode result memoryMap) = []" |
+  successors_of_ReverseBytesNode:
+  "successors_of (ReverseBytesNode value) = []" |
   successors_of_RightShiftNode:
   "successors_of (RightShiftNode x y) = []" |
   successors_of_ShortCircuitOrNode:
@@ -308,6 +372,8 @@ fun successors_of :: "IRNode \<Rightarrow> ID list" where
   "successors_of (StartNode stateAfter next) = [next]" |
   successors_of_StoreFieldNode:
   "successors_of (StoreFieldNode nid0 field value stateAfter object next) = [next]" |
+  successors_of_StoreIndexedNode:
+  "successors_of (StoreIndexedNode check val st index guard array next) = [next]" |
   successors_of_SubNode:
   "successors_of (SubNode x y) = []" |
   successors_of_UnsignedRightShiftNode:
@@ -327,20 +393,20 @@ fun successors_of :: "IRNode \<Rightarrow> ID list" where
 
   successors_of_RefNode: "successors_of (RefNode ref) = [ref]"
 
-
-
 lemma "inputs_of (FrameState x (Some y) (Some z) None) = x @ [y] @ z"
-  unfolding inputs_of_FrameState by simp
+  by simp
+
 lemma "successors_of (FrameState x (Some y) (Some z) None) = []"
-  unfolding inputs_of_FrameState by simp
+  by simp
 
 lemma "inputs_of (IfNode c t f) = [c]"
-  unfolding inputs_of_IfNode by simp
+  by simp
+
 lemma "successors_of (IfNode c t f) = [t, f]"
-  unfolding successors_of_IfNode by simp
+  by simp
 
 lemma "inputs_of (EndNode) = [] \<and> successors_of (EndNode) = []"
-  unfolding inputs_of_EndNode successors_of_EndNode by simp
+  by simp
 
 end
 

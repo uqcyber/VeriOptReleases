@@ -119,7 +119,7 @@ lemma diff_diff_cancel_expr:
     then have "val[vx - (vx - vy)] = vy"
       apply (cases vx; cases vy; auto simp: notUn)
       using eval_unused_bits_zero vy apply blast
-      by (metis(full_types) intval_sub.simps(5))
+      by (metis(full_types) intval_sub.simps(6))
     then show ?thesis 
       by (metis e eval evalDet vy)
   qed

@@ -158,24 +158,75 @@ lemma eq_impliesnot_less_helper:
 
 lemma eq_impliesnot_less_val:
   "val_to_bool(intval_equals v1 v2) \<longrightarrow> \<not>val_to_bool(intval_less_than v1 v2)"
-  using eq_impliesnot_less_helper bool_to_val.simps bool_to_val_bin.simps intval_equals.simps
-    intval_less_than.elims val_to_bool.elims val_to_bool.simps
-  by (smt (verit))
+  proof -
+  have unfoldEqualDefined: "(intval_equals v1 v2 \<noteq> UndefVal) \<Longrightarrow>
+        (val_to_bool(intval_equals v1 v2) \<longrightarrow> (\<not>(val_to_bool(intval_less_than v1 v2))))"
+    subgoal premises p
+  proof -
+    obtain v1b v1v where v1v: "v1 = IntVal v1b v1v"
+      by (metis array_length.cases intval_equals.simps(2,3,4,5) p)
+    obtain v2b v2v where v2v: "v2 = IntVal v2b v2v"
+      by (metis Value.exhaust_sel intval_equals.simps(6,7,8,9) p)
+    have sameWidth: "v1b=v2b"
+      by (metis bool_to_val_bin.simps intval_equals.simps(1) p v1v v2v)
+    have unfoldEqual: "intval_equals v1 v2 = (bool_to_val (v1v=v2v))"
+      by (simp add: sameWidth v1v v2v)
+    have unfoldLessThan: "intval_less_than v1 v2 = (bool_to_val (int_signed_value v1b v1v < int_signed_value v2b v2v))"
+      by (simp add: sameWidth v1v v2v)
+    have val: "((v1v=v2v)) \<longrightarrow> (\<not>((int_signed_value v1b v1v < int_signed_value v2b v2v)))"
+      using sameWidth by auto
+    have doubleCast0: "val_to_bool (bool_to_val ((v1v = v2v))) = (v1v = v2v)"
+      using bool_to_val.elims val_to_bool.simps(1) by fastforce
+    have doubleCast1: "val_to_bool (bool_to_val ((int_signed_value v1b v1v < int_signed_value v2b v2v))) =
+                                                 (int_signed_value v1b v1v < int_signed_value v2b v2v)"
+      using bool_to_val.elims val_to_bool.simps(1) by fastforce
+    then show ?thesis
+      using p val unfolding unfoldEqual unfoldLessThan doubleCast0 doubleCast1 by blast
+  qed done
+  show ?thesis
+    by (metis Value.distinct(1) val_to_bool.elims(2) unfoldEqualDefined)
+qed
 
 lemma eq_impliesnot_less_rev_val:
   "val_to_bool(intval_equals v1 v2) \<longrightarrow> \<not>val_to_bool(intval_less_than v2 v1)"
 proof -
   have a: "intval_equals v1 v2 = intval_equals v2 v1"
-    using bool_to_val_bin.simps intval_equals.simps intval_equals.elims
-    by (smt (verit))
-  show ?thesis using a eq_impliesnot_less_val by presburger 
+    apply (cases "intval_equals v1 v2 = UndefVal")
+    apply (smt (z3) bool_to_val_bin.simps intval_equals.elims intval_equals.simps)
+    subgoal premises p
+    proof -
+      obtain v1b v1v where v1v: "v1 = IntVal v1b v1v"
+        by (metis Value.exhaust_sel intval_equals.simps(2,3,4,5) p)
+      obtain v2b v2v where v2v: "v2 = IntVal v2b v2v"
+        by (metis Value.exhaust_sel intval_equals.simps(6,7,8,9) p)
+      then show ?thesis
+        by (smt (verit) bool_to_val_bin.simps intval_equals.simps(1) v1v)
+    qed done
+  show ?thesis
+    using a eq_impliesnot_less_val by presburger
 qed
 
 lemma less_impliesnot_rev_less_val:
   "val_to_bool(intval_less_than v1 v2) \<longrightarrow> \<not>val_to_bool(intval_less_than v2 v1)"
-  by (smt (verit, del_insts) Value.exhaust Value.inject(1) bool_to_val.simps(2)
-      bool_to_val_bin.simps intval_less_than.simps(1) intval_less_than.simps(5)
-      intval_less_than.simps(6) intval_less_than.simps(7) val_to_bool.elims(2)) 
+  apply (rule impI)
+  subgoal premises p
+  proof -
+    obtain v1b v1v where v1v: "v1 = IntVal v1b v1v"
+      by (metis Value.exhaust_sel intval_less_than.simps(2,3,4,5) p val_to_bool.simps(2))
+    obtain v2b v2v where v2v: "v2 = IntVal v2b v2v"
+      by (metis Value.exhaust_sel intval_less_than.simps(6,7,8,9) p val_to_bool.simps(2))
+    then have unfoldLessThanRHS: "intval_less_than v2 v1 =
+                                 (bool_to_val (int_signed_value v2b v2v < int_signed_value v1b v1v))"
+      using p v1v by force
+    then have unfoldLessThanLHS: "intval_less_than v1 v2 =
+                                 (bool_to_val (int_signed_value v1b v1v < int_signed_value v2b v2v))"
+      using bool_to_val_bin.simps intval_less_than.simps(1) p v1v v2v val_to_bool.simps(2) by auto
+    then have symmetry: "(int_signed_value v2b v2v < int_signed_value v1b v1v) \<longrightarrow>
+                       (\<not>(int_signed_value v1b v1v < int_signed_value v2b v2v))"
+      by simp
+    then show ?thesis
+      using p unfoldLessThanLHS unfoldLessThanRHS by fastforce
+  qed done
 
 lemma less_impliesnot_eq_val:
   "val_to_bool(intval_less_than v1 v2) \<longrightarrow> \<not>val_to_bool(intval_equals v1 v2)"

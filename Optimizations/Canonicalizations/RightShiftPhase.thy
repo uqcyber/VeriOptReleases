@@ -16,27 +16,28 @@ lemma val_ReturnXOnZeroShift:
   assumes "val[x >> (IntVal 32 0)] \<noteq> UndefVal"
   and     "x = IntVal 32 xv"
   shows "val[x >> (IntVal 32 0)] = x"  
-  using assms apply (cases x; auto)
+  unfolding assms(2) intval_right_shift.simps(1) apply auto
   sorry
 
 (* Exp level proofs *)
 lemma exp_ReturnXOnZeroShift:
   assumes "stamp_expr x = IntegerStamp 32 lo hi"
   and     "wf_stamp x"
-shows "exp[x >> const(IntVal 32 0)] \<ge> exp[x]" 
+  shows "exp[x >> const(IntVal 32 0)] \<ge> exp[x]" 
   apply auto
   subgoal premises p for m p xa
   proof - 
     obtain xa where xa: "[m,p] \<turnstile> x \<mapsto> xa"
       using p(1) by auto
-    then have 1: "intval_right_shift xa (IntVal 32 0) \<noteq> UndefVal"
-      using evalDet p(1) p(2) by blast
+    then have vx: "\<exists>vx. xa = IntVal 32 vx"
+      by (metis valid_int assms wf_stamp_def)
+    then have 1: "val[xa >> (IntVal 32 0)] \<noteq> UndefVal"
+      using evalDet p(1,2) xa by blast
     then have 2: "wf_value (IntVal 32 0)"
-      using p(3) by auto
+      by (auto simp: p(3))
     then have equals: "xa = val[xa >> (IntVal 32 0)]"
-      using val_ReturnXOnZeroShift apply (cases xa; auto) 
-      sorry
-    then have 3: "[m,p] \<turnstile> x \<mapsto> intval_right_shift xa (IntVal (32::nat) (0::64 word))"
+      by (metis "1" val_ReturnXOnZeroShift vx)
+    then have 3: "[m,p] \<turnstile> x \<mapsto> val[xa >> (IntVal 32 0)]"
       by (simp add: xa)
     then show ?thesis
       using evalDet p(1) xa by blast

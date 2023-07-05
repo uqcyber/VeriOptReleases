@@ -12,24 +12,19 @@ fun replace_usages :: "ID \<Rightarrow> ID \<Rightarrow> IRGraph \<Rightarrow> I
 lemma replace_usages_effect:
   assumes "g' = replace_usages nid nid' g"
   shows "kind g' nid = RefNode nid'"
-  using assms replace_node_lookup replace_usages.simps
-  by (metis IRNode.distinct(2755))
+  using replace_usages.simps replace_node_lookup assms by blast
 
 lemma replace_usages_changeonly:
   assumes "nid \<in> ids g"
   assumes "g' = replace_usages nid nid' g"
   shows "changeonly {nid} g g'"
-  using assms unfolding replace_usages.simps
-  by (metis add_changed add_node_def replace_node_def)
+  by (metis add_changed add_node_def replace_node_def replace_usages.simps assms(2))
 
 lemma replace_usages_unchanged:
   assumes "nid \<in> ids g"
   assumes "g' = replace_usages nid nid' g"
   shows "unchanged (ids g - {nid}) g g'"
-  using assms unfolding replace_usages.simps
-  using assms(2) disjoint_change replace_usages_changeonly by presburger
-
-
+  using assms disjoint_change replace_usages_changeonly by presburger
 
 fun nextNid :: "IRGraph \<Rightarrow> ID" where
   "nextNid g = (Max (ids g)) + 1"
@@ -45,8 +40,7 @@ lemma ids_finite:
 
 lemma nextNidNotIn:
   "ids g \<noteq> {} \<longrightarrow> nextNid g \<notin> ids g"
-  unfolding nextNid.simps
-  using ids_finite max_plus_one by blast
+  unfolding nextNid.simps using ids_finite max_plus_one by blast
 
 fun bool_to_val_width1 :: "bool \<Rightarrow> Value" where
   "bool_to_val_width1 True = (IntVal 1 1)" |
@@ -66,26 +60,27 @@ proof -
   have ifn: "\<And> c t f. IfNode c t f \<noteq> NoNode"
     by simp
   then have if': "kind g' ifcond = IfNode (nextNid g) t f"
-    using assms(1) assms(2) constantCondition.simps(1) replace_node_lookup
-    by presburger
+    using assms constantCondition.simps(1) replace_node_lookup by presburger
   have truedef: "bool_to_val True = (IntVal 32 1)"
     by auto
   from ifn have "ifcond \<noteq> (nextNid g)"
     by (metis assms(1) emptyE ids_some nextNidNotIn)
-  moreover have "\<And> c. ConstantNode c \<noteq> NoNode" by simp
+  moreover have "\<And> c. ConstantNode c \<noteq> NoNode"
+    by simp
   ultimately have "kind g' (nextNid g) = ConstantNode (bool_to_val_width1 True)"
-    using add_changed add_node_def assms(1) assms(2) constantCondition.simps(1) not_in_g other_node_unchanged replace_node_def replace_node_lookup singletonD
-    by (smt (z3) find_new_kind replace_node_unchanged)
+    using add_changed
+    by (smt (z3) find_new_kind replace_node_unchanged singletonD replace_node_def not_in_g assms
+        other_node_unchanged constantCondition.simps(1) add_node_def)
   then have c': "kind g' (nextNid g) = ConstantNode (IntVal 1 1)"
-    using truedef by simp
+    by simp
   have "valid_value (IntVal 1 1) (constantAsStamp (IntVal 1 1))"
-    unfolding constantAsStamp.simps valid_value.simps
-    using nat_numeral by force 
+    by fastforce
   then have "[g', m, p] \<turnstile> nextNid g \<mapsto> IntVal 1 1"
-    using ConstantExpr ConstantNode Value.distinct(1) \<open>kind g' (nextNid g) = ConstantNode (bool_to_val_width1 True)\<close> encodeeval_def truedef
-    by (metis bool_to_val_width1.simps(1) wf_value_def)
-  from if' c' show ?thesis using IfNode
-    by (metis (no_types, opaque_lifting) val_to_bool.simps(1) \<open>[g',m,p] \<turnstile> nextNid g \<mapsto> IntVal 1 1\<close> encodeeval_def zero_neq_one)
+    using Value.distinct(1) \<open>kind g' (nextNid g) = ConstantNode (bool_to_val_width1 True)\<close>
+    by (metis bool_to_val_width1.simps(1) wf_value_def encodeeval_def ConstantExpr ConstantNode)
+  from if' c' show ?thesis
+    by (metis (no_types, opaque_lifting) val_to_bool.simps(1) \<open>[g',m,p] \<turnstile> nextNid g \<mapsto> IntVal 1 1\<close>
+        encodeeval_def zero_neq_one IfNode)
 qed
 
 lemma constantConditionFalse:
@@ -96,23 +91,25 @@ proof -
   have ifn: "\<And> c t f. IfNode c t f \<noteq> NoNode"
     by simp
   then have if': "kind g' ifcond = IfNode (nextNid g) t f"
-    by (metis assms(1) assms(2) constantCondition.simps(1) replace_node_lookup)
+    by (metis assms constantCondition.simps(1) replace_node_lookup)
   have falsedef: "bool_to_val False = (IntVal 32 0)"
     by auto
   from ifn have "ifcond \<noteq> (nextNid g)"
     by (metis assms(1) equals0D ids_some nextNidNotIn)
-  moreover have "\<And> c. ConstantNode c \<noteq> NoNode" by simp
+  moreover have "\<And> c. ConstantNode c \<noteq> NoNode"
+    by simp
   ultimately have "kind g' (nextNid g) = ConstantNode (bool_to_val_width1 False)"
-    by (smt (z3) add_changed add_node_def assms(1) assms(2) constantCondition.simps(1) find_new_kind not_in_g other_node_unchanged replace_node_def singletonD)
+    by (smt (z3) add_changed add_node_def assms constantCondition.simps(1) find_new_kind not_in_g
+        other_node_unchanged replace_node_def singletonD)
   then have c': "kind g' (nextNid g) = ConstantNode (IntVal 1 0)"
-    using falsedef by simp
+    by simp
   have "valid_value (IntVal 1 0) (constantAsStamp (IntVal 1 0))"
-    unfolding constantAsStamp.simps valid_value.simps
-    using nat_numeral by force
+    by auto
   then have "[g', m, p] \<turnstile> nextNid g \<mapsto> IntVal 1 0"
     by (meson ConstantExpr ConstantNode c' encodeeval_def wf_value_def)
-  from if' c' show ?thesis using IfNode
-    by (metis (no_types, opaque_lifting) val_to_bool.simps(1) \<open>[g',m,p] \<turnstile> nextNid g \<mapsto> IntVal 1 0\<close> encodeeval_def)
+  from if' c' show ?thesis
+    by (metis (no_types, opaque_lifting) val_to_bool.simps(1) \<open>[g',m,p] \<turnstile> nextNid g \<mapsto> IntVal 1 0\<close>
+        encodeeval_def IfNode)
 qed
 
 lemma diff_forall:
@@ -123,9 +120,7 @@ lemma diff_forall:
 lemma replace_node_changeonly:
   assumes "g' = replace_node nid node g"
   shows "changeonly {nid} g g'"
-  using assms replace_node_unchanged
-  unfolding changeonly.simps using diff_forall
-  by (metis add_changed add_node_def changeonly.simps replace_node_def)
+  by (metis add_changed add_node_def replace_node_def assms)
 
 lemma add_node_changeonly:
   assumes "g' = add_node nid node g"
@@ -135,11 +130,11 @@ lemma add_node_changeonly:
 lemma constantConditionNoEffect:
   assumes "\<not>(is_IfNode (kind g nid))"
   shows "g = constantCondition b nid (kind g nid) g"
-  using assms apply (cases "kind g nid")
-  using constantCondition.simps 
-  apply presburger+
-  apply (metis is_IfNode_def)
-  using constantCondition.simps 
+  using assms constantCondition.simps
+  apply (cases "kind g nid")
+  prefer 15 prefer 16
+   apply (metis is_IfNode_def)
+   apply (metis)
   by presburger+
 
 lemma constantConditionIfNode:
@@ -147,7 +142,6 @@ lemma constantConditionIfNode:
   shows "constantCondition val nid (kind g nid) g = 
     replace_node nid (IfNode (nextNid g) t f, stamp g nid) 
      (add_node (nextNid g) ((ConstantNode (bool_to_val_width1 val)), constantAsStamp (bool_to_val_width1 val)) g)"
-  using constantCondition.simps
   by (simp add: assms)
 
 lemma constantCondition_changeonly:
@@ -157,19 +151,17 @@ lemma constantCondition_changeonly:
 proof (cases "is_IfNode (kind g nid)")
   case True
   have "nextNid g \<notin> ids g"
-    using nextNidNotIn by (metis emptyE)
-  then show ?thesis using assms
-    using replace_node_changeonly add_node_changeonly unfolding changeonly.simps
-    using True constantCondition.simps(1) is_IfNode_def
-    by (metis (no_types, lifting) insert_iff)
+    by (metis emptyE nextNidNotIn)
+  then show ?thesis
+    using assms replace_node_changeonly add_node_changeonly unfolding changeonly.simps
+    by (metis (no_types, lifting) insert_iff is_IfNode_def constantCondition.simps(1) True)
 next
   case False
   have "g = g'"
-    using constantConditionNoEffect
-    using False assms(2) by blast
-  then show ?thesis by simp
+    using constantConditionNoEffect False assms(2) by presburger
+  then show ?thesis
+    by simp
 qed
-  
 
 lemma constantConditionNoIf:
   assumes "\<forall>cond t f. kind g ifcond \<noteq> IfNode cond t f"
@@ -177,10 +169,9 @@ lemma constantConditionNoIf:
   shows "\<exists>nid' .(g m p h \<turnstile> ifcond \<leadsto> nid') \<longleftrightarrow> (g' m p h \<turnstile> ifcond \<leadsto> nid')"
 proof -
   have "g' = g"
-    using assms(2) assms(1)
-    using constantConditionNoEffect
-    by (metis IRNode.collapse(11))
-  then show ?thesis by simp
+    using constantConditionNoEffect assms is_IfNode_def by presburger
+  then show ?thesis
+    by simp
 qed
 
 lemma constantConditionValid:
@@ -192,19 +183,17 @@ lemma constantConditionValid:
 proof (cases "const")
   case True
   have ifstep: "g, p \<turnstile> (ifcond, m, h) \<rightarrow> (t, m, h)"
-    by (meson IfNode True assms(1) assms(2) assms(3) encodeeval_def)
+    by (meson IfNode True assms(1,2,3) encodeeval_def)
   have ifstep': "g', p \<turnstile> (ifcond, m, h) \<rightarrow> (t, m, h)"
-    using constantConditionTrue
-    using True assms(1) assms(4) by presburger
+    using constantConditionTrue True assms(1,4) by presburger
   from ifstep ifstep' show ?thesis
     using StutterStep by blast
 next
   case False
   have ifstep: "g, p \<turnstile> (ifcond, m, h) \<rightarrow> (f, m, h)"
-    by (meson IfNode False assms(1) assms(2) assms(3) encodeeval_def)
+    by (meson IfNode False assms(1,2,3) encodeeval_def)
   have ifstep': "g', p \<turnstile> (ifcond, m, h) \<rightarrow> (f, m, h)"
-    using constantConditionFalse
-    using False assms(1) assms(4) by presburger
+    using constantConditionFalse False assms(1,4) by presburger
   from ifstep ifstep' show ?thesis
     using StutterStep by blast
 qed

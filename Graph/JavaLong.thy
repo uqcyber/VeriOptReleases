@@ -33,10 +33,9 @@ definition highestOneBit :: "('a::len) word \<Rightarrow> int" where
 
 lemma highestOneBitInvar:
   "highestOneBit v = j \<Longrightarrow> (\<forall>i::nat. (int i > j \<longrightarrow> \<not> (bit v i)))"
-  apply (induction "size v")
-  apply simp
-  by (smt (verit) MaxOrNeg_def Max_ge empty_iff finite_bit_word highestOneBit_def mem_Collect_eq of_nat_mono)
-
+  apply (induction "size v"; auto) unfolding highestOneBit_def
+  by (metis linorder_not_less MaxOrNeg_def empty_iff finite_bit_word mem_Collect_eq of_nat_mono
+      Max_ge)
 
 lemma highestOneBitNeg:
   "highestOneBit v = -1 \<longleftrightarrow> v = 0"
@@ -47,7 +46,6 @@ lemma higherBitsFalse:
   fixes v :: "'a :: len word"
   shows "i > size v \<Longrightarrow> \<not> (bit v i)"
   by (simp add: bit_word.rep_eq size_word.rep_eq)
-
 
 lemma highestOneBitN:
   assumes "bit v n"
@@ -159,8 +157,13 @@ lemma highestOneBitRecMask:
   shows "highestOneBit (and v (mask (Suc n))) = highestOneBitRec n v"
 proof (induction n)
   case 0
+  then have "highestOneBit (and v (mask (Suc 0))) = highestOneBitRec 0 v"
+    apply auto
+    apply (smt (verit, ccfv_threshold) neg_equal_zero negative_eq_positive bit_1_iff bit_and_iff
+           highestOneBitN)
+    by (simp add: bit_iff_and_push_bit_not_eq_0 highestOneBitNeg)
   then show ?case
-    by (smt (verit, ccfv_SIG) Word.mask_Suc_0 and_mask_lt_2p and_nonnegative_int_iff bit_1_iff bit_and_iff highestOneBitN highestOneBitNeg highestOneBitRec.simps mask_eq_exp_minus_1 of_int_0 uint_1_eq uint_and word_and_def) 
+    by presburger
 next
   case (Suc n)
   then show ?case 
@@ -189,10 +192,7 @@ lemma highestOneBitImpl[code]:
   "highestOneBit v = highestOneBitRec (size v) v"
   by (metis highestOneBitMask highestOneBitRecMask maskSmaller not_bit_length wsst_TYs(3))
 
-
 lemma "highestOneBit (0x5 :: int8) = 2" by code_simp
-
-
 
 subsection \<open>Long.lowestOneBit\<close>
 
@@ -205,7 +205,6 @@ lemma max_bit: "bit (v::('a::len) word) n \<Longrightarrow> n < size v"
 lemma max_set_bit: "MaxOrNeg {n . bit (v::('a::len) word) n} < Nat.size v"
   using max_bit unfolding MaxOrNeg_def
   by force
-
 
 subsection \<open>Long.numberOfLeadingZeros\<close>
 
@@ -226,8 +225,7 @@ lemma "highestOneBit (0::64 word) = -1"
   by (simp add: MaxOrNeg_neg highestOneBit_def)
 
 lemma "numberOfLeadingZeros (0::64 word) = 64"
-  unfolding numberOfLeadingZeros_def using  MaxOrNeg_neg highestOneBit_def size64
-  by (smt (verit) nat_int zero_no_bits)
+  unfolding numberOfLeadingZeros_def by (simp add: highestOneBitImpl size64)
 
 lemma highestOneBit_top: "Max {highestOneBit (v::64 word)} < 64"
   unfolding highestOneBit_def
@@ -239,9 +237,11 @@ lemma numberOfLeadingZeros_top: "Max {numberOfLeadingZeros (v::64 word)} \<le> 6
   by (simp add: MaxOrNeg_def highestOneBit_def nat_le_iff)
 
 lemma numberOfLeadingZeros_range: "0 \<le> numberOfLeadingZeros a \<and> numberOfLeadingZeros a \<le> Nat.size a"
-  unfolding numberOfLeadingZeros_def
-  using MaxOrNeg_def highestOneBit_def nat_le_iff
-  by (smt (verit) bot_nat_0.extremum int_eq_iff)
+  unfolding numberOfLeadingZeros_def apply auto
+  apply (induction "highestOneBit a") apply (simp add: numberOfLeadingZeros_def)
+  by (metis (mono_tags, opaque_lifting) leD negative_zless  int_eq_iff diff_right_commute diff_self
+      diff_zero nat_le_iff le_iff_diff_le_0  minus_diff_eq nat_0_le nat_le_linear of_nat_0_le_iff
+      MaxOrNeg_def highestOneBit_def)
 
 lemma leadingZerosAddHighestOne: "numberOfLeadingZeros v + highestOneBit v = Nat.size v - 1"
   unfolding numberOfLeadingZeros_def highestOneBit_def
@@ -266,10 +266,24 @@ lemma "numberOfTrailingZeros (0::64 word) = 64"
   unfolding numberOfTrailingZeros_def
   using lowestOneBit_bot by simp
 
+subsection \<open>Long.reverseBytes\<close>
+
+(* Recursive version of reverseBytes for code generation *)
+fun reverseBytes_fun :: "('a::len) word \<Rightarrow> nat \<Rightarrow> ('a::len) word \<Rightarrow> ('a::len) word" where
+  "reverseBytes_fun v b flip = (if (b = 0) then (flip) else
+                       (reverseBytes_fun (v >> 8) (b - 8) (or (flip << 8) (take_bit 8 v))))"
+
 subsection \<open>Long.bitCount\<close>
 
 definition bitCount :: "('a::len) word \<Rightarrow> nat" where
   "bitCount v = card {n . bit v n}"
+
+(* Recursive version of bitCount for code generation *)
+fun bitCount_fun :: "('a::len) word \<Rightarrow> nat \<Rightarrow> nat" where
+  "bitCount_fun v n = (if (n = 0) then
+                          (if (bit v n) then 1 else 0) else
+                       if (bit v n) then (1 + bitCount_fun (v) (n - 1))
+                                    else (0 + bitCount_fun (v) (n - 1)))"
 
 lemma "bitCount 0 = 0"
   unfolding bitCount_def

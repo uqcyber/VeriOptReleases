@@ -22,14 +22,13 @@ lemma stuttering_successor:
   shows "{P'. (g m p h \<turnstile> nid \<leadsto> P')} = {nid'} \<union> {nid''. (g m p h \<turnstile> nid' \<leadsto> nid'')}"
 proof -
   have nextin: "nid' \<in> {P'. (g m p h \<turnstile> nid \<leadsto> P')}"
-    using assms StutterStep by blast
+    using assms StutterStep by fast
   have nextsubset: "{nid''. (g m p h \<turnstile> nid' \<leadsto> nid'')} \<subseteq> {P'. (g m p h \<turnstile> nid \<leadsto> P')}"
     by (metis Collect_mono assms stutter.Transitive)
   have "\<forall>n \<in> {P'. (g m p h \<turnstile> nid \<leadsto> P')} . n = nid' \<or> n \<in> {nid''. (g m p h \<turnstile> nid' \<leadsto> nid'')}"
-    using stepDet
-    by (metis (no_types, lifting) Pair_inject assms mem_Collect_eq stutter.simps)
+    by (metis (no_types, lifting) Pair_inject assms mem_Collect_eq stutter.simps stepDet)
   then show ?thesis
-    using insert_absorb mk_disjoint_insert nextin nextsubset by auto
+    using nextin nextsubset by (auto simp add: mk_disjoint_insert)
 qed
 
 end

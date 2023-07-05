@@ -2,7 +2,7 @@ section \<open>Operator Semantics\<close>
 
 theory Values
   imports
-    JavaWords
+    JavaLong
 begin
 
 text \<open>
@@ -26,6 +26,7 @@ definition of the heap.
 \<close>
 
 type_synonym objref = "nat option"
+type_synonym length = "nat"
 
 datatype (discs_sels) Value  =
   UndefVal |
@@ -39,14 +40,14 @@ datatype (discs_sels) Value  =
   IntVal iwidth int64 | (* bits and word because we cannot know sign until do compare! *)
   (* FloatVal float | not supported *)
   ObjRef objref |
-  ObjStr string
+  ObjStr string |
+  ArrayVal length "Value list"  (* Length characteristic not currently enforced in Value list *)
 
 fun intval_bits :: "Value \<Rightarrow> nat" where
   "intval_bits (IntVal b v) = b"
 
 fun intval_word :: "Value \<Rightarrow> int64" where
   "intval_word (IntVal b v) = v"
-
 
 text \<open>Converts an integer word into a Java value.\<close>
 fun new_int :: "iwidth \<Rightarrow> int64 \<Rightarrow> Value" where
@@ -56,6 +57,8 @@ text \<open>Converts an integer word into a Java value, iff the two types are eq
 fun new_int_bin :: "iwidth \<Rightarrow> iwidth \<Rightarrow> int64 \<Rightarrow> Value" where
   "new_int_bin b1 b2 w = (if b1=b2 then new_int b1 w else UndefVal)"
 
+fun array_length :: "Value \<Rightarrow> Value" where
+  "array_length (ArrayVal len list) = new_int 32 (word_of_nat len)"
 
 fun wf_bool :: "Value \<Rightarrow> bool" where
   "wf_bool (IntVal b w) = (b = 1)" |
@@ -69,16 +72,13 @@ fun bool_to_val :: "bool \<Rightarrow> Value" where
   "bool_to_val True = (IntVal 32 1)" |
   "bool_to_val False = (IntVal 32 0)"
 
-
 text \<open>Converts an Isabelle bool into a Java value, iff the two types are equal.\<close>
 fun bool_to_val_bin :: "iwidth \<Rightarrow> iwidth \<Rightarrow> bool \<Rightarrow> Value" where
   "bool_to_val_bin t1 t2 b = (if t1 = t2 then bool_to_val b else UndefVal)"
 
-
 (* Deprecated - just for backwards compatibility. *)
 fun is_int_val :: "Value \<Rightarrow> bool" where
   "is_int_val v = is_IntVal v"
-
 
 lemma neg_one_value[simp]: "new_int b (neg_one b) = IntVal b (mask b)"
   by simp
@@ -86,8 +86,13 @@ lemma neg_one_value[simp]: "new_int b (neg_one b) = IntVal b (mask b)"
 lemma neg_one_signed[simp]: 
   assumes "0 < b"
   shows "int_signed_value b (neg_one b) = -1"
-  by (smt (verit, best) assms diff_le_self diff_less int_signed_value.simps less_one mask_eq_take_bit_minus_one neg_one.simps nle_le signed_minus_1 signed_take_bit_of_minus_1 signed_take_bit_take_bit verit_comp_simplify1(1))
+  using assms apply auto[1]
+  by (metis (no_types, lifting) Suc_pred diff_Suc_1 signed_take_take_bit assms signed_minus_1
+      int_signed_value.simps mask_eq_take_bit_minus_one signed_take_bit_of_minus_1)
 
+lemma word_unsigned:
+  shows "\<forall> b1 v1. (IntVal b1 (word_of_int (int_unsigned_value b1 v1))) = IntVal b1 v1"
+  by simp
 
 subsection \<open>Arithmetic Operators\<close>
 
@@ -137,6 +142,64 @@ fun intval_mod :: "Value \<Rightarrow> Value \<Rightarrow> Value" where
            ((int_signed_value b1 v1) smod (int_signed_value b2 v2)))" |
   "intval_mod _ _ = UndefVal"
 
+(* Corresponds to Math.multiplyHigh(L,L) and ExactMath.multiplyHigh(I,I) *)
+fun intval_mul_high :: "Value \<Rightarrow> Value \<Rightarrow> Value" where
+  "intval_mul_high (IntVal b1 v1) (IntVal b2 v2) = (
+    if (b1 = b2 \<and> b1 = 64) then (
+      if (((int_signed_value b1 v1) < 0) \<or> ((int_signed_value b2 v2) < 0))
+         then (
+
+       let x1 = (v1 >> 32)              in
+       let x2 = (and v1 4294967295)     in
+       let y1 = (v2 >> 32)              in
+       let y2 = (and v2 4294967295)     in
+       let z2 = (x2 * y2)               in
+       let t  = (x1 * y2 + (z2 >>> 32)) in
+       let z1 = (and t 4294967295)      in
+       let z0 = (t >> 32)               in
+       let z1 = (z1 + (x2 * y1))        in
+
+       let result = (x1 * y1 + z0 + (z1 >> 32)) in
+
+       (new_int b1 result)
+      ) else (
+
+       let x1 = (v1 >>> 32)             in
+       let y1 = (v2 >>> 32)             in
+       let x2 = (and v1 4294967295)     in
+       let y2 = (and v2 4294967295)     in
+       let A  = (x1 * y1)               in
+       let B  = (x2 * y2)               in
+       let C  = ((x1 + x2) * (y1 + y2)) in
+       let K  = (C - A - B)             in
+
+       let result = ((((B >>> 32) + K) >>> 32) + A) in
+
+       (new_int b1 result)
+      )
+    ) else (
+      if (b1 = b2 \<and> b1 = 32) then (
+
+      let newv1 = (word_of_int (int_signed_value b1 v1)) in
+      let newv2 = (word_of_int (int_signed_value b1 v2)) in
+      let r = (newv1 * newv2)                            in
+
+      let result = (r >> 32) in
+
+       (new_int b1 result)
+      ) else UndefVal)
+   )" |
+  "intval_mul_high _ _ = UndefVal"
+
+fun intval_reverse_bytes :: "Value \<Rightarrow> Value" where
+  "intval_reverse_bytes (IntVal b1 v1) = (new_int b1 (reverseBytes_fun v1 b1 0))" |
+  "intval_reverse_bytes _ = UndefVal"
+
+(* Corresponds to Integer.bitCount(I) and Long.bitCount(L) *)
+fun intval_bit_count :: "Value \<Rightarrow> Value" where
+  "intval_bit_count (IntVal b1 v1) = (new_int 32 (word_of_nat (bitCount_fun v1 64)))" |
+  "intval_bit_count _ = UndefVal"
+
 fun intval_negate :: "Value \<Rightarrow> Value" where
   "intval_negate (IntVal t v) = new_int t (- v)" |
   "intval_negate _ = UndefVal"
@@ -149,8 +212,6 @@ text \<open>TODO: clarify which widths this should work on: just 1-bit or all?\<
 fun intval_logic_negation :: "Value \<Rightarrow> Value" where
   "intval_logic_negation (IntVal b v) = new_int b (logic_negate v)" |
   "intval_logic_negation _ = UndefVal"
-
-
 
 subsection \<open>Bitwise Operators\<close>
 
@@ -169,8 +230,6 @@ fun intval_xor :: "Value \<Rightarrow> Value \<Rightarrow> Value" where
 fun intval_not :: "Value \<Rightarrow> Value" where
   "intval_not (IntVal t v) = new_int t (not v)" |
   "intval_not _ = UndefVal"
-
-
 
 subsection \<open>Comparison Operators\<close>
 
@@ -194,20 +253,78 @@ fun intval_below :: "Value \<Rightarrow> Value \<Rightarrow> Value" where
 fun intval_conditional :: "Value \<Rightarrow> Value \<Rightarrow> Value \<Rightarrow> Value" where
   "intval_conditional cond tv fv = (if (val_to_bool cond) then tv else fv)"
 
+fun intval_is_null :: "Value \<Rightarrow> Value" where
+  "intval_is_null (ObjRef (v)) = (if (v=(None)) then bool_to_val True else bool_to_val False)" |
+  "intval_is_null _ = UndefVal"
+
+fun intval_test :: "Value \<Rightarrow> Value \<Rightarrow> Value" where
+  "intval_test (IntVal b1 v1) (IntVal b2 v2) = bool_to_val_bin b1 b2 ((and v1 v2) = 0)" |
+  "intval_test _ _ = UndefVal"
+
+(* Corresponds to Integer.compareUnsigned and Long.compareUnsigned *)
+fun intval_normalize_compare :: "Value \<Rightarrow> Value \<Rightarrow> Value" where
+  "intval_normalize_compare (IntVal b1 v1) (IntVal b2 v2) =
+   (if (b1 = b2) then new_int 32 (if (v1 < v2) then -1 else (if (v1 = v2) then 0 else 1))
+                 else UndefVal)" |
+  "intval_normalize_compare _ _ = UndefVal"
+
+(* Array-related operators and helper functions *)
+
+(* Yoinked from https://www.isa-afp.org/browser_info/Isabelle2012/HOL/List-Index/List_Index.html*)
+fun find_index :: "'a \<Rightarrow> 'a list \<Rightarrow> nat" where
+  "find_index _ [] = 0" |
+  "find_index v (x # xs) = (if (x=v) then 0 else find_index v xs + 1)"
+
+definition default_values :: "Value list" where
+  "default_values = [new_int 32 0, new_int 64 0, ObjRef None]"
+
+definition short_types_32 :: "string list" where
+  "short_types_32 = [''[Z'', ''[I'', ''[C'', ''[B'', ''[S'']"
+
+definition short_types_64 :: "string list" where
+  "short_types_64 = [''[J'']"
+
+fun default_value :: "string \<Rightarrow> Value" where
+  "default_value n = (if (find_index n short_types_32) < (length short_types_32)
+                      then (default_values!0) else
+                     (if (find_index n short_types_64) < (length short_types_64)
+                      then (default_values!1)
+                      else (default_values!2)))"
+
+fun populate_array :: "nat \<Rightarrow> Value list \<Rightarrow> string \<Rightarrow> Value list" where
+  "populate_array len a s = (if (len = 0) then (a)
+                             else (a @ (populate_array (len-1) [default_value s] s)))"
+
+fun intval_new_array :: "Value \<Rightarrow> string \<Rightarrow> Value" where
+  "intval_new_array (IntVal b1 v1) s = (ArrayVal (nat (int_signed_value b1 v1))
+                                        (populate_array (nat (int_signed_value b1 v1)) [] s))" |
+  "intval_new_array _ _ = UndefVal"
+
+fun intval_load_index :: "Value \<Rightarrow> Value \<Rightarrow> Value" where
+  "intval_load_index (ArrayVal len cons) (IntVal b1 v1) = (if (v1 \<ge> (word_of_nat len)) then (UndefVal)
+                                                          else (cons!(nat (int_signed_value b1 v1))))" |
+  "intval_load_index _ _ = UndefVal"
+
+fun intval_store_index :: "Value \<Rightarrow> Value \<Rightarrow> Value \<Rightarrow> Value" where
+  "intval_store_index (ArrayVal len cons) (IntVal b1 v1) val =
+                      (if (v1 \<ge> (word_of_nat len)) then (UndefVal)
+                        else (ArrayVal len (list_update cons (nat (int_signed_value b1 v1)) (val))))" |
+  "intval_store_index _ _ _ = UndefVal"
 
 lemma intval_equals_result:
   assumes "intval_equals v1 v2 = r"
   assumes "r \<noteq> UndefVal"
   shows "r = IntVal 32 0 \<or> r = IntVal 32 1"
 proof -
-  obtain b1 i1 b2 i2 where i12: "v1 = IntVal b1 i1 \<and> v2 = IntVal b2 i2"
-    by (metis assms(1) assms(2) intval_equals.simps(2) intval_equals.simps(3) intval_equals.simps(4) intval_equals.simps(5) intval_equals.simps(6) intval_equals.simps(7) intval_logic_negation.cases)
+  obtain b1 i1 where i1: "v1 = IntVal b1 i1"
+    by (metis assms intval_bits.elims intval_equals.simps(2,3,4,5))
+  obtain b2 i2 where i2: "v2 = IntVal b2 i2"
+    by (smt (z3) assms intval_equals.elims)
   then have "b1 = b2"
-    by (metis assms(1) assms(2) bool_to_val_bin.elims intval_equals.simps(1))
+    by (metis i1 assms bool_to_val_bin.elims intval_equals.simps(1))
   then show ?thesis
-    using assms(1) bool_to_val.elims i12 by auto
+    using assms(1) bool_to_val.elims i1 i2 by auto
 qed
-
 
 subsection \<open>Narrowing and Widening Operators\<close>
 
@@ -220,14 +337,12 @@ corollary "sint (signed_take_bit 7 ((256 + 128) :: int64)) = -128" by code_simp
 corollary "sint (take_bit 7 ((256 + 128 + 64) :: int64)) = 64" by code_simp
 corollary "sint (take_bit 8 ((256 + 128 + 64) :: int64)) = 128 + 64" by code_simp
 
-
 fun intval_narrow :: "nat \<Rightarrow> nat \<Rightarrow> Value \<Rightarrow> Value" where
   "intval_narrow inBits outBits (IntVal b v) =
      (if inBits = b \<and> 0 < outBits \<and> outBits \<le> inBits \<and> inBits \<le> 64
       then new_int outBits v
       else UndefVal)" |
   "intval_narrow _ _ _ = UndefVal"
-
 
 fun intval_sign_extend :: "nat \<Rightarrow> nat \<Rightarrow> Value \<Rightarrow> Value" where
   "intval_sign_extend inBits outBits (IntVal b v) =
@@ -243,7 +358,6 @@ fun intval_zero_extend :: "nat \<Rightarrow> nat \<Rightarrow> Value \<Rightarro
       else UndefVal)" |
   "intval_zero_extend _ _ _ = UndefVal"
 
-
 text \<open>Some well-formedness results to help reasoning about narrowing and widening operators\<close>
 
 lemma intval_narrow_ok:
@@ -251,8 +365,7 @@ lemma intval_narrow_ok:
   shows "0 < outBits \<and> outBits \<le> inBits \<and> inBits \<le> 64 \<and> outBits \<le> 64 \<and>
         is_IntVal val \<and>
         intval_bits val = inBits"
-  using assms intval_narrow.simps neq0_conv intval_bits.simps
-  by (metis Value.disc(2) intval_narrow.elims le_trans)
+  using assms apply (cases val; auto) apply (meson le_trans)+ by presburger
 
 lemma intval_sign_extend_ok:
   assumes "intval_sign_extend inBits outBits val \<noteq> UndefVal"
@@ -260,8 +373,7 @@ lemma intval_sign_extend_ok:
         inBits \<le> outBits \<and> outBits \<le> 64 \<and>
         is_IntVal val \<and>
         intval_bits val = inBits"
-  using assms intval_sign_extend.simps neq0_conv
-  by (metis intval_bits.simps intval_sign_extend.elims is_IntVal_def)
+  by (metis intval_bits.simps intval_sign_extend.elims is_IntVal_def assms)
 
 lemma intval_zero_extend_ok:
   assumes "intval_zero_extend inBits outBits val \<noteq> UndefVal"
@@ -269,12 +381,9 @@ lemma intval_zero_extend_ok:
         inBits \<le> outBits \<and> outBits \<le> 64 \<and>
         is_IntVal val \<and>
         intval_bits val = inBits"
-  using assms intval_sign_extend.simps neq0_conv
-  by (metis intval_bits.simps intval_zero_extend.elims is_IntVal_def)
-
+  by (metis intval_bits.simps intval_zero_extend.elims is_IntVal_def assms)
 
 subsection \<open>Bit-Shifting Operators\<close>
-
 
 text \<open>Note that Java shift operators use unary numeric promotion, unlike other binary 
   operators, which use binary numeric promotion (see the Java language reference manual).
@@ -302,7 +411,6 @@ fun intval_right_shift :: "Value \<Rightarrow> Value \<Rightarrow> Value" where
 fun intval_uright_shift :: "Value \<Rightarrow> Value \<Rightarrow> Value" where
   "intval_uright_shift (IntVal b1 v1) (IntVal b2 v2) = new_int b1 (v1 >>> shift_amount b1 v2)" |
   "intval_uright_shift _ _ = UndefVal"
-
 
 subsubsection \<open>Examples of Narrowing / Widening Functions\<close>
 
@@ -333,7 +441,6 @@ corollary "intval_sign_extend 8 64 (IntVal 8 254) = IntVal 64 (-2)" by simp
 corollary "intval_sign_extend 32 64 (IntVal 32 (2^32 - 2)) = IntVal 64 (-2)" by simp
 corollary "intval_sign_extend 64 64 (IntVal 64 (-2)) = IntVal 64 (-2)" by simp
 end
-
 
 experiment begin
 corollary "intval_zero_extend 8 32 (IntVal 8 (256 + 128)) = IntVal 32 128" by simp
@@ -372,7 +479,6 @@ code_deps intval_add
 (* print all code definitions used by intval_add:
 code_thms intval_add
 *)
-
 
 (* Some example tests. *)
 lemma "intval_add (IntVal 32 (2^31-1)) (IntVal 32 (2^31-1)) = IntVal 32 (2^32 - 2)"

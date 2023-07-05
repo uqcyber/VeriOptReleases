@@ -41,6 +41,18 @@ lemma rep_abs [rep]:
    (\<exists>xe. e = UnaryExpr UnaryAbs xe)"
   by (induction rule: rep.induct; auto)
 
+lemma rep_reverse_bytes [rep]:
+  "g \<turnstile> n \<simeq> e \<Longrightarrow>
+   kind g n = ReverseBytesNode x \<Longrightarrow>
+   (\<exists>xe. e = UnaryExpr UnaryReverseBytes xe)"
+  by (induction rule: rep.induct; auto)
+
+lemma rep_bit_count [rep]:
+  "g \<turnstile> n \<simeq> e \<Longrightarrow>
+   kind g n = BitCountNode x \<Longrightarrow>
+   (\<exists>xe. e = UnaryExpr UnaryBitCount xe)"
+  by (induction rule: rep.induct; auto)
+
 lemma rep_not [rep]:
   "g \<turnstile> n \<simeq> e \<Longrightarrow>
    kind g n = NotNode x \<Longrightarrow>
@@ -137,6 +149,24 @@ lemma rep_integer_less_than [rep]:
    (\<exists>xe ye. e = BinaryExpr BinIntegerLessThan xe ye)"
   by (induction rule: rep.induct; auto)
 
+lemma rep_integer_mul_high [rep]:
+  "g \<turnstile> n \<simeq> e \<Longrightarrow>
+   kind g n = IntegerMulHighNode x y \<Longrightarrow>
+   (\<exists>xe ye. e = BinaryExpr BinIntegerMulHigh xe ye)"
+  by (induction rule: rep.induct; auto)
+
+lemma rep_integer_test [rep]:
+  "g \<turnstile> n \<simeq> e \<Longrightarrow>
+   kind g n = IntegerTestNode x y \<Longrightarrow>
+   (\<exists>xe ye. e = BinaryExpr BinIntegerTest xe ye)"
+  by (induction rule: rep.induct; auto)
+
+lemma rep_integer_normalize_compare [rep]:
+  "g \<turnstile> n \<simeq> e \<Longrightarrow>
+   kind g n = IntegerNormalizeCompareNode x y \<Longrightarrow>
+   (\<exists>xe ye. e = BinaryExpr BinIntegerNormalizeCompare xe ye)"
+  by (induction rule: rep.induct; auto)
+
 lemma rep_narrow [rep]:
   "g \<turnstile> n \<simeq> e \<Longrightarrow>
    kind g n = NarrowNode ib rb x \<Longrightarrow>
@@ -161,12 +191,53 @@ lemma rep_load_field [rep]:
    (\<exists>s. e = LeafExpr n s)"
   by (induction rule: rep.induct; auto)
 
+lemma rep_bytecode_exception [rep]:
+  "g \<turnstile> n \<simeq> e \<Longrightarrow>
+   (kind g n) = BytecodeExceptionNode gu st n' \<Longrightarrow>
+   (\<exists>s. e = LeafExpr n s)"
+  by (induction rule: rep.induct; auto)
+
+lemma rep_new_array [rep]:
+  "g \<turnstile> n \<simeq> e \<Longrightarrow>
+   (kind g n) = NewArrayNode len st n' \<Longrightarrow>
+   (\<exists>s. e = LeafExpr n s)"
+  by (induction rule: rep.induct; auto)
+
+lemma rep_array_length [rep]:
+  "g \<turnstile> n \<simeq> e \<Longrightarrow>
+   (kind g n) = ArrayLengthNode x n' \<Longrightarrow>
+   (\<exists>s. e = LeafExpr n s)"
+  by (induction rule: rep.induct; auto)
+
+lemma rep_load_index [rep]:
+  "g \<turnstile> n \<simeq> e \<Longrightarrow>
+   (kind g n) = LoadIndexedNode index guard x n' \<Longrightarrow>
+   (\<exists>s. e = LeafExpr n s)"
+  by (induction rule: rep.induct; auto)
+
+lemma rep_store_index [rep]:
+  "g \<turnstile> n \<simeq> e \<Longrightarrow>
+   (kind g n) = StoreIndexedNode check val st index guard x n' \<Longrightarrow>
+   (\<exists>s. e = LeafExpr n s)"
+  by (induction rule: rep.induct; auto)
+
 lemma rep_ref [rep]:
   "g \<turnstile> n \<simeq> e \<Longrightarrow>
    kind g n = RefNode n' \<Longrightarrow>
    g \<turnstile> n' \<simeq> e"
   by (induction rule: rep.induct; auto)
 
+lemma rep_pi [rep]:
+  "g \<turnstile> n \<simeq> e \<Longrightarrow>
+   kind g n = PiNode n' gu \<Longrightarrow>
+   g \<turnstile> n' \<simeq> e"
+  by (induction rule: rep.induct; auto)
+
+lemma rep_is_null [rep]:
+  "g \<turnstile> n \<simeq> e \<Longrightarrow> 
+   kind g n = IsNullNode x \<Longrightarrow> 
+   (\<exists>xe. e = (UnaryExpr UnaryIsNull xe))" 
+  by (induction rule: rep.induct; auto)
 
 method solve_det uses node =
   (match node in "kind _ _ = node _" for node \<Rightarrow> 
@@ -174,25 +245,29 @@ method solve_det uses node =
       \<open>match IRNode.inject in i: "(node _ = node _) = _" \<Rightarrow>
         \<open>match RepE in e: "_ \<Longrightarrow> (\<And>x. _ = node x \<Longrightarrow> _) \<Longrightarrow> _" \<Rightarrow>
           \<open>match IRNode.distinct in d: "node _ \<noteq> RefNode _" \<Rightarrow>
-            \<open>metis i e r d\<close>\<close>\<close>\<close>\<close> |
+            \<open>match IRNode.distinct in f: "node _  \<noteq> PiNode _ _" \<Rightarrow>
+              \<open>metis i e r d f\<close>\<close>\<close>\<close>\<close>\<close> |
    match node in "kind _ _ = node _ _" for node \<Rightarrow> 
     \<open>match rep in r: "_ \<Longrightarrow> _ = node _ _ \<Longrightarrow> _" \<Rightarrow> 
       \<open>match IRNode.inject in i: "(node _ _ = node _ _) = _" \<Rightarrow>
         \<open>match RepE in e: "_ \<Longrightarrow> (\<And>x y. _ = node x y \<Longrightarrow> _) \<Longrightarrow> _" \<Rightarrow>
           \<open>match IRNode.distinct in d: "node _ _ \<noteq> RefNode _" \<Rightarrow>
-            \<open>metis i e r d\<close>\<close>\<close>\<close>\<close> |
+            \<open>match IRNode.distinct in f: "node _ _ \<noteq> PiNode _ _" \<Rightarrow>
+              \<open>metis i e r d f\<close>\<close>\<close>\<close>\<close>\<close> |
    match node in "kind _ _ = node _ _ _" for node \<Rightarrow> 
     \<open>match rep in r: "_ \<Longrightarrow> _ = node _ _ _ \<Longrightarrow> _" \<Rightarrow> 
       \<open>match IRNode.inject in i: "(node _ _ _ = node _ _ _) = _" \<Rightarrow>
         \<open>match RepE in e: "_ \<Longrightarrow> (\<And>x y z. _ = node x y z \<Longrightarrow> _) \<Longrightarrow> _" \<Rightarrow>
           \<open>match IRNode.distinct in d: "node _ _ _ \<noteq> RefNode _" \<Rightarrow>
-            \<open>metis i e r d\<close>\<close>\<close>\<close>\<close> |
+            \<open>match IRNode.distinct in f: "node _ _ _ \<noteq> PiNode _ _" \<Rightarrow>
+              \<open>metis i e r d f\<close>\<close>\<close>\<close>\<close>\<close> |
   match node in "kind _ _ = node _ _ _" for node \<Rightarrow> 
     \<open>match rep in r: "_ \<Longrightarrow> _ = node _ _ _ \<Longrightarrow> _" \<Rightarrow> 
       \<open>match IRNode.inject in i: "(node _ _ _ = node _ _ _) = _" \<Rightarrow>
         \<open>match RepE in e: "_ \<Longrightarrow> (\<And>x. _ = node _ _ x \<Longrightarrow> _) \<Longrightarrow> _" \<Rightarrow>
           \<open>match IRNode.distinct in d: "node _ _ _ \<noteq> RefNode _" \<Rightarrow>
-            \<open>metis i e r d\<close>\<close>\<close>\<close>\<close>)
+            \<open>match IRNode.distinct in f: "node _ _ _ \<noteq> PiNode _ _" \<Rightarrow>
+              \<open>metis i e r d f\<close>\<close>\<close>\<close>\<close>\<close>)
 
 text \<open>Now we can prove that 'rep' and 'eval', and their list versions, are deterministic.
 \<close>
@@ -200,21 +275,28 @@ lemma repDet:
   shows "(g \<turnstile> n \<simeq> e\<^sub>1) \<Longrightarrow> (g \<turnstile> n \<simeq> e\<^sub>2) \<Longrightarrow> e\<^sub>1 = e\<^sub>2"
 proof (induction arbitrary: e\<^sub>2 rule: "rep.induct")
   case (ConstantNode n c)
-  then show ?case using rep_constant by auto
+  then show ?case 
+    using rep_constant by simp
 next
   case (ParameterNode n i s)
   then show ?case
-    by (metis IRNode.disc(2685) ParameterNodeE is_RefNode_def rep_parameter)
+    by (metis IRNode.distinct(3487,3525) ParameterNodeE rep_parameter)
 next
   case (ConditionalNode n c t f ce te fe)
   then show ?case
-    using IRNode.distinct(593)
-    using IRNode.inject(6) ConditionalNodeE rep_conditional
-    by metis
+    by (metis IRNode.distinct(897,935) IRNode.inject(8) ConditionalNodeE rep_conditional)
 next
   case (AbsNode n x xe)
   then show ?case
     by (solve_det node: AbsNode)
+next
+  case (ReverseBytesNode n x xe)
+  then show ?case
+    by (solve_det node: ReverseBytesNode)
+next
+  case (BitCountNode n x xe)
+  then show ?case
+    by (solve_det node: BitCountNode)
 next
   case (NotNode n x xe)
   then show ?case
@@ -280,25 +362,45 @@ next
   then show ?case
     by (solve_det node: IntegerLessThanNode)
 next
+  case (IntegerTestNode n x y xe ye)
+  then show ?case
+    by (solve_det node: IntegerTestNode)
+next
+  case (IntegerNormalizeCompareNode n x y xe ye)
+  then show ?case
+    by (solve_det node: IntegerNormalizeCompareNode)
+next
+  case (IntegerMulHighNode n x xe)
+  then show ?case
+    by (solve_det node: IntegerMulHighNode)
+next
   case (NarrowNode n x xe)
   then show ?case
-    by (metis IRNode.distinct(2203) IRNode.inject(28) NarrowNodeE rep_narrow)
+    by (metis IRNode.distinct(3217,3255) IRNode.inject(36) NarrowNodeE rep_narrow)
 next
   case (SignExtendNode n x xe)
-  then show ?case 
-    by (metis IRNode.distinct(2599) IRNode.inject(39) SignExtendNodeE rep_sign_extend)
+  then show ?case
+    by (metis IRNode.distinct(3535,3723) IRNode.inject(48) SignExtendNodeE rep_sign_extend)
 next
   case (ZeroExtendNode n x xe)
   then show ?case
-    by (metis IRNode.distinct(2753) IRNode.inject(50) ZeroExtendNodeE rep_zero_extend)
+    by (metis IRNode.distinct(3559,3903) IRNode.inject(60) ZeroExtendNodeE rep_zero_extend)
 next
   case (LeafNode n s)
-  then show ?case using rep_load_field LeafNodeE
-    by (metis is_preevaluated.simps(53))
+  then show ?case
+    by (metis is_preevaluated.simps(48,63) rep_load_field LeafNodeE)
 next
   case (RefNode n')
   then show ?case
     using rep_ref by blast
+next
+  case (PiNode n v)
+  then show ?case
+    using rep_pi by blast
+next
+  case (IsNullNode n v)
+  then show ?case
+    by (metis IRNode.distinct(2461,2499) IRNode.inject(24) IsNullNodeE rep_is_null)
 qed
 
 lemma repAllDet:
@@ -312,7 +414,7 @@ proof (induction arbitrary: e2 rule: "replist.induct")
 next
   case (RepCons x xe xs xse)
   then show ?case
-    by (metis list.distinct(1) list.sel(1) list.sel(3) repDet replist.cases) 
+    by (metis list.distinct(1) list.sel(1,3) repDet replist.cases) 
 qed
 
 lemma encodeEvalDet:
@@ -322,8 +424,7 @@ lemma encodeEvalDet:
   by (metis encodeeval_def evalDet repDet)
 
 lemma graphDet: "([g,m,p] \<turnstile> n \<mapsto> v\<^sub>1) \<and> ([g,m,p] \<turnstile> n \<mapsto> v\<^sub>2) \<Longrightarrow> v\<^sub>1 = v\<^sub>2"
-  using encodeEvalDet by blast
-
+  by (auto simp add: encodeEvalDet)
 
 subsubsection \<open>Monotonicity of Graph Refinement\<close>
 
@@ -338,7 +439,7 @@ lemma mono_abs:
   assumes "xe1 \<ge> xe2"
   assumes "(g1 \<turnstile> n \<simeq> e1) \<and> (g2 \<turnstile> n \<simeq> e2)"
   shows "e1 \<ge> e2"
-  by (metis AbsNode assms(1) assms(2) assms(3) assms(4) mono_unary repDet)
+  by (metis AbsNode assms mono_unary repDet)
 
 lemma mono_not:
   assumes "kind g1 n = NotNode x \<and> kind g2 n = NotNode x"
@@ -346,7 +447,7 @@ lemma mono_not:
   assumes "xe1 \<ge> xe2"
   assumes "(g1 \<turnstile> n \<simeq> e1) \<and> (g2 \<turnstile> n \<simeq> e2)"
   shows "e1 \<ge> e2"
-  by (metis NotNode assms(1) assms(2) assms(3) assms(4) mono_unary repDet)
+  by (metis NotNode assms mono_unary repDet)
 
 lemma mono_negate:
   assumes "kind g1 n = NegateNode x \<and> kind g2 n = NegateNode x"
@@ -354,7 +455,7 @@ lemma mono_negate:
   assumes "xe1 \<ge> xe2"
   assumes "(g1 \<turnstile> n \<simeq> e1) \<and> (g2 \<turnstile> n \<simeq> e2)"
   shows "e1 \<ge> e2"
-  by (metis NegateNode assms(1) assms(2) assms(3) assms(4) mono_unary repDet)
+  by (metis NegateNode assms mono_unary repDet)
 
 lemma mono_logic_negation:
   assumes "kind g1 n = LogicNegationNode x \<and> kind g2 n = LogicNegationNode x"
@@ -362,7 +463,7 @@ lemma mono_logic_negation:
   assumes "xe1 \<ge> xe2"
   assumes "(g1 \<turnstile> n \<simeq> e1) \<and> (g2 \<turnstile> n \<simeq> e2)"
   shows "e1 \<ge> e2"
-  by (metis LogicNegationNode assms(1) assms(2) assms(3) assms(4) mono_unary repDet)
+  by (metis LogicNegationNode assms mono_unary repDet)
 
 lemma mono_narrow:
   assumes "kind g1 n = NarrowNode ib rb x \<and> kind g2 n = NarrowNode ib rb x"
@@ -370,8 +471,7 @@ lemma mono_narrow:
   assumes "xe1 \<ge> xe2"
   assumes "(g1 \<turnstile> n \<simeq> e1) \<and> (g2 \<turnstile> n \<simeq> e2)"
   shows "e1 \<ge> e2"
-  using assms mono_unary repDet NarrowNode
-  by metis
+  by (metis NarrowNode assms mono_unary repDet)
 
 lemma mono_sign_extend:
   assumes "kind g1 n = SignExtendNode ib rb x \<and> kind g2 n = SignExtendNode ib rb x"
@@ -379,7 +479,7 @@ lemma mono_sign_extend:
   assumes "xe1 \<ge> xe2"
   assumes "(g1 \<turnstile> n \<simeq> e1) \<and> (g2 \<turnstile> n \<simeq> e2)"
   shows "e1 \<ge> e2"
-  by (metis SignExtendNode assms(1) assms(2) assms(3) assms(4) mono_unary repDet)
+  by (metis SignExtendNode assms mono_unary repDet)
 
 lemma mono_zero_extend:
   assumes "kind g1 n = ZeroExtendNode ib rb x \<and> kind g2 n = ZeroExtendNode ib rb x"
@@ -387,8 +487,7 @@ lemma mono_zero_extend:
   assumes "xe1 \<ge> xe2"
   assumes "(g1 \<turnstile> n \<simeq> e1) \<and> (g2 \<turnstile> n \<simeq> e2)"
   shows "e1 \<ge> e2"
-  using assms mono_unary repDet ZeroExtendNode
-  by metis
+  by (metis ZeroExtendNode assms mono_unary repDet)
 
 lemma mono_conditional_graph:
   assumes "kind g1 n = ConditionalNode c t f \<and> kind g2 n = ConditionalNode c t f"
@@ -398,8 +497,7 @@ lemma mono_conditional_graph:
   assumes "ce1 \<ge> ce2 \<and> te1 \<ge> te2 \<and> fe1 \<ge> fe2"
   assumes "(g1 \<turnstile> n \<simeq> e1) \<and> (g2 \<turnstile> n \<simeq> e2)"
   shows "e1 \<ge> e2"
-  using ConditionalNodeE IRNode.inject(6) assms(1) assms(2) assms(3) assms(4) assms(5) assms(6) mono_conditional repDet rep_conditional
-  by (smt (verit, best) ConditionalNode)
+  by (smt (verit, ccfv_SIG) ConditionalNode assms mono_conditional repDet le_expr_def)
 
 lemma mono_add:
   assumes "kind g1 n = AddNode x y \<and> kind g2 n = AddNode x y"
@@ -408,8 +506,7 @@ lemma mono_add:
   assumes "xe1 \<ge> xe2 \<and> ye1 \<ge> ye2"
   assumes "(g1 \<turnstile> n \<simeq> e1) \<and> (g2 \<turnstile> n \<simeq> e2)"
   shows "e1 \<ge> e2"
-  using mono_binary assms AddNodeE IRNode.inject(2) repDet rep_add
-  by (metis IRNode.distinct(205))
+  by (metis (no_types, lifting) AddNode mono_binary assms repDet)
 
 lemma mono_mul:
   assumes "kind g1 n = MulNode x y \<and> kind g2 n = MulNode x y"
@@ -418,23 +515,18 @@ lemma mono_mul:
   assumes "xe1 \<ge> xe2 \<and> ye1 \<ge> ye2"
   assumes "(g1 \<turnstile> n \<simeq> e1) \<and> (g2 \<turnstile> n \<simeq> e2)"
   shows "e1 \<ge> e2"
-  using mono_binary assms IRNode.inject(27) MulNodeE repDet rep_mul
-  by (smt (verit, best) MulNode)
-
+  by (metis (no_types, lifting) MulNode assms mono_binary repDet)
 
 lemma term_graph_evaluation:
   "(g \<turnstile> n \<unlhd> e) \<Longrightarrow> (\<forall> m p v . ([m,p] \<turnstile> e \<mapsto> v) \<longrightarrow> ([g,m,p] \<turnstile> n \<mapsto> v))"
-  unfolding graph_represents_expression_def apply auto
-  by (meson encodeeval_def)
+  using graph_represents_expression_def encodeeval_def by (auto; meson)
 
 lemma encodes_contains:
   "g \<turnstile> n \<simeq> e \<Longrightarrow>
   kind g n \<noteq> NoNode"
   apply (induction rule: rep.induct)
-  apply (match IRNode.distinct in e: "?n \<noteq> NoNode" \<Rightarrow>
-          \<open>presburger add: e\<close>)+
-  apply force
-  by fastforce
+  apply (match IRNode.distinct in e: "?n \<noteq> NoNode" \<Rightarrow> \<open>presburger add: e\<close>)+
+  by fastforce+
 
 lemma no_encoding:
   assumes "n \<notin> ids g"
@@ -446,7 +538,7 @@ lemma not_excluded_keep_type:
   assumes "n \<notin> excluded"
   assumes "(excluded \<unlhd> as_set g1) \<subseteq> as_set g2"
   shows "kind g1 n = kind g2 n \<and> stamp g1 n = stamp g2 n"
-  using assms unfolding as_set_def domain_subtraction_def by blast
+  using assms by (auto simp add: domain_subtraction_def as_set_def)
 
 method metis_node_eq_unary for node :: "'a \<Rightarrow> IRNode" =
   (match IRNode.inject in i: "(node _ = node _) = _" \<Rightarrow> 
@@ -459,7 +551,6 @@ method metis_node_eq_ternary for node :: "'a \<Rightarrow> 'a \<Rightarrow> 'a \
       \<open>metis i\<close>)
 
 subsubsection \<open>Lift Data-flow Tree Refinement to Graph Refinement\<close>
-
 
 theorem graph_semantics_preservation:
   assumes a: "e1' \<ge> e2'"
@@ -475,23 +566,23 @@ proof -
   fix n e1
   assume e: "n \<in> ids g1"
   assume f: "(g1 \<turnstile> n \<simeq> e1)"
-
   show "\<exists> e2. (g2 \<turnstile> n \<simeq> e2) \<and> e1 \<ge> e2"
   proof (cases "n = n'")
     case True
-    have g: "e1 = e1'" using c f True repDet by simp
+    have g: "e1 = e1'" 
+      using f by (simp add: repDet True c)
     have h: "(g2 \<turnstile> n \<simeq> e2') \<and> e1' \<ge> e2'"
-      using True a d by blast
+      using a by (simp add: d True)
     then show ?thesis 
-      using g by blast
+      by (auto simp add: g)
   next
     case False
     have "n \<notin> {n'}"
-      using False by simp
+      by (simp add: False)
     then have i: "kind g1 n = kind g2 n \<and> stamp g1 n = stamp g2 n"
-      using not_excluded_keep_type
-      using b e by presburger
-    show ?thesis using f i
+      using not_excluded_keep_type b e by presburger
+    show ?thesis 
+      using f i
     proof (induction e1)
       case (ConstantNode n c)
       then show ?case
@@ -502,24 +593,26 @@ proof -
         by (metis eq_refl rep.ParameterNode)
     next
       case (ConditionalNode n c t f ce1 te1 fe1)
-      have k: "g1 \<turnstile> n \<simeq> ConditionalExpr ce1 te1 fe1" using f ConditionalNode
-        by (simp add: ConditionalNode.hyps(2) rep.ConditionalNode)
+      have k: "g1 \<turnstile> n \<simeq> ConditionalExpr ce1 te1 fe1" 
+        using ConditionalNode by (simp add: ConditionalNode.hyps(2) rep.ConditionalNode f)
       obtain cn tn fn where l: "kind g1 n = ConditionalNode cn tn fn"
-        using ConditionalNode.hyps(1) by blast
+        by (auto simp add: ConditionalNode.hyps(1))
       then have mc: "g1 \<turnstile> cn \<simeq> ce1"
-        using ConditionalNode.hyps(1) ConditionalNode.hyps(2) by fastforce
+        using ConditionalNode.hyps(1,2) by simp
       from l have mt: "g1 \<turnstile> tn \<simeq> te1"
-        using ConditionalNode.hyps(1) ConditionalNode.hyps(3) by fastforce
+        using ConditionalNode.hyps(1,3) by simp
       from l have mf: "g1 \<turnstile> fn \<simeq> fe1"
-        using ConditionalNode.hyps(1) ConditionalNode.hyps(4) by fastforce
+        using ConditionalNode.hyps(1,4) by simp
       then show ?case
       proof -
-        have "g1 \<turnstile> cn \<simeq> ce1" using mc by simp
-        have "g1 \<turnstile> tn \<simeq> te1" using mt by simp
-        have "g1 \<turnstile> fn \<simeq> fe1" using mf by simp
+        have "g1 \<turnstile> cn \<simeq> ce1" 
+          by (simp add: mc)
+        have "g1 \<turnstile> tn \<simeq> te1" 
+          by (simp add: mt)
+        have "g1 \<turnstile> fn \<simeq> fe1" 
+          by (simp add: mf)
         have cer: "\<exists> ce2. (g2 \<turnstile> cn \<simeq> ce2) \<and> ce1 \<ge> ce2"
-          using ConditionalNode
-          using a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          using ConditionalNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_ternary ConditionalNode)
         have ter: "\<exists> te2. (g2 \<turnstile> tn \<simeq> te2) \<and> te1 \<ge> te2"
           using ConditionalNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
@@ -527,561 +620,758 @@ proof -
         have "\<exists> fe2. (g2 \<turnstile> fn \<simeq> fe2) \<and> fe1 \<ge> fe2"
           using ConditionalNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_ternary ConditionalNode)
-        then have "\<exists> ce2 te2 fe2. (g2 \<turnstile> n \<simeq> ConditionalExpr ce2 te2 fe2) \<and> ConditionalExpr ce1 te1 fe1 \<ge> ConditionalExpr ce2 te2 fe2"
-          using ConditionalNode.prems l rep.ConditionalNode cer ter
-          by (smt (verit) mono_conditional)
+        then have "\<exists> ce2 te2 fe2. (g2 \<turnstile> n \<simeq> ConditionalExpr ce2 te2 fe2) \<and> 
+               ConditionalExpr ce1 te1 fe1 \<ge> ConditionalExpr ce2 te2 fe2"
+          apply meson
+          by (smt (verit, best) mono_conditional ConditionalNode.prems l rep.ConditionalNode cer ter)
         then show ?thesis
           by meson
       qed
     next
       case (AbsNode n x xe1)
-      have k: "g1 \<turnstile> n \<simeq> UnaryExpr UnaryAbs xe1" using f AbsNode
-        by (simp add: AbsNode.hyps(2) rep.AbsNode)
+      have k: "g1 \<turnstile> n \<simeq> UnaryExpr UnaryAbs xe1" 
+        using AbsNode by (simp add: AbsNode.hyps(2) rep.AbsNode f)
       obtain xn where l: "kind g1 n = AbsNode xn"
-        using AbsNode.hyps(1) by blast
+        by (auto simp add: AbsNode.hyps(1))
       then have m: "g1 \<turnstile> xn \<simeq> xe1"
-        using AbsNode.hyps(1) AbsNode.hyps(2) by fastforce
+        using AbsNode.hyps(1,2) by simp
       then show ?case
       proof (cases "xn = n'")
         case True
-        then have n: "xe1 = e1'" using c m repDet by simp
-        then have ev: "g2 \<turnstile> n \<simeq> UnaryExpr UnaryAbs e2'" using AbsNode.hyps(1) l m n
-          using AbsNode.prems True d rep.AbsNode by simp
+        then have n: "xe1 = e1'" 
+          using m by (simp add: repDet c)
+        then have ev: "g2 \<turnstile> n \<simeq> UnaryExpr UnaryAbs e2'" 
+          using l d by (simp add: rep.AbsNode True AbsNode.prems)
         then have r: "UnaryExpr UnaryAbs e1' \<ge> UnaryExpr UnaryAbs e2'"
           by (meson a mono_unary)
-        then show ?thesis using ev r
-          by (metis n)
+        then show ?thesis
+          by (metis n ev)
       next
         case False
-        have "g1 \<turnstile> xn \<simeq> xe1" using m by simp
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: m)
         have "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
-          using AbsNode
-          using False b encodes_contains l not_excluded_keep_type not_in_g singleton_iff
+          using AbsNode False b encodes_contains l not_excluded_keep_type not_in_g singleton_iff
           by (metis_node_eq_unary AbsNode)
-        then have "\<exists> xe2. (g2 \<turnstile> n \<simeq> UnaryExpr UnaryAbs xe2) \<and> UnaryExpr UnaryAbs xe1 \<ge> UnaryExpr UnaryAbs xe2"
+        then have "\<exists> xe2. (g2 \<turnstile> n \<simeq> UnaryExpr UnaryAbs xe2) \<and> 
+           UnaryExpr UnaryAbs xe1 \<ge> UnaryExpr UnaryAbs xe2"
           by (metis AbsNode.prems l mono_unary rep.AbsNode)
         then show ?thesis
           by meson
       qed
     next
-      case (NotNode n x xe1)
-      have k: "g1 \<turnstile> n \<simeq> UnaryExpr UnaryNot xe1" using f NotNode
-        by (simp add: NotNode.hyps(2) rep.NotNode)
-      obtain xn where l: "kind g1 n = NotNode xn"
-        using NotNode.hyps(1) by blast
+      case (ReverseBytesNode n x xe1)
+      have k: "g1 \<turnstile> n \<simeq> UnaryExpr UnaryReverseBytes xe1"
+        by (simp add: ReverseBytesNode.hyps(1,2) rep.ReverseBytesNode)
+      obtain xn where l: "kind g1 n = ReverseBytesNode xn"
+        by (simp add: ReverseBytesNode.hyps(1))
       then have m: "g1 \<turnstile> xn \<simeq> xe1"
-        using NotNode.hyps(1) NotNode.hyps(2) by fastforce
+        by (metis IRNode.inject(45) ReverseBytesNode.hyps(1,2))
       then show ?case
       proof (cases "xn = n'")
         case True
-        then have n: "xe1 = e1'" using c m repDet by simp
-        then have ev: "g2 \<turnstile> n \<simeq> UnaryExpr UnaryNot e2'" using NotNode.hyps(1) l m n
-          using NotNode.prems True d rep.NotNode by simp
-        then have r: "UnaryExpr UnaryNot e1' \<ge> UnaryExpr UnaryNot e2'"
+        then have n: "xe1 = e1'"
+          using m by (simp add: repDet c)
+        then have ev: "g2 \<turnstile> n \<simeq> UnaryExpr UnaryReverseBytes e2'"
+          using ReverseBytesNode.prems True d l rep.ReverseBytesNode by presburger
+        then have r: "UnaryExpr UnaryReverseBytes e1' \<ge> UnaryExpr UnaryReverseBytes e2'"
           by (meson a mono_unary)
-        then show ?thesis using ev r
-          by (metis n)
+        then show ?thesis
+          by (metis n ev)
       next
         case False
-        have "g1 \<turnstile> xn \<simeq> xe1" using m by simp
+        have "g1 \<turnstile> xn \<simeq> xe1"
+          by (simp add: m)
         have "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
-          using NotNode
-          using False i b l not_excluded_keep_type singletonD no_encoding
+          by (metis False IRNode.inject(45) ReverseBytesNode.IH ReverseBytesNode.hyps(1,2) b l
+              encodes_contains ids_some not_excluded_keep_type singleton_iff)
+        then have "\<exists> xe2. (g2 \<turnstile> n \<simeq> UnaryExpr UnaryReverseBytes xe2) \<and>
+  UnaryExpr UnaryReverseBytes xe1 \<ge> UnaryExpr UnaryReverseBytes xe2"
+          by (metis ReverseBytesNode.prems l mono_unary rep.ReverseBytesNode)
+        then show ?thesis
+          by meson
+      qed
+    next
+      case (BitCountNode n x xe1)
+      have k: "g1 \<turnstile> n \<simeq> UnaryExpr UnaryBitCount xe1"
+        by (simp add: BitCountNode.hyps(1,2) rep.BitCountNode)
+      obtain xn where l: "kind g1 n = BitCountNode xn"
+        by (simp add: BitCountNode.hyps(1))
+      then have m: "g1 \<turnstile> xn \<simeq> xe1"
+        by (metis BitCountNode.hyps(1,2) IRNode.inject(6))
+      then show ?case
+      proof (cases "xn = n'")
+        case True
+        then have n: "xe1 = e1'"
+          using m by (simp add: repDet c)
+        then have ev: "g2 \<turnstile> n \<simeq> UnaryExpr UnaryBitCount e2'"
+          using BitCountNode.prems True d l rep.BitCountNode by presburger
+        then have r: "UnaryExpr UnaryBitCount e1' \<ge> UnaryExpr UnaryBitCount e2'"
+          by (meson a mono_unary)
+        then show ?thesis
+          by (metis n ev)
+      next
+        case False
+        have "g1 \<turnstile> xn \<simeq> xe1"
+          by (simp add: m)
+        have "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
+          by (metis BitCountNode.IH BitCountNode.hyps(1) False IRNode.inject(6) b emptyE insertE l m
+              no_encoding not_excluded_keep_type)
+        then have "\<exists> xe2. (g2 \<turnstile> n \<simeq> UnaryExpr UnaryBitCount xe2) \<and>
+      UnaryExpr UnaryBitCount xe1 \<ge> UnaryExpr UnaryBitCount xe2"
+          by (metis BitCountNode.prems l mono_unary rep.BitCountNode)
+        then show ?thesis
+          by meson
+      qed
+    next
+      case (NotNode n x xe1)
+      have k: "g1 \<turnstile> n \<simeq> UnaryExpr UnaryNot xe1" 
+        using NotNode by (simp add: NotNode.hyps(2) rep.NotNode f)
+      obtain xn where l: "kind g1 n = NotNode xn"
+        by (auto simp add: NotNode.hyps(1))
+      then have m: "g1 \<turnstile> xn \<simeq> xe1"
+        using NotNode.hyps(1,2) by simp
+      then show ?case
+      proof (cases "xn = n'")
+        case True
+        then have n: "xe1 = e1'" 
+          using m by (simp add: repDet c)
+        then have ev: "g2 \<turnstile> n \<simeq> UnaryExpr UnaryNot e2'" 
+          using l by (simp add: rep.NotNode d True NotNode.prems)
+        then have r: "UnaryExpr UnaryNot e1' \<ge> UnaryExpr UnaryNot e2'"
+          by (meson a mono_unary)
+        then show ?thesis
+          by (metis n ev)
+      next
+        case False
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: m)
+        have "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
+          using NotNode False b l not_excluded_keep_type singletonD no_encoding
           by (metis_node_eq_unary NotNode)
-        then have "\<exists> xe2. (g2 \<turnstile> n \<simeq> UnaryExpr UnaryNot xe2) \<and> UnaryExpr UnaryNot xe1 \<ge> UnaryExpr UnaryNot xe2"
+        then have "\<exists> xe2. (g2 \<turnstile> n \<simeq> UnaryExpr UnaryNot xe2) \<and> 
+           UnaryExpr UnaryNot xe1 \<ge> UnaryExpr UnaryNot xe2"
           by (metis NotNode.prems l mono_unary rep.NotNode)
         then show ?thesis
           by meson
       qed
     next
       case (NegateNode n x xe1)
-      have k: "g1 \<turnstile> n \<simeq> UnaryExpr UnaryNeg xe1" using f NegateNode
-        by (simp add: NegateNode.hyps(2) rep.NegateNode)
+      have k: "g1 \<turnstile> n \<simeq> UnaryExpr UnaryNeg xe1" 
+        using NegateNode by (simp add: NegateNode.hyps(2) rep.NegateNode f)
       obtain xn where l: "kind g1 n = NegateNode xn"
-        using NegateNode.hyps(1) by blast
+        by (auto simp add: NegateNode.hyps(1))
       then have m: "g1 \<turnstile> xn \<simeq> xe1"
-        using NegateNode.hyps(1) NegateNode.hyps(2) by fastforce
+        using NegateNode.hyps(1,2) by simp
       then show ?case
       proof (cases "xn = n'")
         case True
-        then have n: "xe1 = e1'" using c m repDet by simp
-        then have ev: "g2 \<turnstile> n \<simeq> UnaryExpr UnaryNeg e2'" using NegateNode.hyps(1) l m n
-          using NegateNode.prems True d rep.NegateNode by simp
+        then have n: "xe1 = e1'" 
+          using m by (simp add: c repDet)
+        then have ev: "g2 \<turnstile> n \<simeq> UnaryExpr UnaryNeg e2'" 
+          using l by (simp add: rep.NegateNode True NegateNode.prems d)
         then have r: "UnaryExpr UnaryNeg e1' \<ge> UnaryExpr UnaryNeg e2'"
           by (meson a mono_unary)
-        then show ?thesis using ev r
-          by (metis n)
+        then show ?thesis
+          by (metis n ev)
       next
         case False
-        have "g1 \<turnstile> xn \<simeq> xe1" using m by simp
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: m)
         have "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
-          using NegateNode
-          using False i b l not_excluded_keep_type singletonD no_encoding
+          using NegateNode False b l not_excluded_keep_type singletonD no_encoding
           by (metis_node_eq_unary NegateNode)
-        then have "\<exists> xe2. (g2 \<turnstile> n \<simeq> UnaryExpr UnaryNeg xe2) \<and> UnaryExpr UnaryNeg xe1 \<ge> UnaryExpr UnaryNeg xe2"
+        then have "\<exists> xe2. (g2 \<turnstile> n \<simeq> UnaryExpr UnaryNeg xe2) \<and> 
+           UnaryExpr UnaryNeg xe1 \<ge> UnaryExpr UnaryNeg xe2"
           by (metis NegateNode.prems l mono_unary rep.NegateNode)
         then show ?thesis
           by meson
       qed
     next
       case (LogicNegationNode n x xe1)
-      have k: "g1 \<turnstile> n \<simeq> UnaryExpr UnaryLogicNegation xe1" using f LogicNegationNode
-        by (simp add: LogicNegationNode.hyps(2) rep.LogicNegationNode)
+      have k: "g1 \<turnstile> n \<simeq> UnaryExpr UnaryLogicNegation xe1" 
+        using LogicNegationNode by (simp add: LogicNegationNode.hyps(2) rep.LogicNegationNode)
       obtain xn where l: "kind g1 n = LogicNegationNode xn"
-        using LogicNegationNode.hyps(1) by blast
+        by (simp add: LogicNegationNode.hyps(1))
       then have m: "g1 \<turnstile> xn \<simeq> xe1"
-        using LogicNegationNode.hyps(1) LogicNegationNode.hyps(2) by fastforce
+        using LogicNegationNode.hyps(1,2) by simp
       then show ?case
       proof (cases "xn = n'")
         case True
-        then have n: "xe1 = e1'" using c m repDet by simp
-        then have ev: "g2 \<turnstile> n \<simeq> UnaryExpr UnaryLogicNegation e2'" using LogicNegationNode.hyps(1) l m n
-          using LogicNegationNode.prems True d rep.LogicNegationNode by simp
+        then have n: "xe1 = e1'" 
+          using m by (simp add: c repDet)
+        then have ev: "g2 \<turnstile> n \<simeq> UnaryExpr UnaryLogicNegation e2'" 
+          using l by (simp add: rep.LogicNegationNode True LogicNegationNode.prems d
+                                LogicNegationNode.hyps(1))
         then have r: "UnaryExpr UnaryLogicNegation e1' \<ge> UnaryExpr UnaryLogicNegation e2'"
           by (meson a mono_unary)
-        then show ?thesis using ev r
-          by (metis n)
+        then show ?thesis
+          by (metis n ev)
       next
         case False
-        have "g1 \<turnstile> xn \<simeq> xe1" using m by simp
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: m)
         have "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
-          using LogicNegationNode
-          using False i b l not_excluded_keep_type singletonD no_encoding
+          using LogicNegationNode False b l not_excluded_keep_type singletonD no_encoding
           by (metis_node_eq_unary LogicNegationNode)
-        then have "\<exists> xe2. (g2 \<turnstile> n \<simeq> UnaryExpr UnaryLogicNegation xe2) \<and> UnaryExpr UnaryLogicNegation xe1 \<ge> UnaryExpr UnaryLogicNegation xe2"
+        then have "\<exists> xe2. (g2 \<turnstile> n \<simeq> UnaryExpr UnaryLogicNegation xe2) \<and> 
+ UnaryExpr UnaryLogicNegation xe1 \<ge> UnaryExpr UnaryLogicNegation xe2"
           by (metis LogicNegationNode.prems l mono_unary rep.LogicNegationNode)
         then show ?thesis
           by meson
       qed
     next
       case (AddNode n x y xe1 ye1)
-      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinAdd xe1 ye1" using f AddNode
-        by (simp add: AddNode.hyps(2) rep.AddNode)
+      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinAdd xe1 ye1" 
+        using AddNode by (simp add: AddNode.hyps(2) rep.AddNode f)
       obtain xn yn where l: "kind g1 n = AddNode xn yn"
-        using AddNode.hyps(1) by blast
+        by (simp add: AddNode.hyps(1))
       then have mx: "g1 \<turnstile> xn \<simeq> xe1"
-        using AddNode.hyps(1) AddNode.hyps(2) by fastforce
+        using AddNode.hyps(1,2) by simp
       from l have my: "g1 \<turnstile> yn \<simeq> ye1"
-        using AddNode.hyps(1) AddNode.hyps(3) by fastforce
+        using AddNode.hyps(1,3) by simp
       then show ?case
       proof -
-        have "g1 \<turnstile> xn \<simeq> xe1" using mx by simp
-        have "g1 \<turnstile> yn \<simeq> ye1" using my by simp
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: mx)
+        have "g1 \<turnstile> yn \<simeq> ye1" 
+          by (simp add: my)
         have xer: "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
-          using AddNode
-          using a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          using AddNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary AddNode)
         have "\<exists> ye2. (g2 \<turnstile> yn \<simeq> ye2) \<and> ye1 \<ge> ye2"
-          using AddNode
-          using a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          using AddNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary AddNode)
-        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinAdd xe2 ye2) \<and> BinaryExpr BinAdd xe1 ye1 \<ge> BinaryExpr BinAdd xe2 ye2"
+        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinAdd xe2 ye2) \<and> 
+            BinaryExpr BinAdd xe1 ye1 \<ge> BinaryExpr BinAdd xe2 ye2"
           by (metis AddNode.prems l mono_binary rep.AddNode xer)
         then show ?thesis
           by meson
       qed
     next
       case (MulNode n x y xe1 ye1)
-      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinMul xe1 ye1" using f MulNode
-        by (simp add: MulNode.hyps(2) rep.MulNode)
+      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinMul xe1 ye1" 
+        using MulNode by (simp add: MulNode.hyps(2) rep.MulNode f)
       obtain xn yn where l: "kind g1 n = MulNode xn yn"
-        using MulNode.hyps(1) by blast
+        by (simp add: MulNode.hyps(1))
       then have mx: "g1 \<turnstile> xn \<simeq> xe1"
-        using MulNode.hyps(1) MulNode.hyps(2) by fastforce
+        using MulNode.hyps(1,2) by simp
       from l have my: "g1 \<turnstile> yn \<simeq> ye1"
-        using MulNode.hyps(1) MulNode.hyps(3) by fastforce
+        using MulNode.hyps(1,3) by simp
       then show ?case
       proof -
-        have "g1 \<turnstile> xn \<simeq> xe1" using mx by simp
-        have "g1 \<turnstile> yn \<simeq> ye1" using my by simp
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: mx)
+        have "g1 \<turnstile> yn \<simeq> ye1" 
+          by (simp add: my)
         have xer: "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
-          using MulNode
-          using a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          using MulNode  a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary MulNode)
         have "\<exists> ye2. (g2 \<turnstile> yn \<simeq> ye2) \<and> ye1 \<ge> ye2"
-          using MulNode
-          using a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          using MulNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary MulNode)
-        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinMul xe2 ye2) \<and> BinaryExpr BinMul xe1 ye1 \<ge> BinaryExpr BinMul xe2 ye2"
+        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinMul xe2 ye2) \<and> 
+            BinaryExpr BinMul xe1 ye1 \<ge> BinaryExpr BinMul xe2 ye2"
           by (metis MulNode.prems l mono_binary rep.MulNode xer)
         then show ?thesis
           by meson
       qed
     next
       case (SubNode n x y xe1 ye1)
-      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinSub xe1 ye1" using f SubNode
-        by (simp add: SubNode.hyps(2) rep.SubNode)
+      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinSub xe1 ye1" 
+        using SubNode by (simp add: SubNode.hyps(2) rep.SubNode f)
       obtain xn yn where l: "kind g1 n = SubNode xn yn"
-        using SubNode.hyps(1) by blast
+        by (simp add: SubNode.hyps(1))
       then have mx: "g1 \<turnstile> xn \<simeq> xe1"
-        using SubNode.hyps(1) SubNode.hyps(2) by fastforce
+        using SubNode.hyps(1,2) by simp
       from l have my: "g1 \<turnstile> yn \<simeq> ye1"
-        using SubNode.hyps(1) SubNode.hyps(3) by fastforce
+        using SubNode.hyps(1,3) by simp
       then show ?case
       proof -
-        have "g1 \<turnstile> xn \<simeq> xe1" using mx by simp
-        have "g1 \<turnstile> yn \<simeq> ye1" using my by simp
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: mx)
+        have "g1 \<turnstile> yn \<simeq> ye1" 
+          by (simp add: my)
         have xer: "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
-          using SubNode
-          using a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          using SubNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary SubNode)
         have "\<exists> ye2. (g2 \<turnstile> yn \<simeq> ye2) \<and> ye1 \<ge> ye2"
           using SubNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary SubNode)
-        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinSub xe2 ye2) \<and> BinaryExpr BinSub xe1 ye1 \<ge> BinaryExpr BinSub xe2 ye2"
+        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinSub xe2 ye2) \<and> 
+            BinaryExpr BinSub xe1 ye1 \<ge> BinaryExpr BinSub xe2 ye2"
           by (metis SubNode.prems l mono_binary rep.SubNode xer)
         then show ?thesis
           by meson
       qed
     next
       case (AndNode n x y xe1 ye1)
-      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinAnd xe1 ye1" using f AndNode
-        by (simp add: AndNode.hyps(2) rep.AndNode)
+      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinAnd xe1 ye1" 
+        using AndNode by (simp add: AndNode.hyps(2) rep.AndNode f)
       obtain xn yn where l: "kind g1 n = AndNode xn yn"
-        using AndNode.hyps(1) by blast
+        using AndNode.hyps(1) by simp
       then have mx: "g1 \<turnstile> xn \<simeq> xe1"
-        using AndNode.hyps(1) AndNode.hyps(2) by fastforce
+        using AndNode.hyps(1,2) by simp
       from l have my: "g1 \<turnstile> yn \<simeq> ye1"
-        using AndNode.hyps(1) AndNode.hyps(3) by fastforce
+        using AndNode.hyps(1,3) by simp
       then show ?case
       proof -
-        have "g1 \<turnstile> xn \<simeq> xe1" using mx by simp
-        have "g1 \<turnstile> yn \<simeq> ye1" using my by simp
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: mx)
+        have "g1 \<turnstile> yn \<simeq> ye1" 
+          by (simp add: my)
         have xer: "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
-          using AndNode
-          using a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          using AndNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary AndNode)
         have "\<exists> ye2. (g2 \<turnstile> yn \<simeq> ye2) \<and> ye1 \<ge> ye2"
           using AndNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary AndNode)
-        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinAnd xe2 ye2) \<and> BinaryExpr BinAnd xe1 ye1 \<ge> BinaryExpr BinAnd xe2 ye2"
+        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinAnd xe2 ye2) \<and> 
+            BinaryExpr BinAnd xe1 ye1 \<ge> BinaryExpr BinAnd xe2 ye2"
           by (metis AndNode.prems l mono_binary rep.AndNode xer)
         then show ?thesis
           by meson
       qed
     next
       case (OrNode n x y xe1 ye1)
-      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinOr xe1 ye1" using f OrNode
-        by (simp add: OrNode.hyps(2) rep.OrNode)
+      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinOr xe1 ye1" 
+        using OrNode by (simp add: OrNode.hyps(2) rep.OrNode f)
       obtain xn yn where l: "kind g1 n = OrNode xn yn"
-        using OrNode.hyps(1) by blast
+        using OrNode.hyps(1) by simp
       then have mx: "g1 \<turnstile> xn \<simeq> xe1"
-        using OrNode.hyps(1) OrNode.hyps(2) by fastforce
+        using OrNode.hyps(1,2) by simp
       from l have my: "g1 \<turnstile> yn \<simeq> ye1"
-        using OrNode.hyps(1) OrNode.hyps(3) by fastforce
+        using OrNode.hyps(1,3) by simp
       then show ?case
       proof -
-        have "g1 \<turnstile> xn \<simeq> xe1" using mx by simp
-        have "g1 \<turnstile> yn \<simeq> ye1" using my by simp
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: mx)
+        have "g1 \<turnstile> yn \<simeq> ye1" 
+          by (simp add: my)
         have xer: "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
-          using OrNode
-          using a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          using OrNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary OrNode)
         have "\<exists> ye2. (g2 \<turnstile> yn \<simeq> ye2) \<and> ye1 \<ge> ye2"
           using OrNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary OrNode)
-        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinOr xe2 ye2) \<and> BinaryExpr BinOr xe1 ye1 \<ge> BinaryExpr BinOr xe2 ye2"
+        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinOr xe2 ye2) \<and> 
+             BinaryExpr BinOr xe1 ye1 \<ge> BinaryExpr BinOr xe2 ye2"
           by (metis OrNode.prems l mono_binary rep.OrNode xer)
         then show ?thesis
           by meson
       qed
     next
       case (XorNode n x y xe1 ye1)
-      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinXor xe1 ye1" using f XorNode
-        by (simp add: XorNode.hyps(2) rep.XorNode)
+      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinXor xe1 ye1" 
+        using XorNode by (simp add: XorNode.hyps(2) rep.XorNode f)
       obtain xn yn where l: "kind g1 n = XorNode xn yn"
-        using XorNode.hyps(1) by blast
+        using XorNode.hyps(1) by simp
       then have mx: "g1 \<turnstile> xn \<simeq> xe1"
-        using XorNode.hyps(1) XorNode.hyps(2) by fastforce
+        using XorNode.hyps(1,2) by simp
       from l have my: "g1 \<turnstile> yn \<simeq> ye1"
-        using XorNode.hyps(1) XorNode.hyps(3) by fastforce
+        using XorNode.hyps(1,3) by simp
       then show ?case
       proof -
-        have "g1 \<turnstile> xn \<simeq> xe1" using mx by simp
-        have "g1 \<turnstile> yn \<simeq> ye1" using my by simp
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: mx)
+        have "g1 \<turnstile> yn \<simeq> ye1" 
+          by (simp add: my)
         have xer: "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
-          using XorNode
-          using a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          using XorNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary XorNode)
         have "\<exists> ye2. (g2 \<turnstile> yn \<simeq> ye2) \<and> ye1 \<ge> ye2"
           using XorNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary XorNode)
-        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinXor xe2 ye2) \<and> BinaryExpr BinXor xe1 ye1 \<ge> BinaryExpr BinXor xe2 ye2"
+        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinXor xe2 ye2) \<and> 
+            BinaryExpr BinXor xe1 ye1 \<ge> BinaryExpr BinXor xe2 ye2"
           by (metis XorNode.prems l mono_binary rep.XorNode xer)
         then show ?thesis
           by meson
       qed
     next
     case (ShortCircuitOrNode n x y xe1 ye1)
-      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinShortCircuitOr xe1 ye1" using f ShortCircuitOrNode
-        by (simp add: ShortCircuitOrNode.hyps(2) rep.ShortCircuitOrNode)
+    have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinShortCircuitOr xe1 ye1" 
+      using ShortCircuitOrNode by (simp add: ShortCircuitOrNode.hyps(2) rep.ShortCircuitOrNode f)
       obtain xn yn where l: "kind g1 n = ShortCircuitOrNode xn yn"
-        using ShortCircuitOrNode.hyps(1) by blast
+        using ShortCircuitOrNode.hyps(1) by simp
       then have mx: "g1 \<turnstile> xn \<simeq> xe1"
-        using ShortCircuitOrNode.hyps(1) ShortCircuitOrNode.hyps(2) by fastforce
+        using ShortCircuitOrNode.hyps(1,2) by simp
       from l have my: "g1 \<turnstile> yn \<simeq> ye1"
-        using ShortCircuitOrNode.hyps(1) ShortCircuitOrNode.hyps(3) by fastforce
+        using ShortCircuitOrNode.hyps(1,3) by simp
       then show ?case
       proof -
-        have "g1 \<turnstile> xn \<simeq> xe1" using mx by simp
-        have "g1 \<turnstile> yn \<simeq> ye1" using my by simp
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: mx)
+        have "g1 \<turnstile> yn \<simeq> ye1" 
+          by (simp add: my)
         have xer: "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
-          using ShortCircuitOrNode
-          using a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          using ShortCircuitOrNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary ShortCircuitOrNode)
         have "\<exists> ye2. (g2 \<turnstile> yn \<simeq> ye2) \<and> ye1 \<ge> ye2"
           using ShortCircuitOrNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary ShortCircuitOrNode)
-        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinShortCircuitOr xe2 ye2) \<and> BinaryExpr BinShortCircuitOr xe1 ye1 \<ge> BinaryExpr BinShortCircuitOr xe2 ye2"
+        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinShortCircuitOr xe2 ye2) \<and> 
+ BinaryExpr BinShortCircuitOr xe1 ye1 \<ge> BinaryExpr BinShortCircuitOr xe2 ye2"
           by (metis ShortCircuitOrNode.prems l mono_binary rep.ShortCircuitOrNode xer)
         then show ?thesis
           by meson
       qed
     next
       case (LeftShiftNode n x y xe1 ye1)
-      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinLeftShift xe1 ye1" using f LeftShiftNode
-        by (simp add: LeftShiftNode.hyps(2) rep.LeftShiftNode)
+      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinLeftShift xe1 ye1" 
+        using LeftShiftNode by (simp add: LeftShiftNode.hyps(2) rep.LeftShiftNode f)
       obtain xn yn where l: "kind g1 n = LeftShiftNode xn yn"
-        using LeftShiftNode.hyps(1) by blast
+        using LeftShiftNode.hyps(1) by simp
       then have mx: "g1 \<turnstile> xn \<simeq> xe1"
-        using LeftShiftNode.hyps(1) LeftShiftNode.hyps(2) by fastforce
+        using LeftShiftNode.hyps(1,2) by simp
       from l have my: "g1 \<turnstile> yn \<simeq> ye1"
-        using LeftShiftNode.hyps(1) LeftShiftNode.hyps(3) by fastforce
+        using LeftShiftNode.hyps(1,3) by simp
       then show ?case
       proof -
-        have "g1 \<turnstile> xn \<simeq> xe1" using mx by simp
-        have "g1 \<turnstile> yn \<simeq> ye1" using my by simp
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: mx)
+        have "g1 \<turnstile> yn \<simeq> ye1" 
+          by (simp add: my)
         have xer: "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
-          using LeftShiftNode
-          using a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          using LeftShiftNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary LeftShiftNode)
         have "\<exists> ye2. (g2 \<turnstile> yn \<simeq> ye2) \<and> ye1 \<ge> ye2"
           using LeftShiftNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary LeftShiftNode)
-        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinLeftShift xe2 ye2) \<and> BinaryExpr BinLeftShift xe1 ye1 \<ge> BinaryExpr BinLeftShift xe2 ye2"
+        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinLeftShift xe2 ye2) \<and> 
+      BinaryExpr BinLeftShift xe1 ye1 \<ge> BinaryExpr BinLeftShift xe2 ye2"
           by (metis LeftShiftNode.prems l mono_binary rep.LeftShiftNode xer)
         then show ?thesis
           by meson
       qed
     next
       case (RightShiftNode n x y xe1 ye1)
-      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinRightShift xe1 ye1" using f RightShiftNode
-        by (simp add: RightShiftNode.hyps(2) rep.RightShiftNode)
+      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinRightShift xe1 ye1" 
+        using RightShiftNode by (simp add: RightShiftNode.hyps(2) rep.RightShiftNode)
       obtain xn yn where l: "kind g1 n = RightShiftNode xn yn"
-        using RightShiftNode.hyps(1) by blast
+        using RightShiftNode.hyps(1) by simp
       then have mx: "g1 \<turnstile> xn \<simeq> xe1"
-        using RightShiftNode.hyps(1) RightShiftNode.hyps(2) by fastforce
+        using RightShiftNode.hyps(1,2) by simp
       from l have my: "g1 \<turnstile> yn \<simeq> ye1"
-        using RightShiftNode.hyps(1) RightShiftNode.hyps(3) by fastforce
+        using RightShiftNode.hyps(1,3) by simp
       then show ?case
       proof -
-        have "g1 \<turnstile> xn \<simeq> xe1" using mx by simp
-        have "g1 \<turnstile> yn \<simeq> ye1" using my by simp
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: mx)
+        have "g1 \<turnstile> yn \<simeq> ye1" 
+          by (simp add: my)
         have xer: "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
-          using RightShiftNode
-          using a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          using RightShiftNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary RightShiftNode)
         have "\<exists> ye2. (g2 \<turnstile> yn \<simeq> ye2) \<and> ye1 \<ge> ye2"
           using RightShiftNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary RightShiftNode)
-        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinRightShift xe2 ye2) \<and> BinaryExpr BinRightShift xe1 ye1 \<ge> BinaryExpr BinRightShift xe2 ye2"
+        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinRightShift xe2 ye2) \<and> 
+     BinaryExpr BinRightShift xe1 ye1 \<ge> BinaryExpr BinRightShift xe2 ye2"
           by (metis RightShiftNode.prems l mono_binary rep.RightShiftNode xer)
         then show ?thesis
           by meson
       qed
     next
       case (UnsignedRightShiftNode n x y xe1 ye1)
-      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinURightShift xe1 ye1" using f UnsignedRightShiftNode
-        by (simp add: UnsignedRightShiftNode.hyps(2) rep.UnsignedRightShiftNode)
+      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinURightShift xe1 ye1" 
+        using UnsignedRightShiftNode by (simp add: UnsignedRightShiftNode.hyps(2) 
+                                                   rep.UnsignedRightShiftNode)
       obtain xn yn where l: "kind g1 n = UnsignedRightShiftNode xn yn"
-        using UnsignedRightShiftNode.hyps(1) by blast
+        using UnsignedRightShiftNode.hyps(1) by simp
       then have mx: "g1 \<turnstile> xn \<simeq> xe1"
-        using UnsignedRightShiftNode.hyps(1) UnsignedRightShiftNode.hyps(2) by fastforce
+        using UnsignedRightShiftNode.hyps(1,2) by simp
       from l have my: "g1 \<turnstile> yn \<simeq> ye1"
-        using UnsignedRightShiftNode.hyps(1) UnsignedRightShiftNode.hyps(3) by fastforce
+        using UnsignedRightShiftNode.hyps(1,3) by simp
       then show ?case
       proof -
-        have "g1 \<turnstile> xn \<simeq> xe1" using mx by simp
-        have "g1 \<turnstile> yn \<simeq> ye1" using my by simp
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: mx)
+        have "g1 \<turnstile> yn \<simeq> ye1" 
+          by (simp add: my)
         have xer: "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
-          using UnsignedRightShiftNode
-          using a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          using UnsignedRightShiftNode a b c d no_encoding not_excluded_keep_type repDet singletonD 
+                l
           by (metis_node_eq_binary UnsignedRightShiftNode)
         have "\<exists> ye2. (g2 \<turnstile> yn \<simeq> ye2) \<and> ye1 \<ge> ye2"
-          using UnsignedRightShiftNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          using UnsignedRightShiftNode a b c d no_encoding not_excluded_keep_type repDet singletonD 
+                l
           by (metis_node_eq_binary UnsignedRightShiftNode)
-        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinURightShift xe2 ye2) \<and> BinaryExpr BinURightShift xe1 ye1 \<ge> BinaryExpr BinURightShift xe2 ye2"
+        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinURightShift xe2 ye2) \<and> 
+    BinaryExpr BinURightShift xe1 ye1 \<ge> BinaryExpr BinURightShift xe2 ye2"
           by (metis UnsignedRightShiftNode.prems l mono_binary rep.UnsignedRightShiftNode xer)
         then show ?thesis
           by meson
       qed
     next
       case (IntegerBelowNode n x y xe1 ye1)
-      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinIntegerBelow xe1 ye1" using f IntegerBelowNode
-        by (simp add: IntegerBelowNode.hyps(2) rep.IntegerBelowNode)
+      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinIntegerBelow xe1 ye1" 
+        using IntegerBelowNode by (simp add: IntegerBelowNode.hyps(2) rep.IntegerBelowNode)
       obtain xn yn where l: "kind g1 n = IntegerBelowNode xn yn"
-        using IntegerBelowNode.hyps(1) by blast
+        using IntegerBelowNode.hyps(1) by simp
       then have mx: "g1 \<turnstile> xn \<simeq> xe1"
-        using IntegerBelowNode.hyps(1) IntegerBelowNode.hyps(2) by fastforce
+        using IntegerBelowNode.hyps(1,2) by simp
       from l have my: "g1 \<turnstile> yn \<simeq> ye1"
-        using IntegerBelowNode.hyps(1) IntegerBelowNode.hyps(3) by fastforce
+        using IntegerBelowNode.hyps(1,3) by simp
       then show ?case
       proof -
-        have "g1 \<turnstile> xn \<simeq> xe1" using mx by simp
-        have "g1 \<turnstile> yn \<simeq> ye1" using my by simp
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: mx)
+        have "g1 \<turnstile> yn \<simeq> ye1" 
+          by (simp add: my)
         have xer: "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
-          using IntegerBelowNode
-          using a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          using IntegerBelowNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary IntegerBelowNode)
         have "\<exists> ye2. (g2 \<turnstile> yn \<simeq> ye2) \<and> ye1 \<ge> ye2"
           using IntegerBelowNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary IntegerBelowNode)
-        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinIntegerBelow xe2 ye2) \<and> BinaryExpr BinIntegerBelow xe1 ye1 \<ge> BinaryExpr BinIntegerBelow xe2 ye2"
+        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinIntegerBelow xe2 ye2) \<and> 
+   BinaryExpr BinIntegerBelow xe1 ye1 \<ge> BinaryExpr BinIntegerBelow xe2 ye2"
           by (metis IntegerBelowNode.prems l mono_binary rep.IntegerBelowNode xer)
         then show ?thesis
           by meson
       qed
     next
       case (IntegerEqualsNode n x y xe1 ye1)
-      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinIntegerEquals xe1 ye1" using f IntegerEqualsNode
-        by (simp add: IntegerEqualsNode.hyps(2) rep.IntegerEqualsNode)
+      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinIntegerEquals xe1 ye1" 
+        using IntegerEqualsNode by (simp add: IntegerEqualsNode.hyps(2) rep.IntegerEqualsNode)
       obtain xn yn where l: "kind g1 n = IntegerEqualsNode xn yn"
-        using IntegerEqualsNode.hyps(1) by blast
+        using IntegerEqualsNode.hyps(1) by simp
       then have mx: "g1 \<turnstile> xn \<simeq> xe1"
-        using IntegerEqualsNode.hyps(1) IntegerEqualsNode.hyps(2) by fastforce
+        using IntegerEqualsNode.hyps(1,2) by simp
       from l have my: "g1 \<turnstile> yn \<simeq> ye1"
-        using IntegerEqualsNode.hyps(1) IntegerEqualsNode.hyps(3) by fastforce
+        using IntegerEqualsNode.hyps(1,3) by simp
       then show ?case
       proof -
-        have "g1 \<turnstile> xn \<simeq> xe1" using mx by simp
-        have "g1 \<turnstile> yn \<simeq> ye1" using my by simp
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: mx)
+        have "g1 \<turnstile> yn \<simeq> ye1" 
+          by (simp add: my)
         have xer: "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
-          using IntegerEqualsNode
-          using a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          using IntegerEqualsNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary IntegerEqualsNode)
         have "\<exists> ye2. (g2 \<turnstile> yn \<simeq> ye2) \<and> ye1 \<ge> ye2"
           using IntegerEqualsNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary IntegerEqualsNode)
-        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinIntegerEquals xe2 ye2) \<and> BinaryExpr BinIntegerEquals xe1 ye1 \<ge> BinaryExpr BinIntegerEquals xe2 ye2"
+        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinIntegerEquals xe2 ye2) \<and> 
+  BinaryExpr BinIntegerEquals xe1 ye1 \<ge> BinaryExpr BinIntegerEquals xe2 ye2"
           by (metis IntegerEqualsNode.prems l mono_binary rep.IntegerEqualsNode xer)
         then show ?thesis
           by meson
       qed
     next
       case (IntegerLessThanNode n x y xe1 ye1)
-      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinIntegerLessThan xe1 ye1" using f IntegerLessThanNode
-        by (simp add: IntegerLessThanNode.hyps(2) rep.IntegerLessThanNode)
+      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinIntegerLessThan xe1 ye1" 
+        using IntegerLessThanNode by (simp add: IntegerLessThanNode.hyps(2) rep.IntegerLessThanNode)
       obtain xn yn where l: "kind g1 n = IntegerLessThanNode xn yn"
-        using IntegerLessThanNode.hyps(1) by blast
+        using IntegerLessThanNode.hyps(1) by simp
       then have mx: "g1 \<turnstile> xn \<simeq> xe1"
-        using IntegerLessThanNode.hyps(1) IntegerLessThanNode.hyps(2) by fastforce
+        using IntegerLessThanNode.hyps(1,2) by simp
       from l have my: "g1 \<turnstile> yn \<simeq> ye1"
-        using IntegerLessThanNode.hyps(1) IntegerLessThanNode.hyps(3) by fastforce
+        using IntegerLessThanNode.hyps(1,3) by simp
       then show ?case
       proof -
-        have "g1 \<turnstile> xn \<simeq> xe1" using mx by simp
-        have "g1 \<turnstile> yn \<simeq> ye1" using my by simp
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: mx)
+        have "g1 \<turnstile> yn \<simeq> ye1" 
+          by (simp add: my)
         have xer: "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
-          using IntegerLessThanNode
-          using a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          using IntegerLessThanNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary IntegerLessThanNode)
         have "\<exists> ye2. (g2 \<turnstile> yn \<simeq> ye2) \<and> ye1 \<ge> ye2"
           using IntegerLessThanNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
           by (metis_node_eq_binary IntegerLessThanNode)
-        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinIntegerLessThan xe2 ye2) \<and> BinaryExpr BinIntegerLessThan xe1 ye1 \<ge> BinaryExpr BinIntegerLessThan xe2 ye2"
+        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinIntegerLessThan xe2 ye2) \<and> 
+BinaryExpr BinIntegerLessThan xe1 ye1 \<ge> BinaryExpr BinIntegerLessThan xe2 ye2"
           by (metis IntegerLessThanNode.prems l mono_binary rep.IntegerLessThanNode xer)
         then show ?thesis
           by meson
       qed
     next
+      case (IntegerTestNode n x y xe1 ye1)
+      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinIntegerTest xe1 ye1" 
+        using IntegerTestNode by (meson rep.IntegerTestNode) 
+      obtain xn yn where l: "kind g1 n = IntegerTestNode xn yn"
+        by (simp add: IntegerTestNode.hyps(1))
+      then have mx: "g1 \<turnstile> xn \<simeq> xe1"
+        using IRNode.inject(21) IntegerTestNode.hyps(1,2) by presburger
+      from l have my: "g1 \<turnstile> yn \<simeq> ye1"
+        by (metis IRNode.inject(21) IntegerTestNode.hyps(1,3))
+      then show ?case
+      proof -
+        have "g1 \<turnstile> xn \<simeq> xe1"
+          by (simp add: mx)
+        have "g1 \<turnstile> yn \<simeq> ye1"
+          by (simp add: my)
+        have xer: "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
+          using IntegerTestNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          by (metis IRNode.inject(21))
+        have "\<exists> ye2. (g2 \<turnstile> yn \<simeq> ye2) \<and> ye1 \<ge> ye2"
+          using IntegerLessThanNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          by (metis IRNode.inject(21) IntegerTestNode.IH(2) IntegerTestNode.hyps(1) my)
+        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinIntegerTest xe2 ye2) \<and> 
+    BinaryExpr BinIntegerTest xe1 ye1 \<ge> BinaryExpr BinIntegerTest xe2 ye2"
+          by (metis IntegerTestNode.prems l mono_binary xer rep.IntegerTestNode)
+        then show ?thesis
+          by meson
+      qed
+    next
+      case (IntegerNormalizeCompareNode n x y xe1 ye1)
+      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinIntegerNormalizeCompare xe1 ye1"
+        by (simp add: IntegerNormalizeCompareNode.hyps(1,2,3) rep.IntegerNormalizeCompareNode)
+      obtain xn yn where l: "kind g1 n = IntegerNormalizeCompareNode xn yn"
+        by (simp add: IntegerNormalizeCompareNode.hyps(1))
+      then have mx: "g1 \<turnstile> xn \<simeq> xe1"
+        using IRNode.inject(20) IntegerNormalizeCompareNode.hyps(1,2) by presburger
+      from l have my: "g1 \<turnstile> yn \<simeq> ye1"
+        using IRNode.inject(20) IntegerNormalizeCompareNode.hyps(1,3) by presburger
+      then show ?case
+      proof -
+        have "g1 \<turnstile> xn \<simeq> xe1"
+          by (simp add: mx)
+        have "g1 \<turnstile> yn \<simeq> ye1"
+          by (simp add: my)
+        have xer: "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
+          by (metis IRNode.inject(20) IntegerNormalizeCompareNode.IH(1) l mx no_encoding a b c d
+              IntegerNormalizeCompareNode.hyps(1) emptyE insertE not_excluded_keep_type repDet)
+        have "\<exists> ye2. (g2 \<turnstile> yn \<simeq> ye2) \<and> ye1 \<ge> ye2"
+          by (metis IRNode.inject(20) IntegerNormalizeCompareNode.IH(2) my no_encoding a b c d l
+              IntegerNormalizeCompareNode.hyps(1) emptyE insertE not_excluded_keep_type repDet)
+        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinIntegerNormalizeCompare xe2 ye2) \<and>
+    BinaryExpr BinIntegerNormalizeCompare xe1 ye1 \<ge> BinaryExpr BinIntegerNormalizeCompare xe2 ye2"
+          by (metis IntegerNormalizeCompareNode.prems l mono_binary rep.IntegerNormalizeCompareNode
+              xer)
+        then show ?thesis
+          by meson
+      qed
+    next
+      case (IntegerMulHighNode n x y xe1 ye1)
+      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinIntegerMulHigh xe1 ye1"
+        by (simp add: IntegerMulHighNode.hyps(1,2,3) rep.IntegerMulHighNode)
+      obtain xn yn where l: "kind g1 n = IntegerMulHighNode xn yn"
+        by (simp add: IntegerMulHighNode.hyps(1))
+      then have mx: "g1 \<turnstile> xn \<simeq> xe1"
+        using IRNode.inject(19) IntegerMulHighNode.hyps(1,2) by presburger
+      from l have my: "g1 \<turnstile> yn \<simeq> ye1"
+        using IRNode.inject(19) IntegerMulHighNode.hyps(1,3) by presburger
+      then show ?case
+      proof -
+        have "g1 \<turnstile> xn \<simeq> xe1"
+          by (simp add: mx)
+        have "g1 \<turnstile> yn \<simeq> ye1"
+          by (simp add: my)
+        have xer: "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
+          by (metis IRNode.inject(19) IntegerMulHighNode.IH(1) IntegerMulHighNode.hyps(1) a b c d
+              emptyE insertE l mx no_encoding not_excluded_keep_type repDet)
+        have "\<exists> ye2. (g2 \<turnstile> yn \<simeq> ye2) \<and> ye1 \<ge> ye2"
+          by (metis IRNode.inject(19) IntegerMulHighNode.IH(2) IntegerMulHighNode.hyps(1) a b c d
+              emptyE insertE l my no_encoding not_excluded_keep_type repDet)
+        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinIntegerMulHigh xe2 ye2) \<and>
+ BinaryExpr BinIntegerMulHigh xe1 ye1 \<ge> BinaryExpr BinIntegerMulHigh xe2 ye2"
+          by (metis IntegerMulHighNode.prems l mono_binary rep.IntegerMulHighNode xer)
+        then show ?thesis
+          by meson
+      qed
+    next
       case (NarrowNode n inputBits resultBits x xe1)
-      have k: "g1 \<turnstile> n \<simeq> UnaryExpr (UnaryNarrow inputBits resultBits) xe1" using f NarrowNode
-        by (simp add: NarrowNode.hyps(2) rep.NarrowNode)
+      have k: "g1 \<turnstile> n \<simeq> UnaryExpr (UnaryNarrow inputBits resultBits) xe1" 
+        using NarrowNode by (simp add: NarrowNode.hyps(2) rep.NarrowNode)
       obtain xn where l: "kind g1 n = NarrowNode inputBits resultBits xn"
-        using NarrowNode.hyps(1) by blast
+        using NarrowNode.hyps(1) by simp
       then have m: "g1 \<turnstile> xn \<simeq> xe1"
-        using NarrowNode.hyps(1) NarrowNode.hyps(2)
-        by auto
+        using NarrowNode.hyps(1,2) by simp
       then show ?case
       proof (cases "xn = n'")
         case True
-        then have n: "xe1 = e1'" using c m repDet by simp
-        then have ev: "g2 \<turnstile> n \<simeq> UnaryExpr (UnaryNarrow inputBits resultBits) e2'" using NarrowNode.hyps(1) l m n
-          using NarrowNode.prems True d rep.NarrowNode by simp
-        then have r: "UnaryExpr (UnaryNarrow inputBits resultBits) e1' \<ge> UnaryExpr (UnaryNarrow inputBits resultBits) e2'"
+        then have n: "xe1 = e1'" 
+          using m by (simp add: repDet c)
+        then have ev: "g2 \<turnstile> n \<simeq> UnaryExpr (UnaryNarrow inputBits resultBits) e2'" 
+          using l by (simp add: rep.NarrowNode d True NarrowNode.prems)
+        then have r: "UnaryExpr (UnaryNarrow inputBits resultBits) e1' \<ge> 
+                      UnaryExpr (UnaryNarrow inputBits resultBits) e2'"
           by (meson a mono_unary)
-        then show ?thesis using ev r
-          by (metis n)
+        then show ?thesis
+          by (metis n ev)
       next
         case False
-        have "g1 \<turnstile> xn \<simeq> xe1" using m by simp
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: m)
         have "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
-          using NarrowNode
-          using False b encodes_contains l not_excluded_keep_type not_in_g singleton_iff
+          using NarrowNode False b encodes_contains l not_excluded_keep_type not_in_g singleton_iff
           by (metis_node_eq_ternary NarrowNode)
-        then have "\<exists> xe2. (g2 \<turnstile> n \<simeq> UnaryExpr (UnaryNarrow inputBits resultBits) xe2) \<and> UnaryExpr (UnaryNarrow inputBits resultBits) xe1 \<ge> UnaryExpr (UnaryNarrow inputBits resultBits) xe2"
+        then have "\<exists> xe2. (g2 \<turnstile> n \<simeq> UnaryExpr (UnaryNarrow inputBits resultBits) xe2) \<and> 
+                                    UnaryExpr (UnaryNarrow inputBits resultBits) xe1 \<ge> 
+                                    UnaryExpr (UnaryNarrow inputBits resultBits) xe2"
           by (metis NarrowNode.prems l mono_unary rep.NarrowNode)
         then show ?thesis
           by meson
       qed
     next
       case (SignExtendNode n inputBits resultBits x xe1)
-      have k: "g1 \<turnstile> n \<simeq> UnaryExpr (UnarySignExtend inputBits resultBits) xe1" using f SignExtendNode
-        by (simp add: SignExtendNode.hyps(2) rep.SignExtendNode)
+      have k: "g1 \<turnstile> n \<simeq> UnaryExpr (UnarySignExtend inputBits resultBits) xe1" 
+        using SignExtendNode by (simp add: SignExtendNode.hyps(2) rep.SignExtendNode)
       obtain xn where l: "kind g1 n = SignExtendNode inputBits resultBits xn"
-        using SignExtendNode.hyps(1) by blast
+        using SignExtendNode.hyps(1) by simp
       then have m: "g1 \<turnstile> xn \<simeq> xe1"
-        using SignExtendNode.hyps(1) SignExtendNode.hyps(2)
-        by auto
+        using SignExtendNode.hyps(1,2) by simp
       then show ?case
       proof (cases "xn = n'")
         case True
-        then have n: "xe1 = e1'" using c m repDet by simp
-        then have ev: "g2 \<turnstile> n \<simeq> UnaryExpr (UnarySignExtend inputBits resultBits) e2'" using SignExtendNode.hyps(1) l m n
-          using SignExtendNode.prems True d rep.SignExtendNode by simp
-        then have r: "UnaryExpr (UnarySignExtend inputBits resultBits) e1' \<ge> UnaryExpr (UnarySignExtend inputBits resultBits) e2'"
+        then have n: "xe1 = e1'" 
+          using m by (simp add: repDet c)
+        then have ev: "g2 \<turnstile> n \<simeq> UnaryExpr (UnarySignExtend inputBits resultBits) e2'" 
+          using l by (simp add: True d rep.SignExtendNode SignExtendNode.prems)
+        then have r: "UnaryExpr (UnarySignExtend inputBits resultBits) e1' \<ge> 
+                      UnaryExpr (UnarySignExtend inputBits resultBits) e2'"
           by (meson a mono_unary)
-        then show ?thesis using ev r
-          by (metis n)
+        then show ?thesis
+          by (metis n ev)
       next
         case False
-        have "g1 \<turnstile> xn \<simeq> xe1" using m by simp
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: m)
         have "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
-          using SignExtendNode
-          using False b encodes_contains l not_excluded_keep_type not_in_g singleton_iff
+          using SignExtendNode False b encodes_contains l not_excluded_keep_type not_in_g 
+                singleton_iff
           by (metis_node_eq_ternary SignExtendNode)
-        then have "\<exists> xe2. (g2 \<turnstile> n \<simeq> UnaryExpr (UnarySignExtend inputBits resultBits) xe2) \<and> UnaryExpr (UnarySignExtend inputBits resultBits) xe1 \<ge> UnaryExpr (UnarySignExtend inputBits resultBits) xe2"
+        then have "\<exists> xe2. (g2 \<turnstile> n \<simeq> UnaryExpr (UnarySignExtend inputBits resultBits) xe2) \<and> 
+                                    UnaryExpr (UnarySignExtend inputBits resultBits) xe1 \<ge> 
+                                    UnaryExpr (UnarySignExtend inputBits resultBits) xe2"
           by (metis SignExtendNode.prems l mono_unary rep.SignExtendNode)
         then show ?thesis
           by meson
       qed
     next
       case (ZeroExtendNode n inputBits resultBits x xe1)
-      have k: "g1 \<turnstile> n \<simeq> UnaryExpr (UnaryZeroExtend inputBits resultBits) xe1" using f ZeroExtendNode
-        by (simp add: ZeroExtendNode.hyps(2) rep.ZeroExtendNode)
+      have k: "g1 \<turnstile> n \<simeq> UnaryExpr (UnaryZeroExtend inputBits resultBits) xe1" 
+        using ZeroExtendNode by (simp add: ZeroExtendNode.hyps(2) rep.ZeroExtendNode)
       obtain xn where l: "kind g1 n = ZeroExtendNode inputBits resultBits xn"
-        using ZeroExtendNode.hyps(1) by blast
+        using ZeroExtendNode.hyps(1) by simp
       then have m: "g1 \<turnstile> xn \<simeq> xe1"
-        using ZeroExtendNode.hyps(1) ZeroExtendNode.hyps(2)
-        by auto
+        using ZeroExtendNode.hyps(1,2) by simp
       then show ?case
       proof (cases "xn = n'")
         case True
-        then have n: "xe1 = e1'" using c m repDet by simp
-        then have ev: "g2 \<turnstile> n \<simeq> UnaryExpr (UnaryZeroExtend inputBits resultBits) e2'" using ZeroExtendNode.hyps(1) l m n
-          using ZeroExtendNode.prems True d rep.ZeroExtendNode by simp
-        then have r: "UnaryExpr (UnaryZeroExtend inputBits resultBits) e1' \<ge> UnaryExpr (UnaryZeroExtend inputBits resultBits) e2'"
+        then have n: "xe1 = e1'" 
+          using m by (simp add: repDet c)
+        then have ev: "g2 \<turnstile> n \<simeq> UnaryExpr (UnaryZeroExtend inputBits resultBits) e2'" 
+          using l by (simp add: ZeroExtendNode.prems True d rep.ZeroExtendNode)
+        then have r: "UnaryExpr (UnaryZeroExtend inputBits resultBits) e1' \<ge> 
+                      UnaryExpr (UnaryZeroExtend inputBits resultBits) e2'"
           by (meson a mono_unary)
-        then show ?thesis using ev r
-          by (metis n)
+        then show ?thesis
+          by (metis n ev)
       next
         case False
-        have "g1 \<turnstile> xn \<simeq> xe1" using m by simp
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: m)
         have "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
-          using ZeroExtendNode
-          using False b encodes_contains l not_excluded_keep_type not_in_g singleton_iff
+          using ZeroExtendNode b encodes_contains l not_excluded_keep_type not_in_g singleton_iff 
+                False
           by (metis_node_eq_ternary ZeroExtendNode)
-        then have "\<exists> xe2. (g2 \<turnstile> n \<simeq> UnaryExpr (UnaryZeroExtend inputBits resultBits) xe2) \<and> UnaryExpr (UnaryZeroExtend inputBits resultBits) xe1 \<ge> UnaryExpr (UnaryZeroExtend inputBits resultBits) xe2"
+        then have "\<exists> xe2. (g2 \<turnstile> n \<simeq> UnaryExpr (UnaryZeroExtend inputBits resultBits) xe2) \<and> 
+                                    UnaryExpr (UnaryZeroExtend inputBits resultBits) xe1 \<ge> 
+                                    UnaryExpr (UnaryZeroExtend inputBits resultBits) xe2"
           by (metis ZeroExtendNode.prems l mono_unary rep.ZeroExtendNode)
         then show ?thesis
           by meson
@@ -1091,9 +1381,19 @@ proof -
       then show ?case
         by (metis eq_refl rep.LeafNode)
     next
+      case (PiNode n' gu)
+      then show ?case
+        by (metis encodes_contains not_excluded_keep_type not_in_g rep.PiNode repDet singleton_iff
+            a b c d)
+    next
       case (RefNode n')
       then show ?case
         by (metis a b c d no_encoding not_excluded_keep_type rep.RefNode repDet singletonD)
+    next
+      case (IsNullNode n)
+      then show ?case
+        by (metis insertE mono_unary no_encoding not_excluded_keep_type rep.IsNullNode repDet emptyE 
+            a b c d) 
     qed
   qed
 qed
@@ -1104,8 +1404,7 @@ lemma graph_semantics_preservation_subscript:
   assumes c: "g\<^sub>1 \<turnstile> n \<simeq> e\<^sub>1'"
   assumes d: "g\<^sub>2 \<turnstile> n \<simeq> e\<^sub>2'"
   shows "graph_refinement g\<^sub>1 g\<^sub>2"
-  using graph_semantics_preservation assms by simp
-
+  using assms by (simp add: graph_semantics_preservation)
 
 lemma tree_to_graph_rewriting:
   "e\<^sub>1 \<ge> e\<^sub>2 
@@ -1113,16 +1412,14 @@ lemma tree_to_graph_rewriting:
   \<and> ({n} \<unlhd> as_set g\<^sub>1) \<subseteq> as_set g\<^sub>2 
   \<and> (g\<^sub>2 \<turnstile> n \<simeq> e\<^sub>2) \<and> maximal_sharing g\<^sub>2
   \<Longrightarrow> graph_refinement g\<^sub>1 g\<^sub>2"
-  using graph_semantics_preservation
-  by auto
+  by (auto simp add: graph_semantics_preservation)
 
 declare [[simp_trace]]
 lemma equal_refines:
   fixes e1 e2 :: IRExpr
   assumes "e1 = e2"
   shows "e1 \<ge> e2"
-  using assms
-  by simp
+  using assms by simp
 declare [[simp_trace=false]]
 
 inductive_cases UnaryRepE[elim!]:\<^marker>\<open>tag invisible\<close>
@@ -1130,17 +1427,14 @@ inductive_cases UnaryRepE[elim!]:\<^marker>\<open>tag invisible\<close>
 inductive_cases BinaryRepE[elim!]:\<^marker>\<open>tag invisible\<close>
   "g \<turnstile> n \<simeq> (BinaryExpr op xe ye)"
 
-
 lemma eval_contains_id[simp]: "g1 \<turnstile> n \<simeq> e \<Longrightarrow> n \<in> ids g1"
-  using no_encoding by blast
+  using no_encoding by auto
 
 lemma subset_kind[simp]: "as_set g1 \<subseteq> as_set g2 \<Longrightarrow> g1 \<turnstile> n \<simeq> e \<Longrightarrow> kind g1 n = kind g2 n"
-  using eval_contains_id unfolding as_set_def
-  by blast
+  using eval_contains_id as_set_def by blast
 
 lemma subset_stamp[simp]: "as_set g1 \<subseteq> as_set g2 \<Longrightarrow> g1 \<turnstile> n \<simeq> e \<Longrightarrow> stamp g1 n = stamp g2 n"
-  using eval_contains_id unfolding as_set_def
-  by blast
+  using eval_contains_id as_set_def by blast
 
 method solve_subset_eval uses as_set eval =
   (metis eval as_set subset_kind subset_stamp |
@@ -1173,6 +1467,8 @@ lemma subset_implies_evals:
                          apply (solve_subset_eval as_set: assms(1) eval: ParameterNode)
                         apply (solve_subset_eval as_set: assms(1) eval: ConditionalNode)
                        apply (solve_subset_eval as_set: assms(1) eval: AbsNode)
+                      apply (solve_subset_eval as_set: assms(1) eval: ReverseBytesNode)
+                     apply (solve_subset_eval as_set: assms(1) eval: BitCountNode)
                       apply (solve_subset_eval as_set: assms(1) eval: NotNode)
                      apply (solve_subset_eval as_set: assms(1) eval: NegateNode)
                     apply (solve_subset_eval as_set: assms(1) eval: LogicNegationNode)
@@ -1189,29 +1485,33 @@ lemma subset_implies_evals:
          apply (solve_subset_eval as_set: assms(1) eval: IntegerBelowNode)
         apply (solve_subset_eval as_set: assms(1) eval: IntegerEqualsNode)
        apply (solve_subset_eval as_set: assms(1) eval: IntegerLessThanNode)
+       apply (solve_subset_eval as_set: assms(1) eval: IntegerTestNode)
+      apply (solve_subset_eval as_set: assms(1) eval: IntegerNormalizeCompareNode)
+      apply (solve_subset_eval as_set: assms(1) eval: IntegerMulHighNode)
       apply (solve_subset_eval as_set: assms(1) eval: NarrowNode)
      apply (solve_subset_eval as_set: assms(1) eval: SignExtendNode)
     apply (solve_subset_eval as_set: assms(1) eval: ZeroExtendNode)
    apply (solve_subset_eval as_set: assms(1) eval: LeafNode)
-  by (solve_subset_eval as_set: assms(1) eval: RefNode)
+      apply (solve_subset_eval as_set: assms(1) eval: PiNode)
+  apply (solve_subset_eval as_set: assms(1) eval: RefNode)
+  by (solve_subset_eval as_set: assms(1) eval: IsNullNode)
 
 lemma subset_refines:
   assumes "as_set g1 \<subseteq> as_set g2"
   shows "graph_refinement g1 g2"
 proof -
-  have "ids g1 \<subseteq> ids g2" using assms unfolding as_set_def
-    by blast
-  then show ?thesis unfolding graph_refinement_def apply rule
-    apply (rule allI) apply (rule impI) apply (rule allI) apply (rule impI)
+  have "ids g1 \<subseteq> ids g2" 
+    using assms as_set_def by blast
+  then show ?thesis 
+    unfolding graph_refinement_def 
+    apply rule apply (rule allI) apply (rule impI) apply (rule allI) apply (rule impI)
     unfolding graph_represents_expression_def
     proof -
       fix n e1
       assume 1:"n \<in> ids g1"
       assume 2:"g1 \<turnstile> n \<simeq> e1"
-  
       show "\<exists>e2. (g2 \<turnstile> n \<simeq> e2) \<and> e1 \<ge> e2"
-        using assms 1 2 using subset_implies_evals
-        by (meson equal_refines)
+        by (meson equal_refines subset_implies_evals assms 1 2)
     qed
   qed
 
@@ -1220,58 +1520,71 @@ lemma graph_construction:
   \<and> as_set g\<^sub>1 \<subseteq> as_set g\<^sub>2
   \<and> (g\<^sub>2 \<turnstile> n \<simeq> e\<^sub>2)
   \<Longrightarrow> (g\<^sub>2 \<turnstile> n \<unlhd> e\<^sub>1) \<and> graph_refinement g\<^sub>1 g\<^sub>2"
-  using subset_refines
-  by (meson encodeeval_def graph_represents_expression_def le_expr_def)
-
+  by (meson encodeeval_def graph_represents_expression_def le_expr_def subset_refines)
 
 subsubsection \<open>Term Graph Reconstruction\<close>
 
 lemma find_exists_kind:
   assumes "find_node_and_stamp g (node, s) = Some nid"
   shows "kind g nid = node"
-  using assms unfolding find_node_and_stamp.simps
-  by (metis (mono_tags, lifting) find_Some_iff)
+  by (metis (mono_tags, lifting) find_Some_iff find_node_and_stamp.simps assms)
 
 lemma find_exists_stamp:
   assumes "find_node_and_stamp g (node, s) = Some nid"
   shows "stamp g nid = s"
-  using assms unfolding find_node_and_stamp.simps
-  by (metis (mono_tags, lifting) find_Some_iff)
+  by (metis (mono_tags, lifting) find_Some_iff find_node_and_stamp.simps assms)
 
 lemma find_new_kind:
   assumes "g' = add_node nid (node, s) g"
   assumes "node \<noteq> NoNode"
   shows "kind g' nid = node"
-  using assms
-  using add_node_lookup by presburger
+  by (simp add: add_node_lookup assms)
 
 lemma find_new_stamp:
   assumes "g' = add_node nid (node, s) g"
   assumes "node \<noteq> NoNode"
   shows "stamp g' nid = s"
-  using assms
-  using add_node_lookup by presburger
+  by (simp add: assms add_node_lookup)
 
 lemma sorted_bottom:
   assumes "finite xs"
   assumes "x \<in> xs"
   shows "x \<le> last(sorted_list_of_set(xs::nat set))"
-  using assms
-  using sorted2_simps(2) sorted_list_of_set(2)
-  by (smt (verit, del_insts) Diff_iff Max_ge Max_in empty_iff list.set(1) snoc_eq_iff_butlast sorted_insort_is_snoc sorted_list_of_set(1) sorted_list_of_set.fold_insort_key.infinite sorted_list_of_set.fold_insort_key.remove)
+  proof -
+  obtain largest where largest: "largest = last (sorted_list_of_set(xs))"
+    by simp
+  obtain sortedList where sortedList: "sortedList = sorted_list_of_set(xs)"
+    by simp
+  have step: "\<forall>i. 0 < i \<and> i < (length (sortedList)) \<longrightarrow> sortedList!(i-1) \<le> sortedList!(i)"
+    unfolding sortedList apply auto
+    by (metis diff_le_self sorted_list_of_set.length_sorted_key_list_of_set sorted_nth_mono
+        sorted_list_of_set(2))
+  have finalElement: "last (sorted_list_of_set(xs)) =
+                                       sorted_list_of_set(xs)!(length (sorted_list_of_set(xs)) - 1)"
+    using assms last_conv_nth sorted_list_of_set.sorted_key_list_of_set_eq_Nil_iff by blast
+  have contains0: "(x \<in> xs) = (x \<in> set (sorted_list_of_set(xs)))"
+    using assms(1) by auto
+  have lastLargest: "((x \<in> xs) \<longrightarrow> (largest \<ge> x))"
+    using step unfolding largest finalElement apply auto
+    by (metis (no_types, lifting) One_nat_def Suc_pred assms(1) card_Diff1_less in_set_conv_nth
+        sorted_list_of_set.length_sorted_key_list_of_set card_Diff_singleton_if less_Suc_eq_le
+        sorted_list_of_set.sorted_sorted_key_list_of_set length_pos_if_in_set sorted_nth_mono
+        contains0)
+  then show ?thesis
+    by (simp add: assms largest)
+qed
 
 lemma fresh: "finite xs \<Longrightarrow> last(sorted_list_of_set(xs::nat set)) + 1 \<notin> xs"
-  using sorted_bottom
-  using not_le by auto
+  using sorted_bottom not_le by auto
 
 lemma fresh_ids:
   assumes "n = get_fresh_id g"
   shows "n \<notin> ids g"
 proof -
-  have "finite (ids g)" using Rep_IRGraph by auto
+  have "finite (ids g)" 
+    by (simp add: Rep_IRGraph)
   then show ?thesis
-    using assms fresh unfolding get_fresh_id.simps
-    by blast
+    using assms fresh unfolding get_fresh_id.simps by blast
 qed
 
 lemma graph_unchanged_rep_unchanged:
@@ -1284,6 +1597,8 @@ lemma graph_unchanged_rep_unchanged:
                          apply (metis no_encoding rep.ParameterNode)
                         apply (metis no_encoding rep.ConditionalNode)
                        apply (metis no_encoding rep.AbsNode)
+                      apply (metis no_encoding rep.ReverseBytesNode)
+                      apply (metis no_encoding rep.BitCountNode)
                       apply (metis no_encoding rep.NotNode)
                      apply (metis no_encoding rep.NegateNode)
                     apply (metis no_encoding rep.LogicNegationNode)
@@ -1300,19 +1615,24 @@ lemma graph_unchanged_rep_unchanged:
            apply (metis no_encoding rep.IntegerBelowNode)
           apply (metis no_encoding rep.IntegerEqualsNode)
          apply (metis no_encoding rep.IntegerLessThanNode)
+         apply (metis no_encoding rep.IntegerTestNode)
+        apply (metis no_encoding rep.IntegerNormalizeCompareNode)
+        apply (metis no_encoding rep.IntegerMulHighNode)
         apply (metis no_encoding rep.NarrowNode)
        apply (metis no_encoding rep.SignExtendNode)
       apply (metis no_encoding rep.ZeroExtendNode)
      apply (metis no_encoding rep.LeafNode)
-    by (metis no_encoding rep.RefNode)
+      apply (metis no_encoding rep.PiNode)
+    apply (metis no_encoding rep.RefNode)
+   by (metis no_encoding rep.IsNullNode)
   done
 
 lemma fresh_node_subset:
   assumes "n \<notin> ids g"
   assumes "g' = add_node n (k, s) g"
   shows "as_set g \<subseteq> as_set g'"
-  using assms
-  by (smt (verit, del_insts) Collect_mono_iff Diff_idemp Diff_insert_absorb add_changed as_set_def disjoint_change unchanged.simps)
+  by (smt (z3) Collect_mono_iff Diff_idemp Diff_insert_absorb add_changed as_set_def unchanged.simps
+      disjoint_change assms)
 
 lemma unrep_subset:
   assumes "(g \<oplus> e \<leadsto> (g', n))"
@@ -1322,65 +1642,67 @@ lemma unrep_subset:
   then show ?case by blast
 next
   case (ConstantNodeNew g c n g')
-  then show ?case using fresh_ids fresh_node_subset
-    by presburger
+  then show ?case 
+    using fresh_ids fresh_node_subset by simp
 next
   case (ParameterNodeSame g i s n)
-  then show ?case by blast
+  then show ?case 
+    by auto
 next
   case (ParameterNodeNew g i s n g')
-  then show ?case using fresh_ids fresh_node_subset
-    by presburger
+  then show ?case 
+    using fresh_ids fresh_node_subset by simp
 next
   case (ConditionalNodeSame g ce g2 c te g3 t fe g4 f s' n)
-  then show ?case by blast
+  then show ?case 
+    by auto
 next
   case (ConditionalNodeNew g ce g2 c te g3 t fe g4 f s' n g')
-  then show ?case using fresh_ids fresh_node_subset
-    by (meson subset_trans)
+  then show ?case 
+    by (meson subset_trans fresh_ids fresh_node_subset)
 next
   case (UnaryNodeSame g xe g2 x s' op n)
-  then show ?case by blast
+  then show ?case 
+    by auto
 next
   case (UnaryNodeNew g xe g2 x s' op n g')
-  then show ?case using fresh_ids fresh_node_subset
-    by (meson subset_trans)
+  then show ?case 
+    by (meson subset_trans fresh_ids fresh_node_subset)
 next
   case (BinaryNodeSame g xe g2 x ye g3 y s' op n)
-  then show ?case by blast
+  then show ?case 
+    by auto
 next
   case (BinaryNodeNew g xe g2 x ye g3 y s' op n g')
-  then show ?case using fresh_ids fresh_node_subset
-    by (meson subset_trans)
+  then show ?case 
+    by (meson subset_trans fresh_ids fresh_node_subset)
 next
   case (AllLeafNodes g n s)
-  then show ?case by blast
+  then show ?case 
+    by auto
 qed
 
 lemma fresh_node_preserves_other_nodes:
   assumes "n' = get_fresh_id g"
   assumes "g' = add_node n' (k, s) g"
   shows "\<forall> n \<in> ids g . (g \<turnstile> n \<simeq> e) \<longrightarrow> (g' \<turnstile> n \<simeq> e)"
-  using assms
-  by (smt (verit, ccfv_SIG) Diff_idemp Diff_insert_absorb add_changed disjoint_change fresh_ids graph_unchanged_rep_unchanged unchanged.elims(2))
+  using assms apply auto
+  by (metis fresh_node_subset subset_implies_evals fresh_ids assms)
 
 lemma found_node_preserves_other_nodes:
   assumes "find_node_and_stamp g (k, s) = Some n"
   shows "\<forall> n \<in> ids g. (g \<turnstile> n \<simeq> e) \<longleftrightarrow> (g \<turnstile> n \<simeq> e)"
-  using assms
-  by blast
+  by (auto simp add: assms) 
 
 lemma unrep_ids_subset[simp]:
   assumes "g \<oplus> e \<leadsto> (g', n)"
   shows "ids g \<subseteq> ids g'"
-  using assms unrep_subset
-  by (meson graph_refinement_def subset_refines)
+  by (meson graph_refinement_def subset_refines unrep_subset assms)
 
 lemma unrep_unchanged:
   assumes "g \<oplus> e \<leadsto> (g', n)"
   shows "\<forall> n \<in> ids g . \<forall> e. (g \<turnstile> n \<simeq> e) \<longrightarrow> (g' \<turnstile> n \<simeq> e)"
-  using assms unrep_subset fresh_node_preserves_other_nodes
-  by (meson subset_implies_evals)
+  by (meson subset_implies_evals unrep_subset assms)
 
 theorem term_graph_reconstruction:
   "g \<oplus> e \<leadsto> (g', n) \<Longrightarrow> (g' \<turnstile> n \<simeq> e) \<and> as_set g \<subseteq> as_set g'"
@@ -1389,12 +1711,13 @@ theorem term_graph_reconstruction:
   proof (induction g e "(g', n)" arbitrary: g' n)
     case (ConstantNodeSame g' c n)
     then have "kind g' n = ConstantNode c"
-      using find_exists_kind local.ConstantNodeSame by blast
-    then show ?case using ConstantNode by blast
+      using find_exists_kind by blast
+    then show ?case 
+      by (simp add: ConstantNode)
   next
     case (ConstantNodeNew g c)
     then show ?case
-      using ConstantNode IRNode.distinct(683) add_node_lookup by presburger
+      using IRNode.distinct(697) by (simp add: add_node_lookup ConstantNode)
   next
     case (ParameterNodeSame i s)
     then show ?case
@@ -1402,126 +1725,105 @@ theorem term_graph_reconstruction:
   next
     case (ParameterNodeNew g i s)
     then show ?case
-      by (metis IRNode.distinct(2447) ParameterNode add_node_lookup)
+      by (metis IRNode.distinct(3523) ParameterNode find_new_kind find_new_stamp)
   next
     case (ConditionalNodeSame g4 c t f s' n g ce g2 te g3 fe)
     then have k: "kind g4 n = ConditionalNode c t f"
       using find_exists_kind by blast
-    have c: "g4 \<turnstile> c \<simeq> ce" using local.ConditionalNodeSame unrep_unchanged
-      using no_encoding by blast
-    have t: "g4 \<turnstile> t \<simeq> te" using local.ConditionalNodeSame unrep_unchanged
-      using no_encoding by blast
-    have f: "g4 \<turnstile> f \<simeq> fe" using local.ConditionalNodeSame unrep_unchanged
-      using no_encoding by blast
-    then show ?case using c t f
-      using ConditionalNode k by blast
+    have c: "g4 \<turnstile> c \<simeq> ce" 
+      using local.ConditionalNodeSame unrep_unchanged no_encoding by blast
+    have t: "g4 \<turnstile> t \<simeq> te" 
+      using local.ConditionalNodeSame unrep_unchanged no_encoding by blast
+    have f: "g4 \<turnstile> f \<simeq> fe" 
+      using local.ConditionalNodeSame unrep_unchanged no_encoding by blast
+    then show ?case 
+      by (auto simp add: k ConditionalNode c t)
   next
     case (ConditionalNodeNew g4 c t f s' g ce g2 te g3 fe n g')
     moreover have "ConditionalNode c t f \<noteq> NoNode"
-      using unary_node.elims by blast
+      by simp
     ultimately have k: "kind g' n = ConditionalNode c t f"
-      using find_new_kind local.ConditionalNodeNew
-      by presburger
-    then have c: "g' \<turnstile> c \<simeq> ce" using local.ConditionalNodeNew unrep_unchanged
-      using no_encoding
-      by (metis ConditionalNodeNew.hyps(9) fresh_node_preserves_other_nodes)
-    then have t: "g' \<turnstile> t \<simeq> te" using local.ConditionalNodeNew unrep_unchanged
-      using no_encoding fresh_node_preserves_other_nodes
-      by metis
-    then have f: "g' \<turnstile> f \<simeq> fe" using local.ConditionalNodeNew unrep_unchanged
-      using no_encoding fresh_node_preserves_other_nodes
-      by metis
-    then show ?case using c t f
-      using ConditionalNode k by blast
+      by (simp add: find_new_kind)
+    then have c: "g' \<turnstile> c \<simeq> ce" 
+      by (metis ConditionalNodeNew.hyps(9) fresh_node_preserves_other_nodes no_encoding 
+          local.ConditionalNodeNew(3,4,6,9,10) unrep_unchanged)
+    then have t: "g' \<turnstile> t \<simeq> te" 
+      by (metis no_encoding fresh_node_preserves_other_nodes local.ConditionalNodeNew(5,6,9,10) 
+          unrep_unchanged)
+    then have f: "g' \<turnstile> f \<simeq> fe" 
+      by (metis no_encoding fresh_node_preserves_other_nodes local.ConditionalNodeNew(7,9,10))
+    then show ?case 
+      by (simp add: c t ConditionalNode k)
   next
     case (UnaryNodeSame g' op x s' n g xe)
     then have k: "kind g' n = unary_node op x"
-      using find_exists_kind local.UnaryNodeSame by blast
-    then have "g' \<turnstile> x \<simeq> xe" using local.UnaryNodeSame by blast
-    then show ?case using k
-      apply (cases op)
-      using AbsNode unary_node.simps(1) apply presburger
-      using NegateNode unary_node.simps(3) apply presburger
-      using NotNode unary_node.simps(2) apply presburger
-      using LogicNegationNode unary_node.simps(4) apply presburger
-      using NarrowNode unary_node.simps(5) apply presburger
-      using SignExtendNode unary_node.simps(6) apply presburger
-      using ZeroExtendNode unary_node.simps(7) by presburger
+      using find_exists_kind by blast
+    then have "g' \<turnstile> x \<simeq> xe" 
+      by (simp add: local.UnaryNodeSame)
+    then show ?case 
+      using k apply (cases op)
+      using unary_node.simps(1,2,3,4,5,6,7,8,9,10)
+            AbsNode NegateNode NotNode LogicNegationNode NarrowNode SignExtendNode ZeroExtendNode 
+            IsNullNode ReverseBytesNode BitCountNode
+      by presburger+
   next
     case (UnaryNodeNew g2 op x s' g xe n g')
     moreover have "unary_node op x \<noteq> NoNode"
       using unary_node.elims by blast
     ultimately have k: "kind g' n = unary_node op x"
-      using find_new_kind local.UnaryNodeNew
-      by presburger
-    have "x \<in> ids g2" using local.UnaryNodeNew
-      using eval_contains_id by blast
-    then have "x \<noteq> n" using local.UnaryNodeNew(5) fresh_ids by blast
-    have "g' \<turnstile> x \<simeq> xe" using local.UnaryNodeNew fresh_node_preserves_other_nodes
-      using \<open>x \<in> ids g2\<close> by blast
-    then show ?case using k
-      apply (cases op)
-      using AbsNode unary_node.simps(1) apply presburger
-      using NegateNode unary_node.simps(3) apply presburger
-      using NotNode unary_node.simps(2) apply presburger
-      using LogicNegationNode unary_node.simps(4) apply presburger
-      using NarrowNode unary_node.simps(5) apply presburger
-      using SignExtendNode unary_node.simps(6) apply presburger
-      using ZeroExtendNode unary_node.simps(7) by presburger
+      by (simp add: find_new_kind)
+    have "x \<in> ids g2" 
+      using local.UnaryNodeNew eval_contains_id by simp
+    then have "x \<noteq> n" 
+      using fresh_ids by (auto simp add: local.UnaryNodeNew(5))
+    have "g' \<turnstile> x \<simeq> xe" 
+      using \<open>x \<in> ids g2\<close> by (simp add: fresh_node_preserves_other_nodes local.UnaryNodeNew)
+    then show ?case 
+      using k apply (cases op)
+      using unary_node.simps(1,2,3,4,5,6,7,8,9,10)
+            AbsNode NegateNode NotNode LogicNegationNode NarrowNode SignExtendNode ZeroExtendNode 
+            IsNullNode ReverseBytesNode BitCountNode
+      by presburger+
   next
     case (BinaryNodeSame g3 op x y s' n g xe g2 ye)
     then have k: "kind g3 n = bin_node op x y"
       using find_exists_kind by blast
-    have x: "g3 \<turnstile> x \<simeq> xe" using local.BinaryNodeSame unrep_unchanged
-      using no_encoding by blast
-    have y: "g3 \<turnstile> y \<simeq> ye" using local.BinaryNodeSame unrep_unchanged
-      using no_encoding by blast
-    then show ?case using x y k apply (cases op)
-      using AddNode bin_node.simps(1) apply presburger
-      using MulNode bin_node.simps(2) apply presburger
-      using SubNode bin_node.simps(3) apply presburger
-      using AndNode bin_node.simps(4) apply presburger
-      using OrNode bin_node.simps(5) apply presburger
-      using XorNode bin_node.simps(6) apply presburger
-      using ShortCircuitOrNode bin_node.simps(7) apply presburger
-      using LeftShiftNode bin_node.simps(8) apply presburger
-      using RightShiftNode bin_node.simps(9) apply presburger
-      using UnsignedRightShiftNode bin_node.simps(10) apply presburger
-      using IntegerEqualsNode bin_node.simps(11) apply presburger
-      using IntegerLessThanNode bin_node.simps(12) apply presburger
-      using IntegerBelowNode bin_node.simps(13) by presburger
+    have x: "g3 \<turnstile> x \<simeq> xe" 
+      using local.BinaryNodeSame unrep_unchanged no_encoding by blast
+    have y: "g3 \<turnstile> y \<simeq> ye" 
+      by (simp add: local.BinaryNodeSame)
+    then show ?case 
+      using x k apply (cases op)
+      using bin_node.simps(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16)
+            AddNode MulNode SubNode AndNode OrNode ShortCircuitOrNode LeftShiftNode RightShiftNode 
+            UnsignedRightShiftNode IntegerEqualsNode IntegerLessThanNode IntegerBelowNode XorNode
+            IntegerTestNode IntegerNormalizeCompareNode IntegerMulHighNode
+      by presburger+
   next
     case (BinaryNodeNew g3 op x y s' g xe g2 ye n g')
     moreover have "bin_node op x y \<noteq> NoNode"
       using bin_node.elims by blast
     ultimately have k: "kind g' n = bin_node op x y"
-      using find_new_kind local.BinaryNodeNew
-      by presburger
+      by (simp add: find_new_kind)
     then have k: "kind g' n = bin_node op x y"
-      using find_exists_kind by blast
-    have x: "g' \<turnstile> x \<simeq> xe" using local.BinaryNodeNew unrep_unchanged
-      using no_encoding
-      by (meson fresh_node_preserves_other_nodes)
-    have y: "g' \<turnstile> y \<simeq> ye" using local.BinaryNodeNew unrep_unchanged
-      using no_encoding
-      by (meson fresh_node_preserves_other_nodes)
-    then show ?case using x y k apply (cases op)
-      using AddNode bin_node.simps(1) apply presburger
-      using MulNode bin_node.simps(2) apply presburger
-      using SubNode bin_node.simps(3) apply presburger
-      using AndNode bin_node.simps(4) apply presburger
-      using OrNode bin_node.simps(5) apply presburger
-      using XorNode bin_node.simps(6) apply presburger
-      using ShortCircuitOrNode bin_node.simps(7) apply presburger
-      using LeftShiftNode bin_node.simps(8) apply presburger
-      using RightShiftNode bin_node.simps(9) apply presburger
-      using UnsignedRightShiftNode bin_node.simps(10) apply presburger
-      using IntegerEqualsNode bin_node.simps(11) apply presburger
-      using IntegerLessThanNode bin_node.simps(12) apply presburger
-      using IntegerBelowNode bin_node.simps(13) by presburger
+      by simp
+    have x: "g' \<turnstile> x \<simeq> xe" 
+      using local.BinaryNodeNew
+      by (meson fresh_node_preserves_other_nodes no_encoding unrep_unchanged)
+    have y: "g' \<turnstile> y \<simeq> ye" 
+      using local.BinaryNodeNew 
+      by (meson fresh_node_preserves_other_nodes no_encoding)
+    then show ?case 
+      using x k apply (cases op)
+      using bin_node.simps(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16)
+            AddNode MulNode SubNode AndNode OrNode ShortCircuitOrNode LeftShiftNode RightShiftNode
+            UnsignedRightShiftNode IntegerEqualsNode IntegerLessThanNode XorNode IntegerBelowNode
+            IntegerTestNode IntegerNormalizeCompareNode IntegerMulHighNode
+      by presburger+
   next
     case (AllLeafNodes g n s)
-    then show ?case using rep.LeafNode by blast
+    then show ?case 
+      by (simp add: rep.LeafNode)
   qed
   done
 
@@ -1529,55 +1831,47 @@ lemma ref_refinement:
   assumes "g \<turnstile> n \<simeq> e\<^sub>1"
   assumes "kind g n' = RefNode n"
   shows "g \<turnstile> n' \<unlhd> e\<^sub>1"
-  using assms RefNode
-  by (meson equal_refines graph_represents_expression_def)
+  by (meson equal_refines graph_represents_expression_def RefNode assms)
 
 lemma unrep_refines:
   assumes "g \<oplus> e \<leadsto> (g', n)"
   shows "graph_refinement g g'"
-  using assms
-  using graph_refinement_def subset_refines unrep_subset by blast
+  using assms by (simp add: unrep_subset subset_refines)
 
 lemma add_new_node_refines:
   assumes "n \<notin> ids g"
   assumes "g' = add_node n (k, s) g"
   shows "graph_refinement g g'"
-  using assms unfolding graph_refinement
-  using fresh_node_subset subset_refines by presburger
+  using assms by (simp add: fresh_node_subset subset_refines)
 
 lemma add_node_as_set:
   assumes "g' = add_node n (k, s) g"
   shows "({n} \<unlhd> as_set g) \<subseteq> as_set g'"
-  using assms unfolding as_set_def domain_subtraction_def 
-  using add_changed
-  by (smt (z3) case_prodE changeonly.simps mem_Collect_eq prod.sel(1) subsetI)
-
+  unfolding assms
+  by (smt (verit, ccfv_SIG) case_prodE changeonly.simps mem_Collect_eq prod.sel(1) subsetI assms
+      add_changed as_set_def domain_subtraction_def)
 
 theorem refined_insert:
   assumes "e\<^sub>1 \<ge> e\<^sub>2"
   assumes "g\<^sub>1 \<oplus> e\<^sub>2 \<leadsto> (g\<^sub>2, n')"
   shows "(g\<^sub>2 \<turnstile> n' \<unlhd> e\<^sub>1) \<and> graph_refinement g\<^sub>1 g\<^sub>2"
-  using assms
-  using graph_construction term_graph_reconstruction by blast
+  using assms graph_construction term_graph_reconstruction by blast
 
 lemma ids_finite: "finite (ids g)"
-  using Rep_IRGraph ids.rep_eq by simp
+  by simp
 
 lemma unwrap_sorted: "set (sorted_list_of_set (ids g)) = ids g"
-  using Rep_IRGraph set_sorted_list_of_set ids_finite
-  by blast
+  using ids_finite by simp
 
 lemma find_none:
   assumes "find_node_and_stamp g (k, s) = None"
   shows "\<forall> n \<in> ids g. kind g n \<noteq> k \<or> stamp g n \<noteq> s"
 proof -
   have "(\<nexists>n. n \<in> ids g \<and> (kind g n = k \<and> stamp g n = s))"
-    using assms unfolding find_node_and_stamp.simps using find_None_iff unwrap_sorted
-    by (metis (mono_tags, lifting))
+    by (metis (mono_tags) unwrap_sorted find_None_iff find_node_and_stamp.simps assms)
   then show ?thesis
-    by blast
+    by auto
 qed
-
 
 (*
 
@@ -1894,8 +2188,6 @@ proof -
 qed
 *)
 
-
-
 subsubsection \<open>Data-flow Tree to Subgraph Preserves Maximal Sharing\<close>
 
 lemma same_kind_stamp_encodes_equal:
@@ -1912,6 +2204,8 @@ lemma same_kind_stamp_encodes_equal:
     using ParameterNode apply presburger 
                         apply (metis ConditionalNode)
                         apply (metis AbsNode)
+                        apply (metis ReverseBytesNode)
+                        apply (metis BitCountNode)
                        apply (metis NotNode)
                       apply (metis NegateNode)
                      apply (metis LogicNegationNode)
@@ -1928,12 +2222,17 @@ lemma same_kind_stamp_encodes_equal:
            apply (metis IntegerBelowNode)
           apply (metis IntegerEqualsNode)
          apply (metis IntegerLessThanNode)
+          apply (metis IntegerTestNode)
+        apply (metis IntegerNormalizeCompareNode)
+        apply (metis IntegerMulHighNode)
         apply (metis NarrowNode)
        apply (metis SignExtendNode)
       apply (metis ZeroExtendNode)
     defer
-     apply (metis RefNode)
-    by blast
+     apply (metis PiNode)
+   apply (metis RefNode) 
+  apply (metis IsNullNode)
+  by blast
     done
   done
 
@@ -1942,101 +2241,90 @@ lemma new_node_not_present:
   assumes "n = get_fresh_id g"
   assumes "g' = add_node n (node, s) g"
   shows "\<forall> n' \<in> true_ids g. (\<forall>e. ((g \<turnstile> n \<simeq> e) \<and> (g \<turnstile> n' \<simeq> e)) \<longrightarrow> n = n')"
-  using assms
-  using encode_in_ids fresh_ids by blast
+  using assms encode_in_ids fresh_ids by blast
 
 lemma true_ids_def:
   "true_ids g = {n \<in> ids g. \<not>(is_RefNode (kind g n)) \<and> ((kind g n) \<noteq> NoNode)}"
-  unfolding true_ids_def ids_def
-  using ids_def is_RefNode_def by fastforce
+  using true_ids_def by (auto simp add: is_RefNode_def)
 
 lemma add_node_some_node_def:
   assumes "k \<noteq> NoNode"
   assumes "g' = add_node nid (k, s) g"
   shows "g' = Abs_IRGraph ((Rep_IRGraph g)(nid \<mapsto> (k, s)))"
-  using assms
-  by (metis Rep_IRGraph_inverse add_node.rep_eq fst_conv)
+  by (metis Rep_IRGraph_inverse add_node.rep_eq fst_conv assms)
 
 lemma ids_add_update_v1:
   assumes "g' = add_node nid (k, s) g"
   assumes "k \<noteq> NoNode"
   shows "dom (Rep_IRGraph g') = dom (Rep_IRGraph g) \<union> {nid}"
-  using assms ids.rep_eq add_node_some_node_def
-  by (simp add: add_node.rep_eq)
+  by (simp add: add_node.rep_eq assms)
 
 lemma ids_add_update_v2:
   assumes "g' = add_node nid (k, s) g"
   assumes "k \<noteq> NoNode"
   shows "nid \<in> ids g'"
-  using assms
-  using find_new_kind ids_some by presburger
+  by (simp add: find_new_kind assms)
 
 lemma add_node_ids_subset:
   assumes "n \<in> ids g"
   assumes "g' = add_node n node g"
   shows "ids g' = ids g \<union> {n}"
-  using assms unfolding add_node_def
-  apply (cases "fst node = NoNode") 
-  using ids.rep_eq replace_node.rep_eq replace_node_def apply auto[1]
-  unfolding ids_def
-  by (smt (verit, best) Collect_cong Un_insert_right dom_fun_upd fst_conv fun_upd_apply ids.rep_eq ids_def insert_absorb mem_Collect_eq option.inject option.simps(3) replace_node.rep_eq replace_node_def sup_bot.right_neutral)
+  using assms replace_node.rep_eq by (auto simp add: replace_node_def ids.rep_eq add_node_def)
 
 lemma convert_maximal:
-  assumes "\<forall>n n'. n \<in> true_ids g \<and> n' \<in> true_ids g \<longrightarrow> (\<forall>e e'. (g \<turnstile> n \<simeq> e) \<and> (g \<turnstile> n' \<simeq> e') \<longrightarrow> e \<noteq> e')"
+  assumes "\<forall>n n'. n \<in> true_ids g \<and> n' \<in> true_ids g \<longrightarrow> 
+          (\<forall>e e'. (g \<turnstile> n \<simeq> e) \<and> (g \<turnstile> n' \<simeq> e') \<longrightarrow> e \<noteq> e')"
   shows "maximal_sharing g"
-  using assms
-  using maximal_sharing by blast
+  using assms by (auto simp add: maximal_sharing)
 
 lemma add_node_set_eq:
   assumes "k \<noteq> NoNode"
   assumes "n \<notin> ids g"
   shows "as_set (add_node n (k, s) g) = as_set g \<union> {(n, (k, s))}"
-  using assms unfolding as_set_def add_node_def apply transfer apply simp
-  by blast 
+  using assms unfolding as_set_def by (transfer; auto)
 
 lemma add_node_as_set_eq:
   assumes "g' = add_node n (k, s) g"
   assumes "n \<notin> ids g"
   shows "({n} \<unlhd> as_set g') = as_set g"
-  using assms unfolding domain_subtraction_def
-  using add_node_set_eq 
-  by (smt (z3) Collect_cong Rep_IRGraph_inverse UnCI UnE add_node.rep_eq as_set_def case_prodE2 case_prodI2 le_boolE le_boolI' mem_Collect_eq prod.sel(1) singletonD singletonI)
+  unfolding domain_subtraction_def
+  by (smt (z3) assms add_node_set_eq Collect_cong Rep_IRGraph_inverse UnCI add_node.rep_eq le_boolE
+      as_set_def case_prodE2 case_prodI2 le_boolI' mem_Collect_eq prod.sel(1) singletonD singletonI
+      UnE)
 
 lemma true_ids:
   "true_ids g = ids g - {n \<in> ids g. is_RefNode (kind g n)}"
-  unfolding true_ids_def
-  by fastforce
+  unfolding true_ids_def by fastforce
 
 lemma as_set_ids:
   assumes "as_set g = as_set g'"
   shows "ids g = ids g'"
-  using assms
-  by (metis antisym equalityD1 graph_refinement_def subset_refines)
+  by (metis antisym equalityD1 graph_refinement_def subset_refines assms)
 
 lemma ids_add_update:
   assumes "k \<noteq> NoNode"
   assumes "n \<notin> ids g"
   assumes "g' = add_node n (k, s) g"
   shows "ids g' = ids g \<union> {n}"
-  using assms apply (subst assms(3)) using add_node_set_eq as_set_ids
-  by (smt (verit, del_insts) Collect_cong Diff_idemp Diff_insert_absorb Un_commute add_node.rep_eq add_node_def ids.rep_eq ids_add_update_v1 ids_add_update_v2 insertE insert_Collect insert_is_Un map_upd_Some_unfold mem_Collect_eq replace_node_def replace_node_unchanged)
-
+  by (smt (z3) Diff_idemp Diff_insert_absorb Un_commute add_node.rep_eq insert_is_Un insert_Collect
+      add_node_def ids.rep_eq ids_add_update_v1 insertE assms replace_node_unchanged Collect_cong
+      map_upd_Some_unfold mem_Collect_eq replace_node_def ids_add_update_v2)
 
 lemma true_ids_add_update:
   assumes "k \<noteq> NoNode"
   assumes "n \<notin> ids g"
   assumes "g' = add_node n (k, s) g"
   assumes "\<not>(is_RefNode k)"
-  shows "true_ids g' = true_ids g \<union> {n}"
-  using assms using true_ids ids_add_update
-  by (smt (z3) Collect_cong Diff_iff Diff_insert_absorb Un_commute add_node_def find_new_kind insert_Diff_if insert_is_Un mem_Collect_eq replace_node_def replace_node_unchanged)
-
+  shows "true_ids g' = true_ids g \<union> {n}" 
+  by (smt (z3) Collect_cong Diff_iff Diff_insert_absorb Un_commute add_node_def find_new_kind assms
+     insert_Diff_if insert_is_Un mem_Collect_eq replace_node_def replace_node_unchanged true_ids
+     ids_add_update)
 
 lemma new_def:
   assumes "(new \<unlhd> as_set g') = as_set g"
   shows "n \<in> ids g \<longrightarrow> n \<notin> new"
-  using assms
-  by (smt (z3) as_set_def case_prodD domain_subtraction_def mem_Collect_eq)
+  using assms apply auto unfolding as_set_def
+  by (smt (z3) as_set_def case_prodD domain_subtraction_def mem_Collect_eq assms ids_some)
 
 lemma add_preserves_rep:
   assumes unchanged: "(new \<unlhd> as_set g') = as_set g"
@@ -2047,43 +2335,42 @@ lemma add_preserves_rep:
 proof (cases "n \<in> new")
   case True
   have "n \<notin> ids g"
-    using unchanged True unfolding as_set_def domain_subtraction_def
-    by blast
-  then show ?thesis using existed by simp
+    using unchanged True as_set_def unfolding domain_subtraction_def by blast
+  then show ?thesis 
+    using existed by simp
 next
   case False
-  then have kind_eq: "\<forall> n' . n' \<notin> new \<longrightarrow> kind g n' = kind g' n'"
+  have kind_eq: "\<forall> n' . n' \<notin> new \<longrightarrow> kind g n' = kind g' n'"
     \<comment>\<open>can be more general than $stamp\_eq$ because NoNode default is equal\<close>
-    using unchanged not_excluded_keep_type
-    by (smt (z3) case_prodE domain_subtraction_def ids_some mem_Collect_eq subsetI)
+    apply (rule allI; rule impI)
+    by (smt (z3) case_prodE domain_subtraction_def ids_some mem_Collect_eq subsetI unchanged
+        not_excluded_keep_type)
   from False have stamp_eq: "\<forall> n' \<in> ids g' . n' \<notin> new \<longrightarrow> stamp g n' = stamp g' n'"
-    using unchanged not_excluded_keep_type
-    by (metis equalityE)
-  show ?thesis using assms(4) kind_eq stamp_eq False
+    by (metis equalityE not_excluded_keep_type unchanged)
+  show ?thesis 
+    using assms(4) kind_eq stamp_eq False
   proof (induction n e rule: rep.induct)
     case (ConstantNode n c)
     then show ?case
-      using rep.ConstantNode kind_eq by presburger
+      by (simp add: rep.ConstantNode)
   next
     case (ParameterNode n i s)
     then show ?case
-      using rep.ParameterNode
-      by (metis no_encoding)
+      by (metis no_encoding rep.ParameterNode)
   next
     case (ConditionalNode n c t f ce te fe)
     have kind: "kind g n = ConditionalNode c t f"
-      using ConditionalNode.hyps(1) ConditionalNode.prems(3) kind_eq by presburger
+      by (simp add: kind_eq ConditionalNode.prems(3) ConditionalNode.hyps(1))
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{c, t, f} = inputs g n"
-      using kind unfolding inputs.simps using inputs_of_ConditionalNode by simp
+      by (simp add: kind)
     have "c \<in> ids g \<and> t \<in> ids g \<and> f \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed wf_closed_def isin inputs by blast
     then have "c \<notin> new \<and> t \<notin> new \<and> f \<notin> new"
-      using new_def unchanged by blast
-    then show ?case using ConditionalNode apply simp
-      using rep.ConditionalNode by presburger
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: rep.ConditionalNode ConditionalNode)
   next
     case (AbsNode n x xe)
     then have kind: "kind g n = AbsNode x"
@@ -2091,15 +2378,41 @@ next
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{x} = inputs g n"
-      using kind unfolding inputs.simps by simp
+      by (simp add: kind)
     have "x \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed wf_closed_def isin inputs by blast
     then have "x \<notin> new"
-      using new_def unchanged by blast
+      using unchanged by (simp add: new_def)
     then show ?case
-      using AbsNode
-      using rep.AbsNode by presburger
+      by (simp add: AbsNode rep.AbsNode)
+  next
+    case (ReverseBytesNode n x xe)
+    then have kind: "kind g n = ReverseBytesNode x"
+      by simp
+    then have isin: "n \<in> ids g"
+      by simp
+    have inputs: "{x} = inputs g n"
+      by (simp add: kind)
+    have "x \<in> ids g"
+      using closed wf_closed_def isin inputs by blast
+    then have "x \<notin> new"
+      using unchanged by (simp add: new_def)
+    then show ?case
+      using ReverseBytesNode.IH kind kind_eq rep.ReverseBytesNode stamp_eq by blast
+  next
+    case (BitCountNode n x xe)
+    then have kind: "kind g n = BitCountNode x"
+      by simp
+    then have isin: "n \<in> ids g"
+      by simp
+    have inputs: "{x} = inputs g n"
+      by (simp add: kind)
+    have "x \<in> ids g"
+      using closed wf_closed_def isin inputs by blast
+    then have "x \<notin> new"
+      using unchanged by (simp add: new_def)
+    then show ?case
+      using BitCountNode.IH kind kind_eq rep.BitCountNode stamp_eq by blast
   next
     case (NotNode n x xe)
     then have kind: "kind g n = NotNode x"
@@ -2107,14 +2420,13 @@ next
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{x} = inputs g n"
-      using kind unfolding inputs.simps by simp
+      by (simp add: kind)
     have "x \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed wf_closed_def isin inputs by blast
     then have "x \<notin> new"
-      using new_def unchanged by blast
-    then show ?case using NotNode
-      using rep.NotNode by presburger
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: NotNode rep.NotNode)
   next
     case (NegateNode n x xe)
     then have kind: "kind g n = NegateNode x"
@@ -2122,14 +2434,13 @@ next
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{x} = inputs g n"
-      using kind unfolding inputs.simps by simp
+      by (simp add: kind)
     have "x \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed  wf_closed_def isin inputs by blast
     then have "x \<notin> new"
-      using new_def unchanged by blast
-    then show ?case using NegateNode
-      using rep.NegateNode by presburger
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: NegateNode rep.NegateNode)
   next
     case (LogicNegationNode n x xe)
     then have kind: "kind g n = LogicNegationNode x"
@@ -2137,14 +2448,13 @@ next
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{x} = inputs g n"
-      using kind unfolding inputs.simps by simp
+      by (simp add: kind)
     have "x \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed wf_closed_def isin inputs by blast
     then have "x \<notin> new"
-      using new_def unchanged by blast
-    then show ?case using LogicNegationNode
-      using rep.LogicNegationNode by presburger
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: LogicNegationNode rep.LogicNegationNode)
   next
     case (AddNode n x y xe ye)
     then have kind: "kind g n = AddNode x y"
@@ -2152,14 +2462,13 @@ next
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{x, y} = inputs g n"
-      using kind unfolding inputs.simps by simp
+      by (simp add: kind)
     have "x \<in> ids g \<and> y \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed wf_closed_def isin inputs by blast
     then have "x \<notin> new \<and> y \<notin> new"
-      using new_def unchanged by blast
-    then show ?case using AddNode
-      using rep.AddNode by presburger
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: AddNode rep.AddNode)
   next
     case (MulNode n x y xe ye)
     then have kind: "kind g n = MulNode x y"
@@ -2167,14 +2476,13 @@ next
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{x, y} = inputs g n"
-      using kind unfolding inputs.simps by simp
+      by (simp add: kind)
     have "x \<in> ids g \<and> y \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed wf_closed_def isin inputs by blast
     then have "x \<notin> new \<and> y \<notin> new"
-      using new_def unchanged by blast
-    then show ?case using MulNode
-      using rep.MulNode by presburger
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: MulNode rep.MulNode)
   next
     case (SubNode n x y xe ye)
     then have kind: "kind g n = SubNode x y"
@@ -2182,14 +2490,13 @@ next
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{x, y} = inputs g n"
-      using kind unfolding inputs.simps by simp
+      by (simp add: kind)
     have "x \<in> ids g \<and> y \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed wf_closed_def isin inputs by blast
     then have "x \<notin> new \<and> y \<notin> new"
-      using new_def unchanged by blast
-    then show ?case using SubNode
-      using rep.SubNode by presburger
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: SubNode rep.SubNode)
   next
     case (AndNode n x y xe ye)
     then have kind: "kind g n = AndNode x y"
@@ -2197,14 +2504,13 @@ next
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{x, y} = inputs g n"
-      using kind unfolding inputs.simps by simp
+      by (simp add: kind)
     have "x \<in> ids g \<and> y \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed wf_closed_def isin inputs by blast
     then have "x \<notin> new \<and> y \<notin> new"
-      using new_def unchanged by blast
-    then show ?case using AndNode
-      using rep.AndNode by presburger
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: AndNode rep.AndNode)
   next
     case (OrNode n x y xe ye)
     then have kind: "kind g n = OrNode x y"
@@ -2212,14 +2518,13 @@ next
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{x, y} = inputs g n"
-      using kind unfolding inputs.simps by simp
+      by (simp add: kind)
     have "x \<in> ids g \<and> y \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed wf_closed_def isin inputs by blast
     then have "x \<notin> new \<and> y \<notin> new"
-      using new_def unchanged by blast
-    then show ?case using OrNode
-      using rep.OrNode by presburger
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: OrNode rep.OrNode)
   next
     case (XorNode n x y xe ye)
     then have kind: "kind g n = XorNode x y"
@@ -2227,14 +2532,13 @@ next
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{x, y} = inputs g n"
-      using kind unfolding inputs.simps by simp
+      by (simp add: kind)
     have "x \<in> ids g \<and> y \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed wf_closed_def isin inputs by blast
     then have "x \<notin> new \<and> y \<notin> new"
-      using new_def unchanged by blast
-    then show ?case using XorNode
-      using rep.XorNode by presburger
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: XorNode rep.XorNode)
   next
     case (ShortCircuitOrNode n x y xe ye)
     then have kind: "kind g n = ShortCircuitOrNode x y"
@@ -2242,14 +2546,13 @@ next
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{x, y} = inputs g n"
-      using kind unfolding inputs.simps by simp
+      by (simp add: kind)
     have "x \<in> ids g \<and> y \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed wf_closed_def isin inputs by blast
     then have "x \<notin> new \<and> y \<notin> new"
-      using new_def unchanged by blast
-    then show ?case using ShortCircuitOrNode
-      using rep.ShortCircuitOrNode by presburger
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: ShortCircuitOrNode rep.ShortCircuitOrNode)
   next
     case (LeftShiftNode n x y xe ye)
     then have kind: "kind g n = LeftShiftNode x y"
@@ -2257,14 +2560,13 @@ next
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{x, y} = inputs g n"
-      using kind unfolding inputs.simps by simp
+      by (simp add: kind)
     have "x \<in> ids g \<and> y \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed wf_closed_def isin inputs by blast
     then have "x \<notin> new \<and> y \<notin> new"
-      using new_def unchanged by blast
-    then show ?case using LeftShiftNode
-      using rep.LeftShiftNode by presburger
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: LeftShiftNode rep.LeftShiftNode)
   next
     case (RightShiftNode n x y xe ye)
     then have kind: "kind g n = RightShiftNode x y"
@@ -2272,14 +2574,13 @@ next
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{x, y} = inputs g n"
-      using kind unfolding inputs.simps by simp
+      by (simp add: kind)
     have "x \<in> ids g \<and> y \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed wf_closed_def isin inputs by blast
     then have "x \<notin> new \<and> y \<notin> new"
-      using new_def unchanged by blast
-    then show ?case using RightShiftNode
-      using rep.RightShiftNode by presburger
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: RightShiftNode rep.RightShiftNode)
   next
     case (UnsignedRightShiftNode n x y xe ye)
     then have kind: "kind g n = UnsignedRightShiftNode x y"
@@ -2287,14 +2588,13 @@ next
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{x, y} = inputs g n"
-      using kind unfolding inputs.simps by simp
+      by (simp add: kind)
     have "x \<in> ids g \<and> y \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed wf_closed_def isin inputs by blast
     then have "x \<notin> new \<and> y \<notin> new"
-      using new_def unchanged by blast
-    then show ?case using UnsignedRightShiftNode
-      using rep.UnsignedRightShiftNode by presburger
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: UnsignedRightShiftNode rep.UnsignedRightShiftNode)
   next
     case (IntegerBelowNode n x y xe ye)
     then have kind: "kind g n = IntegerBelowNode x y"
@@ -2302,14 +2602,13 @@ next
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{x, y} = inputs g n"
-      using kind unfolding inputs.simps by simp
+      by (simp add: kind)
     have "x \<in> ids g \<and> y \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed wf_closed_def isin inputs by blast
     then have "x \<notin> new \<and> y \<notin> new"
-      using new_def unchanged by blast
-    then show ?case using IntegerBelowNode
-      using rep.IntegerBelowNode by presburger
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: IntegerBelowNode rep.IntegerBelowNode)
   next
     case (IntegerEqualsNode n x y xe ye)
     then have kind: "kind g n = IntegerEqualsNode x y"
@@ -2317,14 +2616,13 @@ next
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{x, y} = inputs g n"
-      using kind unfolding inputs.simps by simp
+      by (simp add: kind)
     have "x \<in> ids g \<and> y \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed wf_closed_def isin inputs by blast
     then have "x \<notin> new \<and> y \<notin> new"
-      using new_def unchanged by blast
-    then show ?case using IntegerEqualsNode
-      using rep.IntegerEqualsNode by presburger
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: IntegerEqualsNode rep.IntegerEqualsNode)
   next
     case (IntegerLessThanNode n x y xe ye)
     then have kind: "kind g n = IntegerLessThanNode x y"
@@ -2332,14 +2630,56 @@ next
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{x, y} = inputs g n"
-      using kind unfolding inputs.simps by simp
+      by (simp add: kind)
     have "x \<in> ids g \<and> y \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed wf_closed_def isin inputs by blast
     then have "x \<notin> new \<and> y \<notin> new"
-      using new_def unchanged by blast
-    then show ?case using IntegerLessThanNode
-      using rep.IntegerLessThanNode by presburger
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: IntegerLessThanNode rep.IntegerLessThanNode)
+  next
+    case (IntegerTestNode n x y xe ye)
+    then have kind: "kind g n = IntegerTestNode x y"
+      by simp
+    then have isin: "n \<in> ids g"
+      by simp
+    have inputs: "{x, y} = inputs g n"
+      by (simp add: kind)
+    have "x \<in> ids g \<and> y \<in> ids g"
+      using closed wf_closed_def isin inputs by blast
+    then have "x \<notin> new \<and> y \<notin> new"
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: IntegerTestNode rep.IntegerTestNode)
+  next
+    case (IntegerNormalizeCompareNode n x y xe ye)
+    then have kind: "kind g n = IntegerNormalizeCompareNode x y"
+      by simp
+    then have isin: "n \<in> ids g"
+      by simp
+    have inputs: "{x, y} = inputs g n"
+      by (simp add: kind)
+    have "x \<in> ids g \<and> y \<in> ids g"
+      using closed wf_closed_def isin inputs by blast
+    then have "x \<notin> new \<and> y \<notin> new"
+      using unchanged by (simp add: new_def)
+    then show ?case
+      using IntegerNormalizeCompareNode.IH(1,2) kind kind_eq rep.IntegerNormalizeCompareNode
+            stamp_eq by blast
+  next
+    case (IntegerMulHighNode n x y xe ye)
+    then have kind: "kind g n = IntegerMulHighNode x y"
+      by simp
+    then have isin: "n \<in> ids g"
+      by simp
+    have inputs: "{x, y} = inputs g n"
+      by (simp add: kind)
+    have "x \<in> ids g \<and> y \<in> ids g"
+      using closed wf_closed_def isin inputs by blast
+    then have "x \<notin> new \<and> y \<notin> new"
+      using unchanged by (simp add: new_def)
+    then show ?case
+      using IntegerMulHighNode.IH(1,2) kind kind_eq rep.IntegerMulHighNode stamp_eq by blast
   next
     case (NarrowNode n inputBits resultBits x xe)
     then have kind: "kind g n = NarrowNode inputBits resultBits x"
@@ -2347,14 +2687,13 @@ next
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{x} = inputs g n"
-      using kind unfolding inputs.simps by simp
+      by (simp add: kind)
     have "x \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed wf_closed_def isin inputs by blast
     then have "x \<notin> new"
-      using new_def unchanged by blast
-    then show ?case using NarrowNode
-      using rep.NarrowNode by presburger
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: NarrowNode rep.NarrowNode)
   next
     case (SignExtendNode n inputBits resultBits x xe)
     then have kind: "kind g n = SignExtendNode inputBits resultBits x"
@@ -2362,14 +2701,13 @@ next
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{x} = inputs g n"
-      using kind unfolding inputs.simps by simp
+      by (simp add: kind)
     have "x \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed wf_closed_def isin inputs by blast
     then have "x \<notin> new"
-      using new_def unchanged by blast
-    then show ?case using SignExtendNode
-      using rep.SignExtendNode by presburger
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: SignExtendNode rep.SignExtendNode)
   next
     case (ZeroExtendNode n inputBits resultBits x xe)
     then have kind: "kind g n = ZeroExtendNode inputBits resultBits x"
@@ -2377,18 +2715,29 @@ next
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{x} = inputs g n"
-      using kind unfolding inputs.simps by simp
+      by (simp add: kind)
     have "x \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed wf_closed_def isin inputs by blast
     then have "x \<notin> new"
-      using new_def unchanged by blast
-    then show ?case using ZeroExtendNode
-      using rep.ZeroExtendNode by presburger
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: ZeroExtendNode rep.ZeroExtendNode)
   next
     case (LeafNode n s)
     then show ?case
       by (metis no_encoding rep.LeafNode)
+  next
+    case (PiNode n n' gu e)
+    then have kind: "kind g n = PiNode n' gu"
+      by simp
+    then have isin: "n \<in> ids g"
+      by simp
+    have inputs: "set (n' # (opt_to_list gu)) = inputs g n"
+      by (simp add: kind)
+    have "n' \<in> ids g"
+      by (metis in_mono list.set_intros(1) inputs isin wf_closed_def closed)
+    then show ?case
+      using PiNode.IH kind kind_eq new_def rep.PiNode stamp_eq unchanged by blast
   next
     case (RefNode n n' e)
     then have kind: "kind g n = RefNode n'"
@@ -2396,21 +2745,33 @@ next
     then have isin: "n \<in> ids g"
       by simp
     have inputs: "{n'} = inputs g n"
-      using kind unfolding inputs.simps by simp
+      by (simp add: kind)
     have "n' \<in> ids g"
-      using closed unfolding wf_closed_def
-      using isin inputs by blast
+      using closed wf_closed_def isin inputs by blast
     then have "n' \<notin> new"
-      using new_def unchanged by blast
+      using unchanged by (simp add: new_def)
     then show ?case
-      using RefNode
-      using rep.RefNode by presburger
+      by (simp add: RefNode rep.RefNode)
+  next
+    case (IsNullNode n v)
+    then have kind: "kind g n = IsNullNode v"
+      by simp
+    then have isin: "n \<in> ids g"
+      by simp
+    have inputs: "{v} = inputs g n"
+      by (simp add: kind)
+    have "v \<in> ids g"
+      using closed wf_closed_def isin inputs by blast
+    then have "v \<notin> new"
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: rep.IsNullNode stamp_eq kind_eq kind IsNullNode.IH)
   qed 
 qed
 
 lemma not_in_no_rep:
   "n \<notin> ids g \<Longrightarrow> \<forall>e. \<not>(g \<turnstile> n \<simeq> e)"
-  using eval_contains_id by blast
+  using eval_contains_id by auto
 
 (*
 lemma insert_maximal_sharing:
@@ -2525,139 +2886,148 @@ using assms proof -
 lemma unary_inputs:
   assumes "kind g n = unary_node op x"
   shows "inputs g n = {x}"
-  using assms by (cases op; auto)
+  by (cases op; auto simp add: assms)
 
 lemma unary_succ:
   assumes "kind g n = unary_node op x"
   shows "succ g n = {}"
-  using assms by (cases op; auto)
+  by (cases op; auto simp add: assms)
 
 lemma binary_inputs:
   assumes "kind g n = bin_node op x y"
   shows "inputs g n = {x, y}"
-  using assms by (cases op; auto)
+  by (cases op; auto simp add: assms)
 
 lemma binary_succ:
   assumes "kind g n = bin_node op x y"
   shows "succ g n = {}"
-  using assms by (cases op; auto)
+  by (cases op; auto simp add: assms)
 
 lemma unrep_contains:
   assumes "g \<oplus> e \<leadsto> (g', n)"
   shows "n \<in> ids g'"
-  using assms
-  using not_in_no_rep term_graph_reconstruction by blast
+  using assms not_in_no_rep term_graph_reconstruction by blast
 
 lemma unrep_preserves_contains:
   assumes "n \<in> ids g"
   assumes "g \<oplus> e \<leadsto> (g', n')"
   shows "n \<in> ids g'"
-  using assms
-  by (meson subsetD unrep_ids_subset)
+  by (meson subsetD unrep_ids_subset assms)
 
 lemma unrep_preserves_closure:
   assumes "wf_closed g"
   assumes "g \<oplus> e \<leadsto> (g', n)"
   shows "wf_closed g'"
-  using assms(2,1) unfolding wf_closed_def
+  using assms(2,1) wf_closed_def
   proof (induction g e "(g', n)" arbitrary: g' n)
     case (ConstantNodeSame g c n)
     then show ?case
-      by blast
+      by simp
   next
     case (ConstantNodeNew g c n g')
     then have dom: "ids g' = ids g \<union> {n}"
-      by (meson IRNode.distinct(683) add_node_ids_subset ids_add_update)
+      by (meson IRNode.distinct(1041) add_node_ids_subset ids_add_update)
     have k: "kind g' n = ConstantNode c"
-      using ConstantNodeNew add_node_lookup by simp
+      by (simp add: add_node_lookup ConstantNodeNew)
     then have inp: "{} = inputs g' n"
-      unfolding inputs.simps by simp
+      by simp
     from k have suc: "{} = succ g' n"
-      unfolding succ.simps by simp
+      by simp
     have "inputs g' n \<subseteq> ids g' \<and> succ g' n \<subseteq> ids g' \<and> kind g' n \<noteq> NoNode"
-      using inp suc k by simp
+      by (simp add: k)
     then show ?case
-      by (smt (verit) ConstantNodeNew.hyps(3) ConstantNodeNew.prems Un_insert_right add_changed changeonly.elims(2) dom inputs.simps insert_iff singleton_iff subset_insertI subset_trans succ.simps sup_bot_right)
+      by (smt (verit) ConstantNodeNew.hyps(3) ConstantNodeNew.prems Un_insert_right add_changed dom
+          changeonly.elims(2) insert_iff singleton_iff subset_insertI subset_trans sup_bot_right
+          succ.simps inputs.simps)
   next
     case (ParameterNodeSame g i s n)
-    then show ?case by blast
+    then show ?case 
+      by simp
   next
     case (ParameterNodeNew g i s n g')
     then have dom: "ids g' = ids g \<union> {n}"
-      using IRNode.distinct(2447) fresh_ids ids_add_update by presburger
+      by (meson IRNode.distinct(3523) add_node_ids_subset ids_add_update)
     have k: "kind g' n = ParameterNode i"
-      using ParameterNodeNew add_node_lookup by simp
+      by (simp add: add_node_lookup ParameterNodeNew)
     then have inp: "{} = inputs g' n"
-      unfolding inputs.simps by simp
+      by simp
     from k have suc: "{} = succ g' n"
-      unfolding succ.simps by simp
+      by simp
     have "inputs g' n \<subseteq> ids g' \<and> succ g' n \<subseteq> ids g' \<and> kind g' n \<noteq> NoNode"
-      using k inp suc by simp
+      by (simp add: k)
     then show ?case
-      by (smt (verit) ParameterNodeNew.hyps(3) ParameterNodeNew.prems Un_insert_right add_node_as_set dom inputs.elims insertE not_excluded_keep_type order_trans singletonD subset_insertI succ.elims sup_bot_right)
+      by (smt (verit) ParameterNodeNew.hyps(3) ParameterNodeNew.prems Un_insert_right sup_bot_right
+          add_node_as_set dom inputs.elims insertE not_excluded_keep_type order_trans singletonD 
+          subset_insertI succ.elims)
   next
     case (ConditionalNodeSame g ce g2 c te g3 t fe g4 f s' n)
-    then show ?case by blast
+    then show ?case 
+      by simp
   next
     case (ConditionalNodeNew g4 c t f s' g ce g2 te g3 fe n g')
     then have dom: "ids g' = ids g4 \<union> {n}"
-      by (meson IRNode.distinct(591) add_node_ids_subset ids_add_update)
+      by (meson IRNode.distinct(933) add_node_ids_subset ids_add_update)
     have k: "kind g' n = ConditionalNode c t f"
-      using ConditionalNodeNew add_node_lookup by simp
+      by (auto simp add: find_new_kind ConditionalNodeNew.hyps(10))
     then have inp: "{c, t, f} = inputs g' n"
-      unfolding inputs.simps by simp
+      by simp
     from k have suc: "{} = succ g' n"
-      unfolding succ.simps by simp
+      by simp
     have "inputs g' n \<subseteq> ids g' \<and> succ g' n \<subseteq> ids g' \<and> kind g' n \<noteq> NoNode"
-      using k inp suc unrep_contains unrep_preserves_contains
-      using ConditionalNodeNew
-      by (smt (verit) IRNode.simps(643) Un_insert_right bot.extremum dom insert_absorb insert_subset subset_insertI sup_bot_right)
-    then show ?case using dom
-      by (smt (z3) ConditionalNodeNew.hyps ConditionalNodeNew.prems Diff_eq_empty_iff Diff_iff Un_insert_right Un_upper1 add_node_def inputs.simps insertE replace_node_def replace_node_unchanged subset_trans succ.simps sup_bot_right)
+      by (metis (mono_tags, lifting) ConditionalNodeNew.hyps(2,4,6) IRNode.distinct(933) insertCI k
+          Un_empty_right Un_insert_right dom empty_subsetI in_mono insert_subsetI unrep_contains
+          unrep_ids_subset inp suc)
+    then show ?case 
+      by (smt (z3) dom ConditionalNodeNew.hyps ConditionalNodeNew.prems Diff_eq_empty_iff Diff_iff 
+          Un_insert_right Un_upper1 add_node_def inputs.simps insertE replace_node_def succ.simps
+          replace_node_unchanged subset_trans sup_bot_right)
   next
     case (UnaryNodeSame g xe g2 x s' op n)
-    then show ?case by blast
+    then show ?case 
+      by simp
   next
     case (UnaryNodeNew g2 op x s' g xe n g')
     then have dom: "ids g' = ids g2 \<union> {n}"
-      by (metis add_node_ids_subset add_node_lookup ids_add_update ids_some unrep.UnaryNodeNew unrep_contains)
+      by (metis add_node_ids_subset add_node_lookup ids_add_update ids_some unrep.UnaryNodeNew 
+          unrep_contains)
     have k: "kind g' n = unary_node op x"
-      using UnaryNodeNew add_node_lookup
-      by (metis fresh_ids ids_some)
+      by (metis fresh_ids ids_some add_node_lookup UnaryNodeNew(5,6))
     then have inp: "{x} = inputs g' n"
       using unary_inputs by simp
     from k have suc: "{} = succ g' n"
       using unary_succ by simp
-    have "inputs g' n \<subseteq> ids g' \<and> succ g' n \<subseteq> ids g' \<and> kind g' n \<noteq> NoNode"
-      using k inp suc unrep_contains unrep_preserves_contains
-      using UnaryNodeNew
-      by (metis Un_upper1 dom empty_subsetI ids_some insert_not_empty insert_subsetI not_in_g_inputs subset_iff)
+    have "inputs g' n \<subseteq> ids g' \<and> succ g' n \<subseteq> ids g' \<and> kind g' n \<noteq> NoNode" 
+      by (metis Un_upper1 dom empty_subsetI ids_some insert_not_empty insert_subsetI not_in_g_inputs 
+          subset_iff UnaryNodeNew(2) unrep_contains suc k inp)
     then show ?case
-      by (smt (verit) Un_insert_right UnaryNodeNew.hyps UnaryNodeNew.prems add_changed changeonly.elims(2) dom inputs.simps insert_iff singleton_iff subset_insertI subset_trans succ.simps sup_bot_right)
+      by (smt (verit, ccfv_threshold) Un_insert_right UnaryNodeNew.hyps UnaryNodeNew.prems dom
+          add_changed succ.simps changeonly.elims(2) inputs.simps insert_iff singleton_iff
+          subset_insertI subset_trans sup_bot_right)
   next
     case (BinaryNodeSame g xe g2 x ye g3 y s' op n)
-    then show ?case by blast
+    then show ?case 
+      by simp
   next
     case (BinaryNodeNew g3 op x y s' g xe g2 ye n g')
     then have dom: "ids g' = ids g3 \<union> {n}"
       by (metis binary_inputs fresh_ids ids_add_update ids_some insert_not_empty not_in_g_inputs)
     have k: "kind g' n = bin_node op x y"
-      using BinaryNodeNew add_node_lookup
-      by (metis fresh_ids ids_some)
+      by (metis fresh_ids ids_some add_node_lookup BinaryNodeNew(7,8))
     then have inp: "{x, y} = inputs g' n"
       using binary_inputs by simp
     from k have suc: "{} = succ g' n"
       using binary_succ by simp
     have "inputs g' n \<subseteq> ids g' \<and> succ g' n \<subseteq> ids g' \<and> kind g' n \<noteq> NoNode"
-      using k inp suc unrep_contains unrep_preserves_contains
-      using BinaryNodeNew
-      by (metis Un_upper1 dom empty_subsetI ids_some insert_not_empty insert_subsetI not_in_g_inputs subset_iff)
-    then show ?case using dom BinaryNodeNew
-      by (smt (verit, del_insts) Diff_eq_empty_iff Diff_iff Un_insert_right Un_upper1 add_node_def inputs.simps insertE replace_node_def replace_node_unchanged subset_trans succ.simps sup_bot_right)
+      by (metis Un_upper1 dom empty_subsetI ids_some insert_not_empty insert_subsetI not_in_g_inputs 
+          subset_iff BinaryNodeNew(2,4) unrep_preserves_contains k inp suc unrep_contains)
+    then show ?case 
+      by (smt (verit, del_insts) dom BinaryNodeNew Diff_eq_empty_iff Un_insert_right sup_bot_right
+          add_node_def inputs.simps succ.simps replace_node_def replace_node_unchanged subset_trans
+          insertE Diff_iff Un_upper1)
   next
     case (AllLeafNodes g n s)
     then show ?case
-      by blast
+      by simp
   qed
 
 inductive_cases ConstUnrepE: "g \<oplus> (ConstantExpr x) \<leadsto> (g', n)"
@@ -2670,7 +3040,6 @@ definition bad_graph where
     (1, RefNode 2, constantAsStamp constant_value),
     (2, ConstantNode constant_value, constantAsStamp constant_value)
   ]"
-
 
 (*
 experiment begin

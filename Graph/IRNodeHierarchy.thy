@@ -27,7 +27,7 @@ fun is_VirtualState :: "IRNode \<Rightarrow> bool" where
   "is_VirtualState n = ((is_FrameState n))"
 
 fun is_BinaryArithmeticNode :: "IRNode \<Rightarrow> bool" where
-  "is_BinaryArithmeticNode n = ((is_AddNode n) \<or> (is_AndNode n) \<or> (is_MulNode n) \<or> (is_OrNode n) \<or> (is_SubNode n) \<or> (is_XorNode n))"
+  "is_BinaryArithmeticNode n = ((is_AddNode n) \<or> (is_AndNode n) \<or> (is_MulNode n) \<or> (is_OrNode n) \<or> (is_SubNode n) \<or> (is_XorNode n) \<or> (is_IntegerNormalizeCompareNode n) \<or> (is_IntegerMulHighNode n))"
 
 fun is_ShiftNode :: "IRNode \<Rightarrow> bool" where
   "is_ShiftNode n = ((is_LeftShiftNode n) \<or> (is_RightShiftNode n) \<or> (is_UnsignedRightShiftNode n))"
@@ -42,7 +42,7 @@ fun is_IntegerConvertNode :: "IRNode \<Rightarrow> bool" where
   "is_IntegerConvertNode n = ((is_NarrowNode n) \<or> (is_SignExtendNode n) \<or> (is_ZeroExtendNode n))"
 
 fun is_UnaryArithmeticNode :: "IRNode \<Rightarrow> bool" where
-  "is_UnaryArithmeticNode n = ((is_AbsNode n) \<or> (is_NegateNode n) \<or> (is_NotNode n))"
+  "is_UnaryArithmeticNode n = ((is_AbsNode n) \<or> (is_NegateNode n) \<or> (is_NotNode n) \<or> (is_BitCountNode n) \<or> (is_ReverseBytesNode n))"
 
 fun is_UnaryNode :: "IRNode \<Rightarrow> bool" where
   "is_UnaryNode n = ((is_IntegerConvertNode n) \<or> (is_UnaryArithmeticNode n))"
@@ -63,7 +63,7 @@ fun is_CompareNode :: "IRNode \<Rightarrow> bool" where
   "is_CompareNode n = ((is_IntegerEqualsNode n) \<or> (is_IntegerLowerThanNode n))"
 
 fun is_BinaryOpLogicNode :: "IRNode \<Rightarrow> bool" where
-  "is_BinaryOpLogicNode n = ((is_CompareNode n))"
+  "is_BinaryOpLogicNode n = ((is_CompareNode n) \<or> (is_IntegerTestNode n))"
 
 fun is_LogicNode :: "IRNode \<Rightarrow> bool" where
   "is_LogicNode n = ((is_BinaryOpLogicNode n) \<or> (is_LogicNegationNode n) \<or> (is_ShortCircuitOrNode n) \<or> (is_UnaryOpLogicNode n))"
@@ -83,14 +83,17 @@ fun is_AbstractNewArrayNode :: "IRNode \<Rightarrow> bool" where
 fun is_AbstractNewObjectNode :: "IRNode \<Rightarrow> bool" where
   "is_AbstractNewObjectNode n = ((is_AbstractNewArrayNode n) \<or> (is_NewInstanceNode n))"
 
+fun is_AbstractFixedGuardNode :: "IRNode \<Rightarrow> bool" where
+  "is_AbstractFixedGuardNode n = (is_FixedGuardNode n)"
+
 fun is_IntegerDivRemNode :: "IRNode \<Rightarrow> bool" where
   "is_IntegerDivRemNode n = ((is_SignedDivNode n) \<or> (is_SignedRemNode n))"
 
 fun is_FixedBinaryNode :: "IRNode \<Rightarrow> bool" where
-  "is_FixedBinaryNode n = ((is_IntegerDivRemNode n))"
+  "is_FixedBinaryNode n = (is_IntegerDivRemNode n)"
 
 fun is_DeoptimizingFixedWithNextNode :: "IRNode \<Rightarrow> bool" where
-  "is_DeoptimizingFixedWithNextNode n = ((is_AbstractNewObjectNode n) \<or> (is_FixedBinaryNode n))"
+  "is_DeoptimizingFixedWithNextNode n = ((is_AbstractNewObjectNode n) \<or> (is_FixedBinaryNode n) \<or> (is_AbstractFixedGuardNode n))"
 
 fun is_AbstractMemoryCheckpoint :: "IRNode \<Rightarrow> bool" where
   "is_AbstractMemoryCheckpoint n = ((is_BytecodeExceptionNode n) \<or> (is_InvokeNode n))"
@@ -107,8 +110,11 @@ fun is_BeginStateSplitNode :: "IRNode \<Rightarrow> bool" where
 fun is_AbstractBeginNode :: "IRNode \<Rightarrow> bool" where
   "is_AbstractBeginNode n = ((is_BeginNode n) \<or> (is_BeginStateSplitNode n) \<or> (is_KillingBeginNode n))"
 
+fun is_AccessArrayNode :: "IRNode \<Rightarrow> bool" where
+  "is_AccessArrayNode n = ((is_LoadIndexedNode n) \<or> (is_StoreIndexedNode n))"
+
 fun is_FixedWithNextNode :: "IRNode \<Rightarrow> bool" where
-  "is_FixedWithNextNode n = ((is_AbstractBeginNode n) \<or> (is_AbstractStateSplit n) \<or> (is_AccessFieldNode n) \<or> (is_DeoptimizingFixedWithNextNode n))"
+  "is_FixedWithNextNode n = ((is_AbstractBeginNode n) \<or> (is_AbstractStateSplit n) \<or> (is_AccessFieldNode n) \<or> (is_DeoptimizingFixedWithNextNode n) \<or> (is_ControlFlowAnchorNode n) \<or> (is_ArrayLengthNode n) \<or> (is_AccessArrayNode n))"
 
 fun is_WithExceptionNode :: "IRNode \<Rightarrow> bool" where
   "is_WithExceptionNode n = ((is_InvokeWithExceptionNode n))"
@@ -239,6 +245,7 @@ fun is_sequential_node :: "IRNode \<Rightarrow> bool" where
   "is_sequential_node (LoopExitNode _ _ _) = True" |
   "is_sequential_node (MergeNode _ _ _) = True" |
   "is_sequential_node (RefNode _) = True" |
+  "is_sequential_node (ControlFlowAnchorNode _) = True" |
   "is_sequential_node _ = False"
 
 text \<open>

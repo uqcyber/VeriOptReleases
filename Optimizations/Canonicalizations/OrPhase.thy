@@ -38,19 +38,17 @@ lemma OrLeftFallthrough:
     obtain b vv where e: "[m, p] \<turnstile> exp[x | y] \<mapsto> IntVal b vv" 
       by (metis BinaryExprE bin_eval_new_int new_int.simps eval(2))
     from e obtain xv where xv: "[m, p] \<turnstile> x \<mapsto> IntVal b xv"
-      apply (subst (asm) unfold_binary_width)
-      by force+
+      apply (subst (asm) unfold_binary_width) by force+
     from e obtain yv where yv: "[m, p] \<turnstile> y \<mapsto> IntVal b yv"
-      apply (subst (asm) unfold_binary_width)
-      by force+
-    have vdef: "v = intval_or (IntVal b xv) (IntVal b yv)"
+      apply (subst (asm) unfold_binary_width) by force+
+    have vdef: "v = val[(IntVal b xv) | (IntVal b yv)]"
       by (metis bin_eval.simps(5) eval(2) evalDet unfold_binary xv yv)
     have "\<forall> i. (bit xv i) | (bit yv i) = (bit xv i)"
       by (metis assms bit_and_iff not_down_up_mask_and_zero_implies_zero xv yv)
-    then have "IntVal b xv = intval_or (IntVal b xv) (IntVal b yv)"
-      by (smt (verit, ccfv_threshold) and.idem assms bit.conj_disj_distrib eval_unused_bits_zero 
+    then have "IntVal b xv = val[(IntVal b xv) | (IntVal b yv)]"
+      by (metis (no_types, lifting) and.idem assms bit.conj_disj_distrib eval_unused_bits_zero yv xv
           intval_or.simps(1) new_int.simps new_int_bin.simps not_down_up_mask_and_zero_implies_zero 
-          word_ao_absorbs(3) xv yv)
+          word_ao_absorbs(3))
     then show ?thesis
       using xv vdef by presburger
   qed
@@ -66,19 +64,17 @@ lemma OrRightFallthrough:
     obtain b vv where e: "[m, p] \<turnstile> exp[x | y] \<mapsto> IntVal b vv"
       by (metis BinaryExprE bin_eval_new_int new_int.simps eval(2))
     from e obtain xv where xv: "[m, p] \<turnstile> x \<mapsto> IntVal b xv"
-      apply (subst (asm) unfold_binary_width)
-      by force+
+      apply (subst (asm) unfold_binary_width) by force+
     from e obtain yv where yv: "[m, p] \<turnstile> y \<mapsto> IntVal b yv"
-      apply (subst (asm) unfold_binary_width)
-      by force+
-    have vdef: "v = intval_or (IntVal b xv) (IntVal b yv)"
+      apply (subst (asm) unfold_binary_width) by force+
+    have vdef: "v = val[(IntVal b xv) | (IntVal b yv)]"
       by (metis bin_eval.simps(5) eval(2) evalDet unfold_binary xv yv)
     have "\<forall> i. (bit xv i) | (bit yv i) = (bit yv i)"
       by (metis assms bit_and_iff not_down_up_mask_and_zero_implies_zero xv yv)
-    then have "IntVal b yv = intval_or (IntVal b xv) (IntVal b yv)"
-      by (metis (no_types, lifting) assms eval_unused_bits_zero intval_or.simps(1) new_int.elims 
-          new_int_bin.elims stamp_mask.not_down_up_mask_and_zero_implies_zero stamp_mask_axioms 
-          word_ao_absorbs(8) xv yv)
+    then have "IntVal b yv = val[(IntVal b xv) | (IntVal b yv)]"
+      by (metis (no_types, lifting) assms eval_unused_bits_zero intval_or.simps(1) new_int.elims yv 
+          new_int_bin.elims stamp_mask.not_down_up_mask_and_zero_implies_zero stamp_mask_axioms xv
+          word_ao_absorbs(8))
     then show ?thesis
       using vdef yv by presburger
   qed
@@ -106,39 +102,70 @@ lemma bin_or_not_operands:
 (* Value level proofs *)
 lemma val_or_equal:
   assumes "x = new_int b v"
-  and    "(val[x | x] \<noteq> UndefVal)"
+  and     "val[x | x] \<noteq> UndefVal"
   shows   "val[x | x] = val[x]"
-   apply (cases x; auto) using bin_or_equal assms 
-  by auto+ 
+  by (auto simp: assms)
 
 lemma val_elim_redundant_false:
   assumes "x = new_int b v"
   and     "val[x | false] \<noteq> UndefVal"
   shows   "val[x | false] = val[x]"
-   using assms apply (cases x; auto) by presburger
+  using assms by (cases x; auto; presburger)
 
 lemma val_shift_const_right_helper:
    "val[x | y] = val[y | x]"
-   apply (cases x; cases y; auto)
-  by (simp add: or.commute)+
+  by (cases x; cases y; auto simp: or.commute)
 
 lemma val_or_not_operands:
  "val[~x | ~y] = val[~(x & y)]"
-  apply (cases x; cases y; auto)
-  by (simp add: take_bit_not_take_bit)
+  by (cases x; cases y; auto simp: take_bit_not_take_bit)
 
 (* Exp level proofs *)
 lemma exp_or_equal:
   "exp[x | x] \<ge> exp[x]"
-   using val_or_equal apply auto[1]
-   by (smt (verit, ccfv_SIG) evalDet eval_unused_bits_zero intval_negate.elims intval_or.simps(2) 
-       intval_or.simps(6) intval_or.simps(7) new_int.simps val_or_equal)
+  apply auto[1]
+  subgoal premises p for m p xa ya
+  proof-
+    obtain xv where xv: "[m,p] \<turnstile> x \<mapsto> xv"
+      using p(1) by auto
+    obtain xb xvv where xvv: "xv = IntVal xb xvv"
+      by (metis evalDet evaltree_not_undef intval_is_null.cases intval_or.simps(3,4,5) p(1,3) xv)
+    then have evalNotUndef: "val[xv | xv] \<noteq> UndefVal"
+      using p evalDet xv by blast
+    then have orUnfold: "val[xv | xv] = (new_int xb (or xvv xvv))"
+      by (simp add: xvv)
+    then have simplify: "val[xv | xv] = (new_int xb (xvv))"
+      by (simp add: orUnfold)
+    then have eq: "(xv) = (new_int xb (xvv))"
+      using eval_unused_bits_zero xv xvv by auto
+    then show ?thesis
+      by (metis evalDet p(1,2) simplify xv)
+  qed
+  done
 
 lemma exp_elim_redundant_false:
  "exp[x | false] \<ge> exp[x]"
-   using val_elim_redundant_false apply auto[1]
-   by (smt (verit) Value.sel(1) eval_unused_bits_zero intval_or.elims new_int.simps 
-       new_int_bin.simps val_elim_redundant_false)
+  apply auto[1]
+  subgoal premises p for m p xa
+  proof-
+    obtain xv where xv: "[m,p] \<turnstile> x \<mapsto> xv"
+      using p(1) by auto
+    obtain xb xvv where xvv: "xv = IntVal xb xvv"
+      by (metis evalDet evaltree_not_undef intval_is_null.cases intval_or.simps(3,4,5) p(1,2) xv)
+    then have evalNotUndef: "val[xv | (IntVal 32 0)] \<noteq> UndefVal"
+      using p evalDet xv by blast
+    then have widthSame: "xb=32"
+      by (metis intval_or.simps(1) new_int_bin.simps xvv)
+    then have orUnfold: "val[xv | (IntVal 32 0)] = (new_int xb (or xvv 0))"
+      by (simp add: xvv)
+    then have simplify: "val[xv | (IntVal 32 0)] = (new_int xb (xvv))"
+      by (simp add: orUnfold)
+    then have eq: "(xv) = (new_int xb (xvv))"
+      using eval_unused_bits_zero xv xvv by auto
+    then show ?thesis
+      by (metis evalDet p(1) simplify xv)
+  qed
+  done
 
 text \<open>Optimisations\<close>
 
@@ -146,18 +173,15 @@ optimization OrEqual: "x | x \<longmapsto> x"
   by (meson exp_or_equal)
 
 optimization OrShiftConstantRight: "((const x) | y) \<longmapsto> y | (const x) when \<not>(is_ConstantExpr y)"
-  using size_flip_binary apply force
-  apply auto[1]
-  by (simp add: BinaryExpr unfold_const val_shift_const_right_helper)
+  using size_flip_binary by (auto simp: BinaryExpr unfold_const val_shift_const_right_helper)
 
 optimization EliminateRedundantFalse: "x | false \<longmapsto> x"
   by (meson exp_elim_redundant_false)
 
 optimization OrNotOperands: "(~x | ~y) \<longmapsto> ~(x & y)"
    apply (metis add_2_eq_Suc' less_SucI not_add_less1 not_less_eq size_binary_const size_non_add)
-   apply auto[1]
-  by (metis BinaryExpr UnaryExpr bin_eval.simps(4) intval_not.simps(2) unary_eval.simps(3) 
-      val_or_not_operands)
+   using BinaryExpr UnaryExpr bin_eval.simps(4) intval_not.simps(2) unary_eval.simps(3) 
+         val_or_not_operands by fastforce
 
 optimization OrLeftFallthrough:
   "x | y \<longmapsto> x when ((and (not (IRExpr_down x)) (IRExpr_up y)) = 0)"

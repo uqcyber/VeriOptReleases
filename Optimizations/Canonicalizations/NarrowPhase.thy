@@ -153,9 +153,7 @@ lemma take_bit_suc:
   assumes "\<not> bit v (n::nat)"
   shows "take_bit (Suc n::nat) v = take_bit (n::nat) v"
   by (smt (verit, best) assms bit_take_bit_iff le_eq_less_or_eq less_Suc_eq_le linorder_not_less
-         signed_take_bit_eq_if_positive signed_take_bit_take_bit take_bit_signed_take_bit)
-
-
+      signed_take_bit_eq_if_positive signed_take_bit_take_bit take_bit_signed_take_bit)
 
 lemma narrow_reverse_pos:
   assumes 1: "and (val32 >>> 7) 1 \<noteq> 1"
@@ -363,14 +361,12 @@ lemma negate_min32:
   fixes y :: int32
   assumes "y = (0x80000000 :: int32)"
   shows "-y = (0x80000000 :: int32)"
-  using assms apply code_simp
-  by force
+  using assms apply code_simp by force
 
 lemma sub_min32:
   fixes y :: int32
   assumes "y = (0x80000000 :: int32)"
   shows "x - y = x + y"
-  unfolding assms negate_min32
-  by simp 
+  unfolding assms negate_min32 by simp 
 
 end

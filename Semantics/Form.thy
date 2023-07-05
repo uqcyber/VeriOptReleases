@@ -49,10 +49,10 @@ fun wf_stamp :: "IRGraph \<Rightarrow> (ID \<Rightarrow> Stamp) \<Rightarrow> bo
     (\<forall> v m p e . (g \<turnstile> n \<simeq> e) \<and> ([m, p] \<turnstile> e \<mapsto> v) \<longrightarrow> valid_value v (s n)))"
 
 lemma wf_empty: "wf_graph start_end_graph"
-  unfolding start_end_graph_def wf_folds by simp
+  unfolding wf_folds by (simp add: start_end_graph_def)
 
 lemma wf_eg2_sq: "wf_graph eg2_sq"
-  unfolding eg2_sq_def wf_folds by simp
+  unfolding wf_folds by (simp add: eg2_sq_def)
 
 fun wf_logic_node_inputs :: "IRGraph \<Rightarrow> ID \<Rightarrow> bool" where 
 "wf_logic_node_inputs g n =

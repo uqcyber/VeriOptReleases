@@ -37,13 +37,12 @@ lemma lockstep_strong_bisimilulation:
   assumes "g, p \<turnstile> (nid, m, h) \<rightarrow> (nid', m, h)"
   assumes "g', p \<turnstile> (nid, m, h) \<rightarrow> (nid', m, h)"
   shows "nid m h | g \<sim> g'"
-  using assms(2) assms(3) stepDet strong_noop_bisimilar.simps by metis
+  by (metis strong_noop_bisimilar.simps stepDet assms(2,3))
 
 lemma no_step_bisimulation:
   assumes "\<forall>m p h nid' m' h'. \<not>(g, p \<turnstile> (nid, m, h) \<rightarrow> (nid', m', h'))"
   assumes "\<forall>m p h nid' m' h'. \<not>(g', p \<turnstile> (nid, m, h) \<rightarrow> (nid', m', h'))"
   shows "nid m h | g \<sim> g'"
-  using assms
-  by (simp add: assms(1) assms(2) strong_noop_bisimilar.intros)
+  by (simp add: assms(1,2) strong_noop_bisimilar.intros)
 
 end
