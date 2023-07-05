@@ -101,7 +101,7 @@ lemma exp_EliminateRHS:
   and     "stamp_expr x = IntegerStamp 64 lo hi" 
   and     "wf_stamp x"
   shows "exp[x << const(y)] \<ge> x"
-  unfolding bin_eval.simps(8) apply auto
+  unfolding bin_eval.simps(8) apply auto[1]
   subgoal premises p for m p xa
     proof -
       obtain xa where xa: "[m,p] \<turnstile> x \<mapsto> xa"
@@ -121,8 +121,8 @@ text \<open>Optimisations\<close>
 
 
 optimization EliminateRHS_64: "(x << const(y)) \<longmapsto> x when 
-                               (stamp_expr x = IntegerStamp 64 lo hi \<and> 
-                                wf_stamp x)"
+                               (IsStamp x (IntegerStamp 64 lo hi) && 
+                                WellFormed x)"
   using exp_EliminateRHS wf_stamp_def  bin_eval.simps(8)  sorry
 
 end (* End of ShiftNode *)

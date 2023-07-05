@@ -225,9 +225,14 @@ optimization AbsIdempotence: "abs(abs(x)) \<longmapsto>  abs(x)"
    apply auto[1]
   by (metis UnaryExpr unary_eval.simps(1) val_abs_idem)
 
+value AbsIdempotence_code
+
 optimization AbsNegate: "(abs(-x)) \<longmapsto>  abs(x)"
     apply auto[1] using val_abs_negate
   by (metis unary_eval.simps(1) unfold_unary)
+
+value "(AbsIdempotence_code else AbsNegate_code)"
+
 
 end (* End of AbsPhase *)
 

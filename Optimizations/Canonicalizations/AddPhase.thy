@@ -16,7 +16,7 @@ lemma binadd_commute:
 
 
 (* horrible backward proof - needs improving *)
-optimization AddShiftConstantRight: "((const v) + y) \<longmapsto> y + (const v) when \<not>(is_ConstantExpr y)"
+optimization AddShiftConstantRight: "((const v) + y) \<longmapsto> y + (const v) when (Not (IsConstantExpr y))"
   using size_non_const
   apply (metis add_2_eq_Suc' less_Suc_eq plus_1_eq_Suc size.simps(11) size_non_add)
   unfolding le_expr_def
@@ -36,10 +36,9 @@ optimization AddShiftConstantRight: "((const v) + y) \<longmapsto> y + (const v)
     done
   done
 
-
-optimization AddShiftConstantRight2: "((const v) + y) \<longmapsto> y + (const v) when \<not>(is_ConstantExpr y)"
+optimization AddShiftConstantRight2: "((const v) + y) \<longmapsto> y + (const v) when Not (IsConstantExpr y)"
   unfolding le_expr_def
-   apply (auto simp: intval_add_sym)
+   apply (auto simp: intval_add_sym)[2]
   (* termination proof *)
   using size_non_const
   by (metis add_2_eq_Suc' lessI plus_1_eq_Suc size.simps(11) size_non_add)
@@ -61,10 +60,11 @@ lemma is_neutral_0 [simp]:
   using 1 by auto
 
 optimization AddNeutral: "(e + (const (IntVal 32 0))) \<longmapsto> e"
-  unfolding le_expr_def apply auto
+  unfolding le_expr_def apply auto[1]
   using is_neutral_0 eval_unused_bits_zero
   by (smt (verit) add_cancel_left_right intval_add.elims val_to_bool.simps(1))
 
+value AddNeutral_code
 
 ML_val \<open>@{term \<open>x = y\<close>}\<close>
 
@@ -74,8 +74,8 @@ lemma NeutralLeftSubVal:
   apply simp using assms by (cases e1; cases e2; auto)
   
 
-optimization RedundantSubAdd: "((e\<^sub>1 - e\<^sub>2) + e\<^sub>2) \<longmapsto> e\<^sub>1"
-  apply auto using eval_unused_bits_zero NeutralLeftSubVal
+optimization RedundantSubAdd: "((e1 - e2) + e2) \<longmapsto> e1"
+  apply auto[1] using eval_unused_bits_zero NeutralLeftSubVal
   unfolding well_formed_equal_defn
   by (smt (verit) evalDet intval_sub.elims new_int.elims)
 
@@ -91,7 +91,7 @@ lemma just_goal2:
   by (metis 1 evalDet evaltree_not_undef)
 
 
-optimization RedundantSubAdd2: " e\<^sub>2 + (e\<^sub>1 - e\<^sub>2) \<longmapsto> e\<^sub>1"
+optimization RedundantSubAdd2: " e2 + (e1 - e2) \<longmapsto> e1"
   apply (metis add.commute add_less_cancel_right less_add_Suc2 plus_1_eq_Suc size_binary_const size_non_add trans_less_add2)
   by (smt (verit, del_insts) BinaryExpr BinaryExprE RedundantSubAdd(1) binadd_commute le_expr_def rewrite_preservation.simps(1))
 
@@ -187,7 +187,7 @@ lemma exp_add_left_negate_to_sub:
 text \<open>Optimisations\<close>
 
 optimization RedundantAddSub: "(b + a) - b \<longmapsto> a"
-   apply auto
+   apply auto[1]
   by (smt (verit) evalDet intval_add.elims new_int.elims val_redundant_add_sub 
       eval_unused_bits_zero)
 

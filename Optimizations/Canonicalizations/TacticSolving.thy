@@ -6,7 +6,7 @@ fun size :: "IRExpr \<Rightarrow> nat" where
   "size (UnaryExpr op e) = (size e) * 2" |
   "size (BinaryExpr BinAdd x y) = (size x) + ((size y) * 2)" |
   "size (BinaryExpr op x y) = (size x) + (size y)" |
-  "size (ConditionalExpr cond t f) = (size cond) + (size t) + (size f) + 2" |
+  "size (ConditionalExpr c t f) = (size c) + (size t) + (size f) + 2" |
   "size (ConstantExpr c) = 1" |
   "size (ParameterExpr ind s) = 2" |
   "size (LeafExpr nid s) = 2" |

@@ -10,7 +10,7 @@ fun mul_size :: "IRExpr \<Rightarrow> nat" where
   "mul_size (UnaryExpr op e) = (mul_size e) + 2" |
   "mul_size (BinaryExpr BinMul x y) = ((mul_size x) + (mul_size y) + 2) * 2" |
   "mul_size (BinaryExpr op x y) = (mul_size x) + (mul_size y) + 2" |
-  "mul_size (ConditionalExpr cond t f) = (mul_size cond) + (mul_size t) + (mul_size f) + 2" |
+  "mul_size (ConditionalExpr c t f) = (mul_size c) + (mul_size t) + (mul_size f) + 2" |
   "mul_size (ConstantExpr c) = 1" |
   "mul_size (ParameterExpr ind s) = 2" |
   "mul_size (LeafExpr nid s) = 2" |
@@ -208,14 +208,14 @@ thm_oracles val_MulPower2AddPower2
 (* Exp-level proofs *)
 lemma exp_multiply_zero_64:
  "exp[x * (const (IntVal 64 0))] \<ge> ConstantExpr (IntVal 64 0)"
-  using val_multiply_zero apply auto 
+  using val_multiply_zero apply auto[1]
   by (smt (verit) Value.inject(1) constantAsStamp.simps(1) int_signed_value_bounds intval_mul.elims 
         mult_zero_right new_int.simps new_int_bin.simps nle_le numeral_eq_Suc take_bit_of_0 
         unfold_const valid_stamp.simps(1) valid_value.simps(1) zero_less_Suc wf_value_def)
 
 lemma exp_multiply_neutral:
  "exp[x * (const (IntVal b 1))] \<ge> x"
-  using val_multiply_neutral apply auto
+  using val_multiply_neutral apply auto[1]
   by (smt (verit) Value.inject(1) eval_unused_bits_zero intval_mul.elims mult.right_neutral 
       new_int.elims new_int_bin.elims)
 
@@ -286,7 +286,7 @@ lemma exp_distribute_multiplication:
 text \<open>Optimisations\<close>
 
 optimization EliminateRedundantNegative: "-x * -y \<longmapsto> x * y"
-  using mul_size.simps apply auto
+  using mul_size.simps apply auto[1]
   by (metis BinaryExpr val_eliminate_redundant_negative bin_eval.simps(2))
 
 optimization MulNeutral: "x * ConstantExpr (IntVal b 1) \<longmapsto> x"

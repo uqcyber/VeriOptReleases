@@ -28,14 +28,14 @@ lemma val_distribute_sub:
 (* Exp level proofs *)
 lemma exp_distribute_sub:
   shows "exp[-(x - y)] \<ge> exp[y - x]"
-  using val_distribute_sub apply auto
+  using val_distribute_sub apply auto[1]
   using evaltree_not_undef by auto
 
 thm_oracles exp_distribute_sub
 
 lemma exp_negative_cancel:
   shows "exp[-(-x)] \<ge> exp[x]"
-  using val_negative_cancel apply auto
+  using val_negative_cancel apply auto[1]
   by (metis (no_types, opaque_lifting) eval_unused_bits_zero intval_negate.elims 
       intval_negate.simps(1) minus_equation_iff new_int.simps take_bit_dist_neg) 
  
@@ -43,7 +43,7 @@ lemma exp_negative_shift:
   assumes "stamp_expr x = IntegerStamp b' lo hi" 
   and     "unat y = (b' - 1)"
   shows   "exp[-(x >> (const (new_int b y)))] \<ge> exp[x >>> (const (new_int b y))]"
-  apply auto
+  apply auto[1]
   subgoal premises p for m p xa
   proof - 
     obtain xa where xa: "[m,p] \<turnstile> x \<mapsto> xa"

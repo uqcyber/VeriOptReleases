@@ -8,7 +8,8 @@ begin
 
 lemma size_pos[size_simps]: "0 < size y"
   apply (induction y; auto?)
-  by (smt (z3) add_2_eq_Suc' add_is_0 not_gr0 size.elims size.simps(12) size.simps(13) size.simps(14) size.simps(15) zero_neq_numeral zero_neq_one)
+  by (smt (z3) One_nat_def gr0I n_not_Suc_n pos2 size.elims trans_less_add2)
+  (*by (smt (z3) add_2_eq_Suc' add_is_0 not_gr0 size.elims size.simps(12) size.simps(13) size.simps(14) size.simps(15) zero_neq_numeral zero_neq_one)*)
 
 lemma size_non_add[size_simps]: "size (BinaryExpr op a b) = size a + size b + 2 \<longleftrightarrow> \<not>(is_ConstantExpr b)"
   by (induction b; induction op; auto simp: is_ConstantExpr_def)

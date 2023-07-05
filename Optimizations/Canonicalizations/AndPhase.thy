@@ -100,7 +100,7 @@ lemma val_and_zero:
 (* Exp level proofs *)
 lemma exp_and_equal:
   "exp[x & x] \<ge> exp[x]"
-   apply auto 
+   apply auto[1]
   by (smt (verit) evalDet intval_and.elims new_int.elims val_and_equal eval_unused_bits_zero)
 
 lemma exp_and_nots:
@@ -113,7 +113,7 @@ lemma exp_sign_extend:
   shows   "BinaryExpr BinAnd (UnaryExpr (UnarySignExtend In Out) x) 
                              (ConstantExpr (new_int b e))
                            \<ge> (UnaryExpr (UnaryZeroExtend In Out) x)"
-  apply auto
+  apply auto[1]
   subgoal premises p for m p va
     proof - 
       obtain va where va: "[m,p] \<turnstile> x \<mapsto> va"
@@ -201,9 +201,14 @@ text \<open>Optimisations\<close>
 optimization AndEqual: "x & x \<longmapsto> x"
   using exp_and_equal by blast
 
+value AndEqual_code
+
+value "exp[y & (const x)]"
 optimization AndShiftConstantRight: "((const x) & y) \<longmapsto> y & (const x) 
-                                         when \<not>(is_ConstantExpr y)"
+                                         when Not (IsConstantExpr y)"
   using size_flip_binary by auto
+value AndShiftConstantRight_code
+value "export_rules AndShiftConstantRight_code"
 
 optimization AndNots: "(~x) & (~y) \<longmapsto> ~(x | y)"
    apply (metis add_2_eq_Suc' less_SucI less_add_Suc1 not_less_eq size_binary_const size_non_add)
@@ -217,7 +222,7 @@ optimization AndSignExtend: "BinaryExpr BinAnd (UnaryExpr (UnarySignExtend In Ou
    using exp_sign_extend by simp 
 
 optimization AndNeutral: "(x & ~(const (IntVal b 0))) \<longmapsto> x 
-   when (wf_stamp x \<and> stamp_expr x = IntegerStamp b lo hi)"
+   when (WellFormed x && IsStamp x (IntegerStamp b lo hi))"
    apply auto 
   by (smt (verit) Value.sel(1) eval_unused_bits_zero intval_and.elims intval_word.simps 
       new_int.simps new_int_bin.simps take_bit_eq_mask)

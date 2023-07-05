@@ -19,7 +19,7 @@ lemma exp_distribute_and_over_or:
   "exp[z & (x | y)] \<ge> exp[(z & x) | (z & y)]"
   apply simp using intval_distribute_and_over_or
   using BinaryExpr bin_eval.simps(4,5)
-  using intval_or.simps(1) unfolding new_int_bin.simps new_int.simps apply auto
+  using intval_or.simps(1) unfolding new_int_bin.simps new_int.simps apply auto[1]
   by (metis bin_eval.simps(4) bin_eval.simps(5) intval_or.simps(2) intval_or.simps(5))
 
 
@@ -103,12 +103,12 @@ lemma intval_or_absorb_and:
 
 lemma exp_and_absorb_or:
   "exp[x & (x | y)] \<ge> exp[x]"
-  apply auto using intval_and_absorb_or eval_unused_bits_zero
+  apply auto[1] using intval_and_absorb_or eval_unused_bits_zero
   by (smt (verit) evalDet intval_or.elims new_int.elims)
 
 lemma exp_or_absorb_and:
   "exp[x | (x & y)] \<ge> exp[x]"
-  apply auto using intval_or_absorb_and eval_unused_bits_zero
+  apply auto[1] using intval_or_absorb_and eval_unused_bits_zero
   by (smt (verit) evalDet intval_or.elims new_int.elims)
 
 lemma
@@ -847,24 +847,24 @@ phase NewAnd
 begin
 
 optimization redundant_lhs_y_or: "((x | y) & z) \<longmapsto> x & z
-                                when (((and (IRExpr_up y) (IRExpr_up z)) = 0))"
+                                when UpMaskCancels y z"
   apply (simp add: IRExpr_up_def)
   using simple_mask.exp_eliminate_y by blast
 
 optimization redundant_lhs_x_or: "((x | y) & z) \<longmapsto> y & z
-                                when (((and (IRExpr_up x) (IRExpr_up z)) = 0))"
+                                when UpMaskCancels x z"
   apply (simp add: IRExpr_up_def)
   using simple_mask.exp_eliminate_y
   by (meson exp_or_commute mono_binary order_refl order_trans)
 
 optimization redundant_rhs_y_or: "(z & (x | y)) \<longmapsto> z & x
-                                when (((and (IRExpr_up y) (IRExpr_up z)) = 0))"
+                                when UpMaskCancels y z"
   apply (simp add: IRExpr_up_def)
   using simple_mask.exp_eliminate_y
   by (meson exp_and_commute order.trans)
 
 optimization redundant_rhs_x_or: "(z & (x | y)) \<longmapsto> z & y
-                                when (((and (IRExpr_up x) (IRExpr_up z)) = 0))"
+                                when UpMaskCancels x z"
   apply (simp add: IRExpr_up_def)
   using simple_mask.exp_eliminate_y
   by (meson dual_order.trans exp_and_commute exp_or_commute mono_binary order_refl)
@@ -873,6 +873,14 @@ optimization redundant_rhs_x_or: "(z & (x | y)) \<longmapsto> z & y
 optimization redundant_lhs_add: "((x + y) & z) \<longmapsto> x & z
                                when ((and (IRExpr_up y) (IRExpr_down z)) = 0)"
 *)
+
+value "
+  (optimized_export
+    ((redundant_lhs_y_or_code else
+      redundant_lhs_x_or_code) else
+      (redundant_rhs_y_or_code else
+      redundant_rhs_x_or_code)
+    ))"
 
 end
 

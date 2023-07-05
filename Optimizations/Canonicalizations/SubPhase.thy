@@ -101,13 +101,13 @@ lemma val_sub_negative_const:
 (* Exp level proofs *)
 lemma exp_sub_after_right_add:
   shows "exp[(x + y) - y] \<ge> exp[x]"
-   apply auto  
+   apply auto[1]
   by (smt (verit) evalDet eval_unused_bits_zero intval_add.elims new_int.simps 
       val_sub_after_right_add_2) 
 
 lemma exp_sub_after_right_add2:
   shows "exp[(x + y) - x] \<ge> exp[y]"
-  using exp_sub_after_right_add apply auto  
+  using exp_sub_after_right_add apply auto[1]
   by (smt (z3) Value.inject(1) diff_eq_eq evalDet eval_unused_bits_zero intval_add.elims 
       intval_sub.elims new_int.simps new_int_bin.simps take_bit_dist_subL bin_eval.simps(1) 
       bin_eval.simps(3) intval_add_sym unfold_binary)
@@ -120,7 +120,7 @@ lemma exp_sub_negative_value:
 
 lemma exp_sub_then_left_sub:
   "exp[x - (x - y)] \<ge> exp[y]"
-  using val_sub_then_left_sub apply auto
+  using val_sub_then_left_sub apply auto[1]
   subgoal premises p for m p xa xaa ya
     proof- 
       obtain xa where xa: "[m, p] \<turnstile> x \<mapsto> xa"
@@ -155,15 +155,15 @@ optimization SubAfterAddLeft: "((x + y) - x) \<longmapsto>  y"
 optimization SubAfterSubLeft: "((x - y) - x) \<longmapsto>  -y"
    apply (metis Suc_lessI add_2_eq_Suc' add_less_cancel_right less_trans_Suc not_add_less1 
           size_binary_const size_binary_lhs size_binary_rhs size_non_add)
-   apply auto 
+   apply auto[1]
   by (metis evalDet unary_eval.simps(2) unfold_unary val_sub_after_left_sub)
 
 optimization SubThenAddLeft: "(x - (x + y)) \<longmapsto> -y"
-   apply auto
+   apply auto[1]
   by (metis evalDet unary_eval.simps(2) unfold_unary val_sub_then_left_add)
 
 optimization SubThenAddRight: "(y - (x + y)) \<longmapsto> -x"
-   apply auto 
+   apply auto[1]
   by (metis evalDet intval_add_sym unary_eval.simps(2) unfold_unary val_sub_then_left_add)
 
 optimization SubThenSubLeft: "(x - (x - y)) \<longmapsto> y"
@@ -171,7 +171,7 @@ optimization SubThenSubLeft: "(x - (x - y)) \<longmapsto> y"
   using exp_sub_then_left_sub by blast
  
 optimization SubtractZero: "(x - (const IntVal b 0)) \<longmapsto> x"
-  apply auto
+  apply auto[1]
   by (smt (verit) add.right_neutral diff_add_cancel eval_unused_bits_zero intval_sub.elims 
       intval_word.simps new_int.simps new_int_bin.simps)
 
