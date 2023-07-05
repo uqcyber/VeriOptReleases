@@ -3,12 +3,12 @@ section \<open>Optization DSL\<close> (* first theory in list, not related to fi
 subsection \<open>Markup\<close>
 
 theory Markup
-  imports Semantics.IRTreeEval Snippets.Snipping
+  imports Semantics.TermRewrites Snippets.Snipping
 begin
 
 datatype 'a Rewrite =
   Transform 'a 'a ("_ \<longmapsto> _" 10) |
-  Conditional 'a 'a "bool" ("_ \<longmapsto> _ when _" 11) |
+  Conditional 'a 'a "SideCondition" ("_ \<longmapsto> _ when _" 11) |
   Sequential "'a Rewrite" "'a Rewrite" |
   Transitive "'a Rewrite"
 

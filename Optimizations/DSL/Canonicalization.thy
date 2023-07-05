@@ -5,6 +5,7 @@ theory Canonicalization
     Markup
     Phase
     "HOL-Eisbach.Eisbach"
+    Semantics.TermRewrites
   keywords
     "phase" :: thy_decl and 
     "terminating" :: quasi_command and
@@ -136,12 +137,12 @@ val _ =
 \<close>
 
 ML_file "rewrites.ML"
-
+             
 subsubsection \<open>Semantic Preservation Obligation\<close>
 
 fun rewrite_preservation :: "IRExpr Rewrite \<Rightarrow> bool" where
   "rewrite_preservation (Transform x y) = (y \<le> x)" |
-  "rewrite_preservation (Conditional x y cond) = (cond \<longrightarrow> (y \<le> x))" |
+  "rewrite_preservation (Conditional x y conds) = (eval_condition conds \<longrightarrow> (y \<le> x))" |
   "rewrite_preservation (Sequential x y) = (rewrite_preservation x \<and> rewrite_preservation y)" |
   "rewrite_preservation (Transitive x) = rewrite_preservation x"
 
@@ -149,13 +150,13 @@ subsubsection \<open>Termination Obligation\<close>
 
 fun rewrite_termination :: "IRExpr Rewrite \<Rightarrow> (IRExpr \<Rightarrow> nat) \<Rightarrow> bool" where
   "rewrite_termination (Transform x y) trm = (trm x > trm y)" |
-  "rewrite_termination (Conditional x y cond) trm = (cond \<longrightarrow> (trm x > trm y))" |
+  "rewrite_termination (Conditional x y conds) trm = (eval_condition conds \<longrightarrow> (trm x > trm y))" |
   "rewrite_termination (Sequential x y) trm = (rewrite_termination x trm \<and> rewrite_termination y trm)" |
   "rewrite_termination (Transitive x) trm = rewrite_termination x trm"
 
 fun intval :: "Value Rewrite \<Rightarrow> bool" where
   "intval (Transform x y) = (x \<noteq> UndefVal \<and> y \<noteq> UndefVal \<longrightarrow> x = y)" |
-  "intval (Conditional x y cond) = (cond \<longrightarrow> (x = y))" |
+  "intval (Conditional x y conds) = (eval_condition conds \<longrightarrow> (x = y))" |
   "intval (Sequential x y) = (intval x \<and> intval y)" |
   "intval (Transitive x) = intval x"
 

@@ -38,7 +38,7 @@ fun to_term rewrite =
     Transform (lhs, rhs) => 
       (Const ("Markup.Rewrite.Transform", @{typ "IRExpr => IRExpr => IRExpr Rewrite"})) $ lhs $ rhs
     | Conditional (lhs, rhs, cond) => 
-      (Const ("Markup.Rewrite.Conditional", @{typ "IRExpr => IRExpr \<Rightarrow> bool \<Rightarrow> IRExpr Rewrite"})) $ lhs $ rhs $ cond
+      (Const ("Markup.Rewrite.Conditional", @{typ "IRExpr => IRExpr \<Rightarrow> SideCondition \<Rightarrow> IRExpr Rewrite"})) $ lhs $ rhs $ cond
     | _ => raise TERM ("rewrite cannot be translated yet", [])
 
 fun lhs (term:term) =
@@ -110,11 +110,81 @@ fun termination_of ctxt rewrite =
     termination_of' ctxt trm rewrite
   end
 
-fun code_of _ rewrite =
+fun rewrite_lhs (rewrite: rewrite) =
+  case (#rewrite rewrite) of
+    Transform (lhs, _) => lhs
+    | Conditional (lhs, _, _) => lhs
+    | _ => raise TERM ("rewrite cannot be translated yet", [])
+
+fun rewrite_rhs (rewrite: rewrite) =
+  case (#rewrite rewrite) of
+    Transform (_, rhs) => rhs
+    | Conditional (_, rhs, _) => rhs
+    | _ => raise TERM ("rewrite cannot be translated yet", [])
+
+fun rewrite_cond (rewrite: rewrite) =
+  case (#rewrite rewrite) of
+    Transform (_, _) => @{term "Empty"}
+    | Conditional (_, _, cond) => cond
+    | _ => raise TERM ("rewrite cannot be translated yet", [])
+
+fun mkstr ctxt name =
+  Syntax.read_term ctxt ("STR ''" ^ name ^ "''")
+
+fun create_var ctxt name = 
+  @{term "VariableExpr"} $ mkstr ctxt name $ @{term "VoidStamp"}
+
+fun create_const ctxt name = 
+  (@{term "ConstantVar"} $ mkstr ctxt name)
+
+fun ground_IRExpr ctxt trm =
+  (case trm of
+    Const ("\<^const>IRTreeEval.IRExpr.ConstantExpr", _) $ (Free (str, _)) => create_const ctxt str
+    | Const ("IRTreeEval.IRExpr.ConstantExpr", _) $ (Free (str, _)) => create_const ctxt str
+    | (x $ y) => (ground_IRExpr ctxt x $ ground_IRExpr ctxt y)
+    | Abs (str, typ, trm) => Abs (str, typ, ground_IRExpr ctxt trm)
+    | Free (str, @{typ IRExpr}) => create_var ctxt str
+    | Free (str, @{typ Value}) => create_const ctxt str
+    | _ => trm)
+
+fun type_checked_rewrites ctxt rewrite =
+  let
+    val [lhs, rhs, cond] = 
+      Syntax.check_terms ctxt
+        [(rewrite_lhs rewrite),
+         (rewrite_rhs rewrite),
+         (rewrite_cond rewrite)]
+  in
+    (lhs, rhs, cond)
+  end
+
+fun rewrite_to_term_param ctxt rewrite =
+  let 
+    val (lhs, rhs, cond) = type_checked_rewrites ctxt rewrite;
+  in
+    (ground_IRExpr ctxt lhs, ground_IRExpr ctxt rhs, ground_IRExpr ctxt cond)
+  (*case (#rewrite rewrite) of
+    Transform (lhs, rhs) => 
+      ground_IRExpr ctxt lhs $ ground_IRExpr ctxt rhs
+    | _ => raise TERM ("rewrite cannot be translated yet", [])*)
+  end
+
+fun generate ctxt term =
+  let
+    val (lhs, rhs, cond) = rewrite_to_term_param ctxt term;
+    val generate_term = 
+      (((Const ("TermRewrites.generate", @{typ "IRExpr \<Rightarrow> IRExpr \<Rightarrow> SideCondition \<Rightarrow> Rules"}))
+      $ lhs) $ rhs) $ cond
+    val value = Code_Evaluation.dynamic_value_strict ctxt generate_term;
+  in              
+    value
+  end
+
+fun code_of ctxt rewrite =
   @{const Trueprop} 
-  $ ((Const ("HOL.eq", @{typ "(IRExpr \<Rightarrow> IRExpr option) \<Rightarrow> (IRExpr \<Rightarrow> IRExpr option) \<Rightarrow> bool"})
-  $ (Free ((Binding.name_of (#name rewrite)) ^ "_code", @{typ "IRExpr \<Rightarrow> IRExpr option"}))
-  $ @{term \<open>\<lambda> (x::IRExpr) \<Rightarrow> (None::IRExpr option)\<close>}))
+  $ ((Const ("HOL.eq", @{typ "Rules \<Rightarrow> Rules \<Rightarrow> bool"})
+  $ (Free ((Binding.name_of (#name rewrite)) ^ "_code", @{typ "Rules"}))
+  $ generate ctxt rewrite))
 
 
 fun add_proofs (rewrite: rewrite) proofs =
@@ -126,8 +196,14 @@ fun add_proofs (rewrite: rewrite) proofs =
     source= #source rewrite
   }
 
-fun rewrite_cmd ((bind, options), opt) ctxt = 
+fun valid_name name =
+  not (String.isSubstring "_" name) andalso Char.isUpper (String.sub (name, 0))
+
+fun rewrite_cmd ((bind: binding, options), opt) ctxt = 
   let
+    val name = Binding.name_of bind;
+    val _ = (if valid_name name then () 
+             else (warning "Optimization name should be UpperCase not snake_case or camelCase"));
     val intval = case options of [[token]] => Token.content_of token = "intval" | _ => false;
 
     val subgoals = case options of [[token]] => Token.content_of token = "subgoals" | _ => false;
