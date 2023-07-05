@@ -206,6 +206,7 @@ proof -
     by (metis assms(1) assms(2) bool_to_val_bin.elims intval_equals.simps(1))
   then show ?thesis
     using assms(1) bool_to_val.elims i12 by auto
+qed
 
 
 subsection \<open>Narrowing and Widening Operators\<close>

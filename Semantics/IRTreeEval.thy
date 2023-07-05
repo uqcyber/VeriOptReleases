@@ -81,8 +81,8 @@ datatype (discs_sels) IRExpr =
   | LeafExpr (ir_nid: ID) (ir_stamp: Stamp)
   (* LeafExpr is for pre-evaluated nodes, like LoadFieldNode, SignedDivNode. *) 
   | ConstantExpr (ir_const: Value) (* Ground constant *)
-  | ConstantVar (ir_name: string)  (* Pattern variable for constant *)
-  | VariableExpr (ir_name: string) (ir_stamp: Stamp) (* Pattern variable for expression *)
+  | ConstantVar (ir_name: String.literal)  (* Pattern variable for constant *)
+  | VariableExpr (ir_name: String.literal) (ir_stamp: Stamp) (* Pattern variable for expression *)
 
 fun is_ground :: "IRExpr \<Rightarrow> bool" where
   "is_ground (UnaryExpr op e) = is_ground e" |
