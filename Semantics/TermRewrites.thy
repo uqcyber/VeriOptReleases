@@ -28,9 +28,9 @@ lemma graph_refinement:
 
 datatype SubValue = SubExpr(s_expr: IRExpr) | SubConst(s_val: Value)
 
-typedef Substitution = "{s :: String.literal \<rightharpoonup> SubValue . finite (dom s)}"
-  using finite_dom_map_of by blast
+type_synonym Substitution = "String.literal \<rightharpoonup> SubValue"
 
+(*
 setup_lifting type_definition_Substitution
 
 lift_definition subst :: "(String.literal \<times> SubValue) list \<Rightarrow> Substitution"
@@ -61,6 +61,7 @@ lemma dom_code[code]: "dom (subst m) = set (map fst m)"
 
 lemma in_dom: "x \<in> dom \<sigma> \<Longrightarrow> maps_to \<sigma> x \<noteq> None"
   by (simp add: dom.rep_eq domIff maps_to.rep_eq)
+*)
   
 fun substitute :: "Substitution \<Rightarrow> IRExpr \<Rightarrow> IRExpr" (infix "$" 60) where
   "substitute \<sigma> (UnaryExpr op e) = UnaryExpr op (\<sigma> $ e)" |
@@ -70,13 +71,15 @@ fun substitute :: "Substitution \<Rightarrow> IRExpr \<Rightarrow> IRExpr" (infi
   "substitute \<sigma> (LeafExpr n s) = LeafExpr n s" |
   "substitute \<sigma> (ConstantExpr v) = ConstantExpr v" |
   "substitute \<sigma> (ConstantVar x) = 
-      (case maps_to \<sigma> x of Some (SubConst v) \<Rightarrow> ConstantExpr v | _ \<Rightarrow> ConstantVar x)" |
+      (case \<sigma> x of Some (SubConst v) \<Rightarrow> ConstantExpr v | _ \<Rightarrow> ConstantVar x)" |
   "substitute \<sigma> (VariableExpr x s) = 
-      (case maps_to \<sigma> x of None \<Rightarrow> (VariableExpr x s) | Some (SubExpr y) \<Rightarrow> y)"
+      (case \<sigma> x of None \<Rightarrow> (VariableExpr x s) | Some (SubExpr y) \<Rightarrow> y)"
 
+(*
 lift_definition union :: "Substitution \<Rightarrow> Substitution \<Rightarrow> Substitution"
   is "\<lambda>\<sigma>1 \<sigma>2. \<sigma>1 ++ \<sigma>2"
   by simp
+*)
 
 (*fun union :: "Substitution \<Rightarrow> Substitution \<Rightarrow> Substitution" where
   "union \<sigma>1 \<sigma>2 = Abs_Substitution (\<lambda>name. if maps_to \<sigma>1 name = None then maps_to \<sigma>2 name else maps_to \<sigma>1 name)"
@@ -91,10 +94,10 @@ lemma not_empty_has_member:
 value "map_of ([(x, xv1), (y, yv)] @ [(z, zv), (x, xv2)]) x"
 
 lemma equal_mapping_implies_equal:
-  assumes "\<forall>k. maps_to \<sigma>1 k = maps_to \<sigma>2 k"
+  assumes "\<forall>k. \<sigma>1 k = \<sigma>2 k"
   shows "\<sigma>1 = \<sigma>2"
-  using assms unfolding maps_to_def using Rep_Substitution
-  by (metis Rep_Substitution_inverse ext id_def map_fun_apply)
+  using assms
+  by auto
 
 (*
 lemma 
@@ -126,11 +129,13 @@ next
 qed
 *)
 
+(*
 lemma union_code[code]:
   "union (subst \<sigma>1) (subst \<sigma>2) = (subst (\<sigma>2 @ \<sigma>1))"
   (is "?union = ?add")
   using map_of_append unfolding subst_def union_def
   using subst.abs_eq subst.rep_eq by auto
+*)
 
 (*
 proof (cases "\<sigma>1 = []")
@@ -169,7 +174,7 @@ qed
 *)
 
 fun compatible :: "Substitution \<Rightarrow> Substitution \<Rightarrow> bool" where
-  "compatible \<sigma>1 \<sigma>2 = (\<forall>x \<in> dom \<sigma>1. maps_to \<sigma>2 x \<noteq> None \<longrightarrow> maps_to \<sigma>1 x = maps_to \<sigma>2 x)"
+  "compatible \<sigma>1 \<sigma>2 = (\<forall>x \<in> dom \<sigma>1. \<sigma>2 x \<noteq> None \<longrightarrow> \<sigma>1 x = \<sigma>2 x)"
 
 fun substitution_union :: "Substitution option \<Rightarrow> Substitution option \<Rightarrow> Substitution option" (infix "\<uplus>" 70) where
   "substitution_union s1 s2 = 
@@ -178,33 +183,35 @@ fun substitution_union :: "Substitution option \<Rightarrow> Substitution option
        Some \<sigma>1 \<Rightarrow> 
            (case s2 of
             None \<Rightarrow> None |
-            Some \<sigma>2 \<Rightarrow> (if compatible \<sigma>1 \<sigma>2 then Some (union \<sigma>1 \<sigma>2) else None)
+            Some \<sigma>2 \<Rightarrow> (if compatible \<sigma>1 \<sigma>2 then Some (\<sigma>1 ++ \<sigma>2) else None)
            )
       )"
 
 (*lemma "sup x y = x"*)
 
-definition EmptySubstitution :: "Substitution" where 
-  "EmptySubstitution = subst []"
 
-fun match :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> Substitution option" where
-  "match (UnaryExpr op e) (UnaryExpr op' e') = 
-      (if op = op' then match e e' else None)" |
-  "match (BinaryExpr op e1 e2) (BinaryExpr op' e1' e2') = 
-      (if op = op' then (match e1 e1') \<uplus> (match e2 e2') else None)" |
-  "match (ConditionalExpr b e1 e2) (ConditionalExpr b' e1' e2') = 
-      (match b b') \<uplus> ((match e1 e1') \<uplus> (match e2 e2'))" |
-  "match (ParameterExpr i1 s1) (ParameterExpr i2 s2) = 
+
+definition EmptySubstitution :: "Substitution" where 
+  "EmptySubstitution = map_of []"
+
+fun match_tree :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> Substitution option" where
+  "match_tree (UnaryExpr op e) (UnaryExpr op' e') = 
+      (if op = op' then match_tree e e' else None)" |
+  "match_tree (BinaryExpr op e1 e2) (BinaryExpr op' e1' e2') = 
+      (if op = op' then (match_tree e1 e1') \<uplus> (match_tree e2 e2') else None)" |
+  "match_tree (ConditionalExpr b e1 e2) (ConditionalExpr b' e1' e2') = 
+      (match_tree b b') \<uplus> ((match_tree e1 e1') \<uplus> (match_tree e2 e2'))" |
+  "match_tree (ParameterExpr i1 s1) (ParameterExpr i2 s2) = 
       (if i1 = i2 \<and> s1 = s2 then Some EmptySubstitution else None)" |
-  "match (LeafExpr n1 s1) (LeafExpr n2 s2) = 
+  "match_tree (LeafExpr n1 s1) (LeafExpr n2 s2) = 
       (if n1 = n2 \<and> s1 = s2 then Some EmptySubstitution else None)" |
-  "match (ConstantExpr v1) (ConstantExpr v2) = 
+  "match_tree (ConstantExpr v1) (ConstantExpr v2) = 
       (if v1 = v2 then Some EmptySubstitution else None)" |
-  "match (ConstantVar name) (ConstantExpr v) = 
-      Some (subst [(name, (SubConst v))])" |
-  "match (VariableExpr name s) e = 
-      Some (subst [(name, (SubExpr e))])" |
-  "match _ _ = None"
+  "match_tree (ConstantVar name) (ConstantExpr v) = 
+      Some (map_of [(name, (SubConst v))])" |
+  "match_tree (VariableExpr name s) e = 
+      Some (map_of [(name, (SubExpr e))])" |
+  "match_tree _ _ = None"
 
 fun vars :: "IRExpr \<Rightarrow> String.literal fset" where
   "vars (UnaryExpr op e) = vars e" |
@@ -386,7 +393,8 @@ definition ra :: "(Scope \<Rightarrow> Scope \<times> ('b \<Rightarrow> 'a)) \<R
 text \<open>Join generates the lhs and feeds the scope through to then generate the rhs.
       The resulting match pattern is an sequential match of the lhs and rhs, @{term "lhs && rhs"}.
       The resulting scope is the result of generating the rhs after the lhs.\<close>
-definition join :: "('b \<Rightarrow> 'c \<times> MATCH) \<Rightarrow> ('b \<Rightarrow> 'c \<Rightarrow> 'a \<times> MATCH) \<Rightarrow> 'b \<Rightarrow> 'a \<times> MATCH" (infixl "|>" 53) where
+definition join :: "('b \<Rightarrow> 'c \<times> MATCH) \<Rightarrow> ('b \<Rightarrow> 'c \<Rightarrow> 'a \<times> MATCH) \<Rightarrow> 'b \<Rightarrow> 'a \<times> MATCH"
+  (infixl "|>" 53) where
   "join x y s = 
     (let (lhs_scope, lhs_match) = x s in
     (let (rhs_scope, rhs_match) = (y s lhs_scope) in
@@ -423,8 +431,12 @@ fun match_pattern :: "IRExpr \<Rightarrow> VarName \<Rightarrow> Scope \<Rightar
   "match_pattern (ConstantExpr c) v =
     (\<lambda>s. (s, match v (ConstantPattern c)))" |
   "match_pattern (ConstantVar c) v =
-    (\<lambda>s. (s, match v (ConstantVarPattern c)))"
+    (\<lambda>s. (s, match v (ConstantVarPattern c)))" |
+  "match_pattern _ v = (\<lambda>s. (s, noop))"
 snipend -
+
+definition gen_pattern :: "IRExpr \<Rightarrow> VarName \<Rightarrow> MATCH" where
+  "gen_pattern p v = snd (match_pattern p v ({|v|}, Map.empty))"
 
 subsubsection \<open>Match Primitive Semantics\<close>
 snipbegin \<open>Subst\<close>
@@ -469,6 +481,15 @@ fun eval_match :: "MATCH \<Rightarrow> Subst \<Rightarrow> Subst option" where
   "eval_match (condition sc) s = (if eval_condition sc then Some s else None)" |
   "eval_match _ s = None"
 snipend -
+
+fun IROnly :: "Substitution option \<Rightarrow> Subst option" where
+  "IROnly (Some s) = Some (map_of (map (\<lambda>k. (k, (s_expr (the (s k))))) (sorted_list_of_set (dom s))))" |
+  "IROnly None = None"
+
+
+lemma "IROnly (match_tree p e) = eval_match (gen_pattern p v) [v\<mapsto>e]"
+  sorry
+
 
 subsection \<open>Combining Rules\<close>
 
@@ -925,7 +946,7 @@ lemma match_def_affect:
 using assms proof (induction m u arbitrary: a rule: eval_match.induct)
   case (1 v op1 x s)
   have "\<exists>e. a = s(x\<mapsto>e)"
-    by (smt (verit, ccfv_threshold) "1" IRExpr.case_eq_if eval_match.simps(1) option.case_eq_if option.distinct(1) option.inject)
+    by (smt (verit) "1" IRExpr.case_eq_if eval_match.simps(1) fun_upd_triv option.case_eq_if option.distinct(1) option.inject)
   then show ?case
     unfolding def_vars.simps by auto
 next
@@ -1050,7 +1071,7 @@ lemma use_unchange:
   using assms proof (induction m u arbitrary: u a u' a' rule: eval_match.induct)
   case (1 v op1 x s)
   then show ?case
-    by (smt (verit) IRExpr.case_eq_if def_vars.simps(1) eval_match.simps(1) insertCI map_upd_Some_unfold option.case_eq_if option.sel pattern_variables.simps(1) singletonD use_vars.simps(1))
+    by (smt (verit) IRExpr.case_eq_if def_vars.simps(1) eval_match.simps(1) insertCI map_upd_Some_unfold option.case_eq_if option.distinct(1) option.sel pattern_variables.simps(1) singletonD use_vars.simps(1))
 next
   case (2 v op1 x y s)
   then show ?case sorry
@@ -1119,7 +1140,7 @@ lemma match_use_idemp:
     by (metis insertI1 match_use_affect use_vars.simps(1))
   then show ?case
     using 1(1) unfolding eval_match.simps
-    by (smt (verit) IRExpr.case_eq_if fun_upd_idem_iff map_upd_Some_unfold option.case_eq_if option.sel)
+    by (smt (verit) IRExpr.case_eq_if domIff map_upd_Some_unfold option.case_eq_if option.distinct(1) option.sel)
 next
   case (2 v op1 x y s)
   then show ?case sorry
@@ -2219,7 +2240,7 @@ lemma cases_None:
       have "m = m'"
         using pre(3,4)
         by (metis find_common.simps(1) option.distinct(1))
-      then show ?thesis using pre apply auto
+      then show ?thesis using pre apply auto[1]
         by (smt (verit, del_insts) eval_choice_none list.set_intros(1) list.set_intros(2) list.simps(9) pull_cond_out set_ConsD)
     qed
       by simp+
@@ -2557,7 +2578,8 @@ fun generate_expression :: "Expression \<Rightarrow> string" where
   "generate_expression (And e1 e2) =
     (generate_expression e1) @ '' && '' @ (generate_expression e2)" |
   "generate_expression (BitAnd e1 e2) =
-    (generate_expression e1) @ '' & '' @ (generate_expression e2)"
+    (generate_expression e1) @ '' & '' @ (generate_expression e2)" |
+  "generate_expression (Unsupported x) = x"
 
 fun indent :: "nat \<Rightarrow> string" where
   "indent 0 = ''''" |
@@ -2689,7 +2711,9 @@ fun export_assignments :: "VarName \<Rightarrow> PatternExpr \<Rightarrow> State
     Branch (InstanceOf (MethodCall (Ref (v + STR ''c'')) ''getValue'' []) ''PrimitiveConstant'' (v + STR ''cd''))
     (Branch (Equal (MethodCall (Ref (v + STR ''cd'')) ''asLong'' []) (export_value val)) s)" |
   "export_assignments v (ConstantVarPattern var) s =
-    Branch (Equal (MethodCall (Ref (v + STR ''c'')) ''getValue'' []) (Ref var)) s"
+    Branch (Equal (MethodCall (Ref (v + STR ''c'')) ''getValue'' []) (Ref var)) s" |
+  "export_assignments v (VariablePattern var) s =
+    Return (Unsupported ''export_assignments for VariablePattern'')" 
 
 function (sequential) export_match :: "MATCH \<Rightarrow> Statement \<Rightarrow> Statement" where
   "export_match (match v p) r  = 
