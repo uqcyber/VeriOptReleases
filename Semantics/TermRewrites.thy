@@ -338,6 +338,7 @@ subsection \<open>Side-Conditions\<close>
 
 datatype SideCondition =
   IsConstantExpr IRExpr |
+  IsIntegerStamp IRExpr |
   WellFormed IRExpr |
   IsStamp IRExpr Stamp |
   StampUnder IRExpr IRExpr |
@@ -354,6 +355,7 @@ definition wf_stamp :: "IRExpr \<Rightarrow> bool" where
   "wf_stamp e = (\<forall>m p v. ([m, p] \<turnstile> e \<mapsto> v) \<longrightarrow> valid_value v (stamp_expr e))"
 fun eval_condition :: "SideCondition \<Rightarrow> bool" where
   "eval_condition (IsConstantExpr e) = is_ConstantExpr e" |
+  "eval_condition (IsIntegerStamp e) = is_IntegerStamp (stamp_expr e)" |
   "eval_condition (WellFormed e) = wf_stamp e" |
   "eval_condition (IsStamp e s) = ((stamp_expr e) = s)" |
   "eval_condition (StampUnder e1 e2) = (stamp_under (stamp_expr e1) (stamp_expr e2))" |
@@ -514,11 +516,12 @@ fun ground_result :: "IRExpr \<Rightarrow> Scope \<Rightarrow> IRExpr" where
   "ground_result (VariableExpr vn st) (s, m) = 
     (case m vn of None \<Rightarrow> VariableExpr vn st 
                 | Some v' \<Rightarrow> VariableExpr v' st)" |
-  "ground_result e v = e"
+  "ground_result e s = e"
 snipend -
 
 fun ground_condition :: "SideCondition \<Rightarrow> Scope \<Rightarrow> SideCondition" where
   "ground_condition (IsConstantExpr p) s = (IsConstantExpr (ground_result p s))" |
+  "ground_condition (IsIntegerStamp p) s = (IsIntegerStamp (ground_result p s))" |
   "ground_condition (WellFormed st) s = (WellFormed st)" |
   "ground_condition (IsStamp e st) s = (IsStamp (ground_result e s) st)" |
   "ground_condition (StampUnder e1 e2) s = (StampUnder (ground_result e1 s) (ground_result e2 s))" |
@@ -2676,6 +2679,7 @@ definition downMask :: "Expression \<Rightarrow> Expression" where
 
 fun export_condition :: "SideCondition \<Rightarrow> Expression" where
   "export_condition (IsConstantExpr e) = (InstanceOf (export_irexpr e) ''ConstantNode'' STR ''t'')" |
+  "export_condition (IsIntegerStamp e) = (InstanceOf (stampOf (export_irexpr e)) ''IntegerStamp'' STR ''t'')" |
   "export_condition (WellFormed s) = TrueValue" |
   "export_condition (IsStamp e s) =
     (Equal (stampOf (export_irexpr e)) (export_stamp s))" |
