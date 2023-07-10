@@ -33,12 +33,18 @@ fun of_term name term source =
       {name=name, rewrite=Conditional (lhs, rhs, cond), proofs=[], code=[], source=source}
     | _ => raise TERM ("optimization is not a rewrite", [term])
 
-fun to_term rewrite = 
+
+fun result rhs ctxt =
+  case type_of (hd (Syntax.check_terms ctxt [rhs])) of
+    @{typ Result} => rhs |
+    _ => @{term "ExpressionResult"} $rhs
+
+fun to_term rewrite ctxt = 
   case (#rewrite rewrite) of
     Transform (lhs, rhs) => 
-      (Const ("Markup.Rewrite.Transform", @{typ "IRExpr => IRExpr => IRExpr Rewrite"})) $ lhs $ rhs
+      (Const ("Markup.Rewrite.Transform", @{typ "IRExpr => Result => (IRExpr, Result) Rewrite"})) $ lhs $ result rhs ctxt
     | Conditional (lhs, rhs, cond) => 
-      (Const ("Markup.Rewrite.Conditional", @{typ "IRExpr => IRExpr \<Rightarrow> SideCondition \<Rightarrow> IRExpr Rewrite"})) $ lhs $ rhs $ cond
+      (Const ("Markup.Rewrite.Conditional", @{typ "IRExpr => Result \<Rightarrow> SideCondition \<Rightarrow> (IRExpr, Result) Rewrite"})) $ lhs $ result rhs ctxt $ cond
     | _ => raise TERM ("rewrite cannot be translated yet", [])
 
 fun lhs (term:term) =
@@ -59,11 +65,11 @@ fun rhs (term:term) =
 
 fun preservation_of ctxt rewrite =
   Syntax.check_prop ctxt 
-    (@{const Trueprop} $ (System.preservation $ (to_term rewrite)))
+    (@{const Trueprop} $ (System.preservation $ (to_term rewrite ctxt)))
 
 fun termination_of' ctxt trm rewrite =
   Syntax.check_prop ctxt 
-    (@{const Trueprop} $ (System.termination $ (to_term rewrite) $ trm))
+    (@{const Trueprop} $ (System.termination $ (to_term rewrite ctxt) $ trm))
 
 fun intval_of ctxt term =
   Syntax.check_prop ctxt 
@@ -173,7 +179,7 @@ fun generate ctxt term =
   let
     val (lhs, rhs, cond) = rewrite_to_term_param ctxt term;
     val generate_term = 
-      (((Const ("TermRewrites.generate", @{typ "IRExpr \<Rightarrow> IRExpr \<Rightarrow> SideCondition \<Rightarrow> Rules"}))
+      (((Const ("TermRewrites.generate", @{typ "IRExpr \<Rightarrow> Result \<Rightarrow> SideCondition \<Rightarrow> Rules"}))
       $ lhs) $ rhs) $ cond
     val value = Code_Evaluation.dynamic_value_strict ctxt generate_term;
   in              
@@ -208,6 +214,9 @@ fun rewrite_cmd ((bind: binding, options), opt) ctxt =
 
     val subgoals = case options of [[token]] => Token.content_of token = "subgoals" | _ => false;
     val raw_term = (Syntax.parse_term ctxt opt);
+
+    val rewrite = of_term bind raw_term raw_term;
+    val raw_term = to_term rewrite ctxt;
 
     val term = IRExprMarkup.markup_expr [] ctxt [raw_term];
     val rewrite = of_term bind term raw_term;

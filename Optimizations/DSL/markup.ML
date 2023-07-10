@@ -136,14 +136,14 @@ fun markup_expr taken ctxt [trm] =
 
 (* Rewrite syntax *)
 fun rewrite taken ctxt [pre, post] =
-  Const ("Transform", @{typ "'a => 'a \<Rightarrow> 'a Rewrite"})
-    $ markup_expr taken ctxt [pre]
+  Const ("Transform", @{typ "'a => 'b \<Rightarrow> ('a, 'b) Rewrite"})
+    $ markup_expr taken ctxt [pre]   
     $ markup_expr taken ctxt [post]
 
   | rewrite _ _ ts = raise TERM ("rewrite", ts)
 
 fun conditional_rewrite taken ctxt [pre, post, cond] =
-  Const ("Conditional", @{typ "'a \<Rightarrow> 'a \<Rightarrow> bool \<Rightarrow> 'a Rewrite"})
+  Const ("Conditional", @{typ "'a \<Rightarrow> 'b \<Rightarrow> bool \<Rightarrow> ('a, 'b) Rewrite"})
     $ markup_expr taken ctxt [pre]
     $ markup_expr taken ctxt [post]
     $ cond

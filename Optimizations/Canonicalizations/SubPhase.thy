@@ -100,7 +100,7 @@ lemma val_sub_negative_const:
 (* Exp level proofs *)
 lemma exp_sub_after_right_add:
   shows "exp[(x + y) - y] \<ge> x"
-  apply auto
+  apply auto[1]
   subgoal premises p for m p ya xa yaa
   proof-
     obtain xv where xv: "[m,p] \<turnstile> x \<mapsto> xv"
@@ -124,12 +124,12 @@ lemma exp_sub_after_right_add:
 
 lemma exp_sub_after_right_add2:
   shows "exp[(x + y) - x] \<ge> y"
-  using exp_sub_after_right_add apply auto
+  using exp_sub_after_right_add apply auto[1]
   by (metis bin_eval.simps(1,3) intval_add_sym unfold_binary)
 
 lemma exp_sub_negative_value:
  "exp[x - (-y)] \<ge> exp[x + y]"
-  apply auto
+  apply auto[1]
   subgoal premises p for m p xa ya
   proof -
     obtain xv where xv: "[m,p] \<turnstile> x \<mapsto> xv"
@@ -145,7 +145,7 @@ lemma exp_sub_negative_value:
 
 lemma exp_sub_then_left_sub:
   "exp[x - (x - y)] \<ge> y"
-  using val_sub_then_left_sub apply auto
+  using val_sub_then_left_sub apply auto[1]
   subgoal premises p for m p xa xaa ya
     proof- 
       obtain xa where xa: "[m, p] \<turnstile> x \<mapsto> xa"
@@ -170,7 +170,7 @@ thm_oracles exp_sub_then_left_sub
 
 lemma SubtractZero_Exp:
   "exp[(x - (const IntVal b 0))] \<ge> x"
-  apply auto
+  apply auto[1]
   subgoal premises p for m p xa
   proof-
     obtain xv where xv: "[m,p] \<turnstile> x \<mapsto> xv"
@@ -189,21 +189,20 @@ lemma SubtractZero_Exp:
   done
 
 lemma ZeroSubtractValue_Exp:
-  assumes "wf_stamp x"
-  assumes "stamp_expr x = IntegerStamp b lo hi"
-  assumes "\<not>(is_ConstantExpr x)"
-  shows "exp[(const IntVal b 0) - x] \<ge> exp[-x]"
-  using assms apply auto
+  assumes "TermRewrites.wf_stamp x"
+  assumes "is_IntegerStamp (stamp_expr x)"
+  shows "exp[(const IntVal (stp_bits (stamp_expr x)) 0) - x] \<ge> exp[-x]"
+  using assms apply auto[1]
   subgoal premises p for m p xa
   proof-
     obtain xv where xv: "[m,p] \<turnstile> x \<mapsto> xv"
-      using p(4) by auto
+      using p(3) by blast
     obtain xb xvv where xvv: "xv = IntVal xb xvv"
-      by (metis constantAsStamp.cases evalDet evaltree_not_undef intval_sub.simps(7,8,9) p(4,5) xv)
-    then have unfoldSub: "val[(IntVal b 0) - xv] = (new_int xb (0-xvv))"
-      by (metis intval_sub.simps(1) new_int_bin.simps p(1,2) valid_int_same_bits wf_stamp_def xv)
+      by (metis constantAsStamp.cases evalDet evaltree_not_undef intval_sub.simps(7,8,9) p(3,4) xv)
+    then have unfoldSub: "val[(IntVal (stp_bits (stamp_expr x)) 0) - xv] = (new_int xb (0-xvv))"
+      by (metis evalDet intval_sub.simps(1) new_int_bin.elims p(3) p(4) xv)
     then show ?thesis
-      by (metis UnaryExpr intval_negate.simps(1) p(4,5) unary_eval.simps(2) verit_minus_simplify(3)
+      by (metis UnaryExpr intval_negate.simps(1) p(3,4) unary_eval.simps(2) verit_minus_simplify(3)
           evalDet xv xvv)
   qed
   done
@@ -229,11 +228,16 @@ optimization SubThenAddRight: "(y - (x + y)) \<longmapsto> -x"
    apply auto[1]
   by (metis evalDet intval_add_sym unary_eval.simps(2) unfold_unary val_sub_then_left_add)
 
+fun identity :: "IRExpr \<Rightarrow> IRExpr" where
+  "identity e = e"
+
 optimization SubThenSubLeft: "(x - (x - y)) \<longmapsto> y"
   using size_simps exp_sub_then_left_sub by auto
+
+value "(export_rules SubThenSubLeft_code)"
  
-optimization SubtractZero: "(x - (const IntVal b 0)) \<longmapsto> x"
-  using SubtractZero_Exp by fast
+optimization SubtractZero: "(x - y) \<longmapsto> x when IsConstantValue y x 0"
+  using SubtractZero_Exp by metis
 
 thm_oracles SubtractZero
 
@@ -331,9 +335,14 @@ optimization SubNegativeConstant: "x - (const (val[-y])) \<longmapsto> x + (cons
 *)
 
 (*Additional check for not constant for termination *)
-optimization ZeroSubtractValue: "((const IntVal b 0) - x) \<longmapsto> (-x) 
-                                  when (wf_stamp x \<and> stamp_expr x = IntegerStamp b lo hi \<and> \<not>(is_ConstantExpr x))"
-  using size_flip_binary ZeroSubtractValue_Exp by simp+
+optimization ZeroSubtractValue: "(x - y) \<longmapsto> (-y) 
+                                  when (IsConstantValue x y 0 && Not (IsConstantExpr y) && WellFormed y && IsIntegerStamp y)"
+  using size_flip_binary 
+  apply (metis Canonicalization.const_size One_nat_def add_Suc_shift less_add_same_cancel1 numerals(2) plus_1_eq_Suc size_non_add zero_less_one)
+  using ZeroSubtractValue_Exp by simp
+
+value "export_rules ZeroSubtractValue_code"
+
 
 (*
 fun forPrimitive :: "Stamp \<Rightarrow> int64 \<Rightarrow> IRExpr" where
@@ -390,12 +399,22 @@ qed
   done
 *)
 
-optimization SubSelfIsZero: "(x - x) \<longmapsto> const IntVal b 0 when 
-                      (wf_stamp x \<and> stamp_expr x = IntegerStamp b lo hi)"
-  using size_non_const apply auto
-  by (smt (verit) wf_value_def ConstantExpr  eval_bits_1_64 eval_unused_bits_zero new_int.simps
-      take_bit_of_0 val_sub_self_is_zero validDefIntConst valid_int wf_stamp_def One_nat_def
-      evalDet)
+
+lemma valid_bits:
+  assumes "TermRewrites.wf_stamp x"
+  assumes "is_IntegerStamp (stamp_expr x)"
+  shows "\<forall>m p v. ([m, p] \<turnstile> x \<mapsto> v) \<longrightarrow> (\<exists>w. v = (IntVal (stp_bits (stamp_expr x)) w))"
+  using assms
+  by (metis Stamp.collapse(1) TermRewrites.wf_stamp_def valid_int)
+
+optimization SubSelfIsZero: "(x - x) \<longmapsto> (forZero x) when 
+                      (WellFormed x && IsIntegerStamp x)"
+  using size_non_const
+   apply simp unfolding le_expr_def using valid_bits apply auto[1]
+  by (smt (verit) ConstantExpr evalDet eval_bits_1_64 eval_unused_bits_zero new_int.simps take_bit_of_0 val_sub_self_is_zero validDefIntConst wf_value_def)
+
+value "export_rules SubSelfIsZero_code"
+thm_oracles SubSelfIsZero
 
 end (* End of SubPhase *)
 

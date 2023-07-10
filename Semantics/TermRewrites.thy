@@ -341,6 +341,7 @@ datatype SideCondition =
   IsIntegerStamp IRExpr |
   WellFormed IRExpr |
   IsStamp IRExpr Stamp |
+  IsConstantValue IRExpr IRExpr "64 word" |
   StampUnder IRExpr IRExpr |
   UpMaskEquals IRExpr "64 word" |
   DownMaskEquals IRExpr "64 word" |
@@ -358,6 +359,7 @@ fun eval_condition :: "SideCondition \<Rightarrow> bool" where
   "eval_condition (IsIntegerStamp e) = is_IntegerStamp (stamp_expr e)" |
   "eval_condition (WellFormed e) = wf_stamp e" |
   "eval_condition (IsStamp e s) = ((stamp_expr e) = s)" |
+  "eval_condition (IsConstantValue e s v) = (e = ConstantExpr (IntVal (stp_bits (stamp_expr s)) v))" |
   "eval_condition (StampUnder e1 e2) = (stamp_under (stamp_expr e1) (stamp_expr e2))" |
   "eval_condition (UpMaskEquals e m) = (IRExpr_up e = m)" |
   "eval_condition (DownMaskEquals e m) = (IRExpr_down e = m)" |
@@ -370,6 +372,16 @@ fun eval_condition :: "SideCondition \<Rightarrow> bool" where
   "eval_condition (And sc1 sc2) = ((eval_condition sc1) \<and> (eval_condition sc2))" |
   "eval_condition (Not sc) = (\<not>(eval_condition sc))"
 
+
+subsection \<open>Results\<close>
+
+datatype Result =
+  ExpressionResult IRExpr |
+  forZero IRExpr
+
+fun result_of :: "Result \<Rightarrow> IRExpr" where
+  "result_of (ExpressionResult e) = e" |
+  "result_of (forZero e) = ConstantExpr (IntVal (stp_bits (stamp_expr e)) 0)" 
 
 subsection \<open>Match Primitives\<close>
 snipbegin \<open>MATCH\<close>
@@ -450,7 +462,11 @@ fun eval_match :: "MATCH \<Rightarrow> Subst \<Rightarrow> Subst option" where
   "eval_match (match v (UnaryPattern op1 x)) s =
     (case s v of 
       Some (UnaryExpr op2 xe) \<Rightarrow>
-        (if op1 = op2 then Some (s(x\<mapsto>xe)) else None) |
+        (if op1 = op2 then 
+          (if x \<in> Map.dom s then
+             (if s x = Some xe then Some s else None)
+           else Some (s(x\<mapsto>xe)))
+         else None) |
       Some _ \<Rightarrow> None |
       None \<Rightarrow> None)" |
   "eval_match (match v (BinaryPattern op1 x y)) s =
@@ -497,7 +513,7 @@ subsection \<open>Combining Rules\<close>
 
 snipbegin \<open>Rules\<close>
 datatype Rules =
-  base IRExpr |
+  base Result |
   cond MATCH Rules (infixl "?" 52) |
   else Rules Rules (infixl "else" 50) |
   seq Rules Rules (infixl "\<then>" 49) |
@@ -506,36 +522,41 @@ snipend -
 
 text \<open>Use the scope of a generated match to replace real variable names with aliases in the rewrite result.\<close>
 snipbegin \<open>groundresult\<close>
-fun ground_result :: "IRExpr \<Rightarrow> Scope \<Rightarrow> IRExpr" where
-  "ground_result (UnaryExpr op e) s = 
-    UnaryExpr op (ground_result e s)" |
-  "ground_result (BinaryExpr op e1 e2) s = 
-    BinaryExpr op (ground_result e1 s) (ground_result e2 s)" |
-  "ground_result (ConditionalExpr b e1 e2) s = 
-    ConditionalExpr (ground_result b s) (ground_result e1 s) (ground_result e2 s)" |
-  "ground_result (VariableExpr vn st) (s, m) = 
+fun ground_expr :: "IRExpr \<Rightarrow> Scope \<Rightarrow> IRExpr" where
+  "ground_expr (UnaryExpr op e) s = 
+    UnaryExpr op (ground_expr e s)" |
+  "ground_expr (BinaryExpr op e1 e2) s = 
+    BinaryExpr op (ground_expr e1 s) (ground_expr e2 s)" |
+  "ground_expr (ConditionalExpr b e1 e2) s = 
+    ConditionalExpr (ground_expr b s) (ground_expr e1 s) (ground_expr e2 s)" |
+  "ground_expr (VariableExpr vn st) (s, m) = 
     (case m vn of None \<Rightarrow> VariableExpr vn st 
                 | Some v' \<Rightarrow> VariableExpr v' st)" |
-  "ground_result e s = e"
+  "ground_expr e s = e"
+
+fun ground_result :: "Result \<Rightarrow> Scope \<Rightarrow> Result" where
+  "ground_result (ExpressionResult e) s = ExpressionResult (ground_expr e s)" |
+  "ground_result (forZero e) s = forZero (ground_expr e s)"
 snipend -
 
 fun ground_condition :: "SideCondition \<Rightarrow> Scope \<Rightarrow> SideCondition" where
-  "ground_condition (IsConstantExpr p) s = (IsConstantExpr (ground_result p s))" |
-  "ground_condition (IsIntegerStamp p) s = (IsIntegerStamp (ground_result p s))" |
+  "ground_condition (IsConstantExpr p) s = (IsConstantExpr (ground_expr p s))" |
+  "ground_condition (IsIntegerStamp p) s = (IsIntegerStamp (ground_expr p s))" |
   "ground_condition (WellFormed st) s = (WellFormed st)" |
-  "ground_condition (IsStamp e st) s = (IsStamp (ground_result e s) st)" |
-  "ground_condition (StampUnder e1 e2) s = (StampUnder (ground_result e1 s) (ground_result e2 s))" |
-  "ground_condition (UpMaskEquals e m) s = (UpMaskEquals (ground_result e s) m)" |
-  "ground_condition (DownMaskEquals e m) s = (DownMaskEquals (ground_result e s) m)" |
-  "ground_condition (UpMaskCancels e1 e2) s = (UpMaskCancels (ground_result e1 s) (ground_result e2 s))" |
-  "ground_condition (PowerOf2 e) s = (PowerOf2 (ground_result e s))" |
-  "ground_condition (IsBool e) s = (IsBool (ground_result e s))" |
+  "ground_condition (IsStamp e st) s = (IsStamp (ground_expr e s) st)" |
+  "ground_condition (IsConstantValue e s' v) s = (IsConstantValue (ground_expr e s) (ground_expr s' s) v)" |
+  "ground_condition (StampUnder e1 e2) s = (StampUnder (ground_expr e1 s) (ground_expr e2 s))" |
+  "ground_condition (UpMaskEquals e m) s = (UpMaskEquals (ground_expr e s) m)" |
+  "ground_condition (DownMaskEquals e m) s = (DownMaskEquals (ground_expr e s) m)" |
+  "ground_condition (UpMaskCancels e1 e2) s = (UpMaskCancels (ground_expr e1 s) (ground_expr e2 s))" |
+  "ground_condition (PowerOf2 e) s = (PowerOf2 (ground_expr e s))" |
+  "ground_condition (IsBool e) s = (IsBool (ground_expr e s))" |
   "ground_condition (And sc1 sc2) s = And (ground_condition sc1 s) (ground_condition sc2 s)" |
   "ground_condition (Not sc) s = Not (ground_condition sc s)" |
   "ground_condition (Empty) s = Empty"
 
 snipbegin \<open>generate\<close>
-fun generate :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> SideCondition \<Rightarrow> Rules" where
+fun generate :: "IRExpr \<Rightarrow> Result \<Rightarrow> SideCondition \<Rightarrow> Rules" where
   "generate p r sc = 
     (let (s, m) = match_pattern p STR ''e'' ({||}, (\<lambda>x. None))
      in ((m && condition (ground_condition sc s)) ? (base (ground_result r s))))"
@@ -546,21 +567,27 @@ definition start_unification where
   "start_unification e = ((\<lambda>x. None)(STR ''e'' := Some e))"
 
 text \<open>Replace any variable expressions with value in a substitution.\<close>
-fun ground_expr :: "IRExpr \<Rightarrow> Subst \<Rightarrow> IRExpr option" where
-  "ground_expr (VariableExpr v s) u = u v" |
-  "ground_expr (UnaryExpr op e) u = (case (ground_expr e u)
+fun eval_expr :: "IRExpr \<Rightarrow> Subst \<Rightarrow> IRExpr option" where
+  "eval_expr (VariableExpr v s) u = u v" |
+  "eval_expr (UnaryExpr op e) u = (case (eval_expr e u)
     of None \<Rightarrow> None | Some e' \<Rightarrow> Some (UnaryExpr op e'))" |
-  "ground_expr (BinaryExpr op e1 e2) u = (case (ground_expr e1 u)
+  "eval_expr (BinaryExpr op e1 e2) u = (case (eval_expr e1 u)
     of None \<Rightarrow> None | Some e1' \<Rightarrow> 
-    (case (ground_expr e2 u)
+    (case (eval_expr e2 u)
       of None \<Rightarrow> None | Some e2' \<Rightarrow> Some (BinaryExpr op e1' e2')))" |
-  "ground_expr (ConditionalExpr e1 e2 e3) u = (case (ground_expr e1 u)
+  "eval_expr (ConditionalExpr e1 e2 e3) u = (case (eval_expr e1 u)
     of None \<Rightarrow> None | Some e1' \<Rightarrow>
-    (case (ground_expr e2 u)
+    (case (eval_expr e2 u)
       of None \<Rightarrow> None | Some e2' \<Rightarrow>
-        (case (ground_expr e2 u)
+        (case (eval_expr e2 u)
           of None \<Rightarrow> None | Some e3' \<Rightarrow> Some (ConditionalExpr e1' e2' e3'))))" |
-  "ground_expr e u = Some e"
+  "eval_expr e u = Some e"
+
+fun eval_result :: "Result \<Rightarrow> Subst \<Rightarrow> IRExpr option" where
+  "eval_result (ExpressionResult e) s = (eval_expr e s)" |
+  "eval_result (forZero e) s = (case eval_expr e s of
+    None \<Rightarrow> None |
+    Some r \<Rightarrow> Some (ConstantExpr (IntVal (stp_bits (stamp_expr r)) 0)))"
 
 lemma remove1_size:
   "x \<in> set xs \<Longrightarrow> size (remove1 x xs) < size xs"
@@ -568,7 +595,7 @@ lemma remove1_size:
 
 inductive eval_rules :: "Rules \<Rightarrow> Subst \<Rightarrow> IRExpr option \<Rightarrow> bool" where
   \<comment> \<open>Evaluate the result\<close>
-  "eval_rules (base e) u (ground_expr e u)" |
+  "eval_rules (base e) u (eval_result e u)" |
 
   \<comment> \<open>Evaluate a condition\<close>
   "\<lbrakk>eval_match m u = Some u';
@@ -941,6 +968,47 @@ fun valid_rules :: "Rules \<Rightarrow> bool" where
   "valid_rules (r1 \<then> r2) = (valid_rules r1 \<and> valid_rules r2)" |
   "valid_rules (choice rules) = (\<forall>r \<in> set rules. valid_rules r)" |
   "valid_rules _ = True"
+
+lemma
+  assumes "v |\<in>| vs"
+  shows "fresh_var v' (vs, m) \<noteq> v"
+  using assms apply (induction vs)
+   apply auto[1]
+  sorry
+
+lemma valid_generation:
+  assumes "match_pattern e v (vs, m) = ((vs', m'), p)"
+  assumes "v |\<in>| vs"
+  shows "valid_match p"
+  using assms proof (induction e v arbitrary: vs m rule: match_pattern.induct)
+  case (1 op e v)
+  have "(snd (fresh STR ''a'' (vs, m))) \<noteq> v"
+    unfolding fresh.simps using fresh_var.psimps 1(3) sorry
+  then have "valid_match (snd ((MATCH.match v \<langle> (UnaryPattern op \<langle> fresh STR ''a'')) (vs, m)))"
+    unfolding la_def by simp
+  then show ?case using 1 unfolding match_pattern.simps unfolding join_def sorry
+next
+  case (2 op e1 e2 v)
+  then show ?case sorry
+next
+  case (3 b e1 e2 v)
+  then show ?case sorry
+next
+  case (4 vn st v)
+  then show ?case sorry
+next
+  case (5 c v)
+  then show ?case sorry
+next
+  case (6 c v)
+  then show ?case sorry
+next
+  case ("7_1" v va b)
+  then show ?case sorry
+next
+  case ("7_2" v va b)
+  then show ?case sorry
+qed
 
 experiment begin
 lemma match_def_affect:
@@ -2660,6 +2728,10 @@ fun export_irexpr :: "IRExpr \<Rightarrow> Expression" where
     Constructor ''ConstantNode'' [Ref var]" |
   "export_irexpr (VariableExpr v s) = Ref v"
 
+fun export_result :: "Result \<Rightarrow> Expression" where
+  "export_result (ExpressionResult e) = export_irexpr e" |
+  "export_result (forZero e) = Constructor ''ConstantNode'' [IntegerConstant 0]"
+
 fun export_stamp :: "Stamp \<Rightarrow> Expression" where
   "export_stamp (IntegerStamp bits lower higher) =
     Constructor ''IntegerStamp'' 
@@ -2683,6 +2755,10 @@ fun export_condition :: "SideCondition \<Rightarrow> Expression" where
   "export_condition (WellFormed s) = TrueValue" |
   "export_condition (IsStamp e s) =
     (Equal (stampOf (export_irexpr e)) (export_stamp s))" |
+  "export_condition (IsConstantValue e s v) =
+    (And
+      (InstanceOf (export_irexpr e) ''ConstantNode'' STR ''t'')
+      (Equal (MethodCall (export_irexpr e) ''getConstantValue'' []) (IntegerConstant (sint v))))" |
   "export_condition (StampUnder e1 e2) =
     (Less 
       (MethodCall (stampOf (export_irexpr e1)) ''upperBound'' []) 
@@ -2762,7 +2838,7 @@ fun close :: "MATCH \<Rightarrow> string" where
 *)
 
 fun export_rules :: "Rules \<Rightarrow> Statement" where
-  "export_rules (base e) = Return (export_irexpr e)" |
+  "export_rules (base e) = Return (export_result e)" |
   "export_rules (cond m r) = export_match m (export_rules r)" |
   "export_rules (r1 else r2) = Sequential [export_rules r1, export_rules r2]" |
   "export_rules (choice rules) = Sequential (map export_rules rules)" |
@@ -2780,7 +2856,7 @@ text \<open>@{text "\<not>(\<not>x) \<longrightarrow> x"}\<close>
 definition NestedNot where
   "NestedNot = generate
     (UnaryExpr UnaryNot (UnaryExpr UnaryNot (var ''x'')))
-    (var ''x'')
+    (ExpressionResult (var ''x''))
     (Empty)"
 
 text \<open>@{text "(x - y) + y \<longrightarrow> x"}\<close>
@@ -2789,7 +2865,7 @@ definition RedundantSub where
     (BinaryExpr BinAdd
       (BinaryExpr BinSub (var ''x'') (var ''y''))
       (var ''y''))
-    (var ''x'')
+    (ExpressionResult (var ''x''))
     (Empty)"
 
 text \<open>@{text "x + -e \<longmapsto> x - e"}\<close>
@@ -2798,14 +2874,14 @@ definition AddLeftNegateToSub where
     (BinaryExpr BinAdd
       (var ''x'')
       (UnaryExpr UnaryNeg (var ''e'')))
-    (BinaryExpr BinSub (var ''x'') (var ''e''))
+    (ExpressionResult (BinaryExpr BinSub (var ''x'') (var ''e'')))
     (Empty)"
 
 corollary
   "NestedNot =
    (MATCH.match STR ''e'' (UnaryPattern UnaryNot STR ''a'') &&
     (MATCH.match STR ''a'' (UnaryPattern UnaryNot STR ''az'') && noop) && condition Empty) ?
-      base (VariableExpr STR ''az'' VoidStamp)"
+      base (ExpressionResult (VariableExpr STR ''az'' VoidStamp))"
   by eval
 
 value "
@@ -2813,7 +2889,7 @@ generate
     (BinaryExpr BinAdd
       (var ''x'')
       (var ''x''))
-    (BinaryExpr BinSub (var ''x'') (var ''e''))
+    (ExpressionResult (BinaryExpr BinSub (var ''x'') (var ''e'')))
     (Empty)
 "
 
@@ -2822,16 +2898,16 @@ corollary
    (MATCH.match STR ''e'' (BinaryPattern BinAdd STR ''a'' STR ''b'') &&
     (MATCH.match STR ''a'' (BinaryPattern BinSub STR ''az'' STR ''bz'') && noop && noop) &&
       STR ''bz'' == STR ''b'' && condition Empty) ?
-        base (VariableExpr STR ''az'' VoidStamp)"
+        base (ExpressionResult (VariableExpr STR ''az'' VoidStamp))"
   by eval
 
 corollary
   "AddLeftNegateToSub =
    (MATCH.match STR ''e'' (BinaryPattern BinAdd STR ''a'' STR ''b'') && noop &&
     (MATCH.match STR ''b'' (UnaryPattern UnaryNeg STR ''az'') && noop) && condition Empty) ?
-      base (BinaryExpr BinSub 
+      base (ExpressionResult (BinaryExpr BinSub 
             (VariableExpr STR ''a'' VoidStamp)
-            (VariableExpr STR ''az'' VoidStamp))"
+            (VariableExpr STR ''az'' VoidStamp)))"
   by eval
 
 
@@ -2926,15 +3002,15 @@ corollary
    (MATCH.match STR ''a'' (BinaryPattern BinSub STR ''az'' STR ''bz'') ?
     (noop ?
      (noop ?
-      (STR ''bz'' == STR ''b'' ? (condition Empty ? base (VariableExpr STR ''az'' VoidStamp)))))) else
+      (STR ''bz'' == STR ''b'' ? (condition Empty ? base (ExpressionResult (VariableExpr STR ''az'' VoidStamp))))))) else
    MATCH.match STR ''e'' (BinaryPattern BinAdd STR ''a'' STR ''b'') ?
    (noop ?
     (MATCH.match STR ''b'' (UnaryPattern UnaryNeg STR ''az'') ?
      (noop ?
       (condition Empty ?
        base
-        (BinaryExpr BinSub (VariableExpr STR ''a'' VoidStamp)
-          (VariableExpr STR ''az'' VoidStamp)))))))"
+        (ExpressionResult (BinaryExpr BinSub (VariableExpr STR ''a'' VoidStamp)
+          (VariableExpr STR ''az'' VoidStamp))))))))"
   by eval
 
 (*
@@ -2958,10 +3034,10 @@ corollary
    MATCH.match STR ''e'' (BinaryPattern BinAdd STR ''a'' STR ''b'') ?
     (MATCH.match STR ''a'' (BinaryPattern BinSub STR ''az'' STR ''bz'') ?
      (STR ''bz'' == STR ''b'' ?
-      base (VariableExpr STR ''az'' VoidStamp))
+      base (ExpressionResult (VariableExpr STR ''az'' VoidStamp)))
     else
     MATCH.match STR ''b'' (UnaryPattern UnaryNeg STR ''az'') ?
-     base (BinaryExpr BinSub (VariableExpr STR ''a'' VoidStamp) (VariableExpr STR ''az'' VoidStamp)))"
+     base (ExpressionResult (BinaryExpr BinSub (VariableExpr STR ''a'' VoidStamp) (VariableExpr STR ''az'' VoidStamp))))"
   by eval
 
 subsubsection \<open>Java Generation\<close>
@@ -2996,7 +3072,7 @@ definition Identity where
     (BinaryExpr BinMul
       (var ''x'')
       (ConstantExpr (IntVal 32 1)))
-    (var ''x'')
+    (ExpressionResult (var ''x''))
     (Empty)"
 
 value "Identity"
@@ -3008,7 +3084,7 @@ definition Evaluate where
     (BinaryExpr BinMul
       (ConstantVar STR ''x'')
       (ConstantVar STR ''y''))
-    (ConstantVar STR ''x'')
+    (ExpressionResult (ConstantVar STR ''x''))
     (Empty)"
 (* doesn't support constant evaluation *)
 value "Evaluate"
@@ -3020,7 +3096,7 @@ definition Shift where
     (BinaryExpr BinMul
       (var ''x'')
       (ConstantVar STR ''y''))
-    (BinaryExpr BinLeftShift (var ''x'') (ConstantVar STR ''y''))
+    (ExpressionResult (BinaryExpr BinLeftShift (var ''x'') (ConstantVar STR ''y'')))
     (PowerOf2 (ConstantVar STR ''y''))"
 (* doesn't support constant evaluation *)
 value "Shift"
@@ -3032,7 +3108,7 @@ definition LeftConst where
     (BinaryExpr BinMul
       (ConstantVar STR ''x'')
       (var ''y''))
-    (BinaryExpr BinMul (var ''y'') (ConstantVar STR ''x''))
+    (ExpressionResult (BinaryExpr BinMul (var ''y'') (ConstantVar STR ''x'')))
     (Not (IsConstantExpr (var ''y'')))"
 (* doesn't support constant evaluation *)
 value "LeftConst"

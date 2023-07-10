@@ -6,11 +6,11 @@ theory Markup
   imports Semantics.TermRewrites Snippets.Snipping
 begin
 
-datatype 'a Rewrite =
-  Transform 'a 'a ("_ \<longmapsto> _" 10) |
-  Conditional 'a 'a "SideCondition" ("_ \<longmapsto> _ when _" 11) |
-  Sequential "'a Rewrite" "'a Rewrite" |
-  Transitive "'a Rewrite"
+datatype ('a, 'b) Rewrite =
+  Transform 'a 'b ("_ \<longmapsto> _" 10) |
+  Conditional 'a 'b "SideCondition" ("_ \<longmapsto> _ when _" 11) |
+  Sequential "('a, 'b) Rewrite" "('a, 'b) Rewrite" |
+  Transitive "('a, 'b) Rewrite"
 
 datatype 'a ExtraNotation =
   ConditionalNotation 'a 'a 'a ("_ ? _ : _" 50) |
