@@ -710,30 +710,21 @@ lemma lift_match_valid:
    apply simp+
   by (smt (verit) Rules.distinct(11) Rules.distinct(15) Rules.distinct(19) Rules.distinct(5) Rules.inject(4) eval_rules.simps)
 
-(*
-fun lift_common :: "Rules \<Rightarrow> Rules" where
-  "lift_common (m1 ? r1 else m2 ? r2) = 
-    (if m1 = m2
-      then m1 ? (lift_common (r1 else r2))
-      else (lift_common (m1 ? r1) else lift_common (m2 ? r2)))" |
-  "lift_common (r1 else r2) = ((lift_common r1) else (lift_common r2))" |
-  "lift_common (m ? r) = (m ? (lift_common r))" |
-  "lift_common (base e) = base e"*)
 
-fun   join_conditions :: "Rules \<Rightarrow> Rules option" where
+fun join_conditions :: "Rules \<Rightarrow> Rules option" where
   "join_conditions (m1 ? r1 else m2 ? r2) = 
     (if m1 = m2
       then Some (m1 ? (r1 else r2)) else None)" |
-  (*"join_conditions (m1 ? (m2 ? r1)) = 
+  "join_conditions (m1 ? (m2 ? r1)) = 
     (if m1 = m2
-      then Some ((m1 ? r1)) else None)" |*)
+      then Some ((m1 ? r1)) else None)" |
   "join_conditions r = None"
 
 lemma join_conditions_shrinks:
   "join_conditions r = Some r' \<Longrightarrow> size r' < size r"
   apply (induction r rule: join_conditions.induct) 
   apply (metis Rules.size(7) Rules.size(8) Suc_le_eq add.left_commute add.right_neutral antisym_conv1 join_conditions.simps(1) le_simps(1) option.distinct(1) option.sel plus_nat.simps(2))
-  apply fastforce
+  apply (metis One_nat_def Rules.size(7) join_conditions.simps(2) less_add_same_cancel1 option.discI option.inject zero_less_one)
   by simp+
 
 
@@ -742,11 +733,10 @@ function lift_common :: "Rules \<Rightarrow> Rules" where
     case join_conditions (r1 else r2) 
     of Some r \<Rightarrow> lift_common r |
        None \<Rightarrow> (lift_common r1 else lift_common r2))" |
-  "lift_common (m ? r) = (m ? lift_common r)" |
-  (*"lift_common (m ? r) = (
+  "lift_common (m ? r) = (
     case join_conditions (m ? r) 
     of Some r' \<Rightarrow> lift_common r' |
-       None \<Rightarrow> (m ? lift_common r))" |*)
+       None \<Rightarrow> (m ? lift_common r))" |
   "lift_common (choice rules) = choice (map lift_common rules)" |
   "lift_common (base e) = base e" |
   "lift_common (r1 \<then> r2) = (lift_common r1 \<then> lift_common r2)"
@@ -1065,15 +1055,38 @@ lemma monotonic_choice:
   using assms apply (induction rules) apply simp
   by (metis choice_join list.set_intros(1) list.set_intros(2))
 
+lemma redundant_conditions:
+  assumes "valid_match m"
+  shows "eval_rules (m ? (m ? r1)) u e = eval_rules (m ? r1) u e" (is "?lhs = ?rhs")
+proof -
+  have "?lhs = eval_rules ((m && m) ? r1) u e"
+    using chain_equiv
+    by simp
+  moreover have "eval_rules ((m && m) ? r1) u e = ?rhs"
+    using match_eq
+    by (smt (verit) Rules.distinct(1) Rules.distinct(11) Rules.distinct(13) Rules.distinct(9) Rules.inject(2) assms eval_rules.simps)
+  ultimately show ?thesis by simp
+qed
+
 lemma join_conditions_valid:
-  "join_conditions r = Some r' \<Longrightarrow> eval_rules r u e = eval_rules r' u e"
-  apply (induction r rule: join_conditions.induct)
+  assumes "valid_rules r"
+  shows "join_conditions r = Some r' \<Longrightarrow> eval_rules r u e = eval_rules r' u e"
+  using assms apply (induction r rule: join_conditions.induct)
   apply (smt (verit, ccfv_threshold) condE elseE eval_rules.intros(2) eval_rules.intros(3) eval_rules.intros(4) eval_rules.intros(5) join_conditions.simps(1) option.distinct(1) option.sel)
+  subgoal premises p for m1 m2 r
+  proof -
+    have v1:"valid_match m1" using p(2) by simp
+    moreover have v2:"valid_match m2" using p(2) by simp
+    ultimately show ?thesis
+      by (metis join_conditions.simps(2) option.discI option.sel p(1) redundant_conditions)
+  qed
   by simp+
 
+
 lemma lift_common_valid:
-  "eval_rules r u e = eval_rules (lift_common r) u e"
-  proof (induction r arbitrary: u e rule: lift_common.induct)
+  assumes "valid_rules r"
+  shows "eval_rules r u e = eval_rules (lift_common r) u e"
+  using assms proof (induction r arbitrary: u e rule: lift_common.induct)
   case (1 r1 r2)
   then show ?case
   proof (cases "join_conditions (r1 else r2)")
@@ -1085,7 +1098,7 @@ lemma lift_common_valid:
   next
     case (Some a)
     then obtain m1 m2 r1' r2' where ex: "(r1 else r2) = (m1 ? r1' else m2 ? r2')"
-      by (smt (z3) join_conditions.elims option.distinct(1))
+      by (smt (z3) Rules.distinct(9) join_conditions.elims option.distinct(1))
     then have "m1 = m2"
       by (metis Some join_conditions.simps(1) option.distinct(1))
     then show ?thesis using 1
@@ -1094,8 +1107,6 @@ lemma lift_common_valid:
 next
   case (2 m r)
   then show ?case
-    by (simp add: monotonic_cond)
-(*
   proof (cases "join_conditions (m ? r)")
     case None
     then have "(lift_common (m ? r)) = (m ? lift_common r)"
@@ -1111,7 +1122,6 @@ next
     then show ?thesis using 2
       by (simp add: ex join_conditions_valid)
   qed
-*)
 next
   case (3 rules)
   then show ?case by (simp add: monotonic_choice)
@@ -1670,7 +1680,7 @@ lemma choice_Single:
   using eval_choice_none apply auto[1]
   using choiceE eval_rules.intros(6) by fastforce
 
-lemma eliminate_choice_valid:
+lemma eliminate_choice_valid_1:
   "{e. eval_rules r u e} = {e. eval_rules (eliminate_choice r) u e}"
   apply (induction r arbitrary: u rule: eliminate_choice.induct)
   apply simp unfolding eliminate_choice.simps
@@ -1683,16 +1693,70 @@ lemma eliminate_choice_valid:
   apply (metis Collect_cong mem_Collect_eq monotonic_choice)
   by (smt (verit) Collect_cong eval_rules.intros(10) eval_rules.intros(9) mem_Collect_eq seqE)
 
+lemma eliminate_choice_valid:
+  "eval_rules r u e = eval_rules (eliminate_choice r) u e"
+  using eliminate_choice_valid_1 by blast
 
 definition optimized_export where
   "optimized_export = eliminate_choice \<circ> combine_conditions o lift_common o lift_match o eliminate_noop o eliminate_empty"
 
+lemma elim_empty_preserve_def_vars:
+  "def_vars m = def_vars (elim_empty m)"
+  apply (induction m rule: elim_empty.induct) by simp+
+
+lemma elim_empty_preserve_use_vars:
+  "use_vars m = use_vars (elim_empty m)"
+  apply (induction m rule: elim_empty.induct) apply simp
+  using elim_empty_preserve_def_vars apply auto[1] by simp+
+
+lemma elim_empty_preserve_valid:
+  assumes "valid_match m"
+  shows "valid_match (elim_empty m)"
+    using assms apply (induction m rule: elim_empty.induct) apply simp
+    using elim_empty_preserve_def_vars elim_empty_preserve_use_vars apply auto[1] 
+    by simp+
+
+lemma eliminate_empty_preserve_valid:
+  assumes "valid_rules r"
+  shows "valid_rules (eliminate_empty r)"
+  using assms apply (induction r rule: eliminate_empty.induct) apply simp
+  apply (simp add: elim_empty_preserve_valid) by simp+
+
+lemma elim_noop_preserve_def_vars:
+  "def_vars m = def_vars (elim_noop m)"
+  apply (induction m rule: elim_noop.induct) by simp+
+
+lemma elim_noop_preserve_use_vars:
+  "use_vars m = use_vars (elim_noop m)"
+  apply (induction m rule: elim_noop.induct) apply simp+
+  using elim_noop_preserve_def_vars by simp+
+
+lemma elim_noop_preserve_valid:
+  assumes "valid_match m"
+  shows "valid_match (elim_noop m)"
+    using assms apply (induction m rule: elim_noop.induct) apply simp+
+    using elim_noop_preserve_def_vars elim_noop_preserve_use_vars by simp+
+
+lemma eliminate_noop_preserve_valid:
+  assumes "valid_rules r"
+  shows "valid_rules (eliminate_noop r)"
+  using assms apply (induction r rule: eliminate_noop.induct) apply simp
+  apply (simp add: elim_noop_preserve_valid) by simp+
+
+
+lemma lift_match_preserve_valid:
+  assumes "valid_rules r"
+  shows "valid_rules (lift_match r)"
+  using assms apply (induction r rule: lift_match.induct) apply simp
+  by simp+
 
 lemma optimized_export_valid:
-  "{e. eval_rules r u e} = {e. eval_rules (optimized_export r) u e}"
+  assumes "valid_rules r"
+  shows "eval_rules r u e = eval_rules (optimized_export r) u e"
   unfolding optimized_export_def comp_def
   using lift_common_valid lift_match_valid eliminate_noop_valid eliminate_empty_valid 
-  using combine_conditions_valid eliminate_choice_valid by simp
+  using combine_conditions_valid eliminate_choice_valid
+  by (metis assms eliminate_empty_preserve_valid eliminate_noop_preserve_valid lift_match_preserve_valid)
 
 thm_oracles optimized_export_valid
 
