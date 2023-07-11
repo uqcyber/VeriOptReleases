@@ -454,7 +454,7 @@ definition gen_pattern :: "IRExpr \<Rightarrow> VarName \<Rightarrow> MATCH" whe
 
 subsubsection \<open>Match Primitive Semantics\<close>
 snipbegin \<open>Subst\<close>
-type_synonym Subst = "VarName \<Rightarrow> IRExpr option"
+type_synonym Subst = "VarName \<rightharpoonup> IRExpr"
 snipend -
 
 snipbegin \<open>evalmatch\<close>
@@ -462,10 +462,10 @@ fun eval_match :: "MATCH \<Rightarrow> Subst \<Rightarrow> Subst option" where
   "eval_match (match v (UnaryPattern op1 x)) s =
     (case s v of 
       Some (UnaryExpr op2 xe) \<Rightarrow>
-        (if op1 = op2 then 
-          (if x \<in> Map.dom s then
-             (if s x = Some xe then Some s else None)
-           else Some (s(x\<mapsto>xe)))
+        (if op1 = op2 then
+          (if x \<in> dom s then
+            (if s x = Some xe then Some s else None)
+          else Some (s(x\<mapsto>xe)))
          else None) |
       Some _ \<Rightarrow> None |
       None \<Rightarrow> None)" |
@@ -473,14 +473,30 @@ fun eval_match :: "MATCH \<Rightarrow> Subst \<Rightarrow> Subst option" where
     (case s v of
       Some (BinaryExpr op2 xe ye) \<Rightarrow>
         (if op1 = op2 
-          then Some (s(x\<mapsto>xe, y\<mapsto>ye))
+          then 
+          (if x \<in> dom s \<and> s x \<noteq> Some xe then None else 
+          (if y \<in> dom s \<and> s y \<noteq> Some ye then None else 
+          (if x \<in> dom s \<and> y \<in> dom s then Some s else
+          (if x \<in> dom s then Some (s(y\<mapsto>ye)) else
+          (if y \<in> dom s then Some (s(x\<mapsto>xe)) else
+          Some (s(x\<mapsto>xe, y\<mapsto>ye)))))))
           else None) |
       Some _ \<Rightarrow> None |
       None \<Rightarrow> None)" |
   "eval_match (match v (ConditionalPattern c tb fb)) s =
     (case s v of
       Some (ConditionalExpr ce te fe) \<Rightarrow>
-        (Some (s(c\<mapsto>ce, tb\<mapsto>te, fb\<mapsto>fe))) |
+        (if c \<in> dom s \<and> s c \<noteq> Some ce then None else 
+          (if tb \<in> dom s \<and> s tb \<noteq> Some te then None else
+          (if fb \<in> dom s \<and> s fb \<noteq> Some fe then None else 
+          (if c \<in> dom s \<and> tb \<in> dom s \<and> fb \<in> dom s then Some s else
+          (if c \<in> dom s \<and> tb \<in> dom s then Some (s(fb\<mapsto>fe)) else
+          (if c \<in> dom s \<and> fb \<in> dom s then Some (s(tb\<mapsto>te)) else
+          (if tb \<in> dom s \<and> fb \<in> dom s then Some (s(c\<mapsto>ce)) else
+          (if c \<in> dom s then Some (s(tb\<mapsto>te, fb\<mapsto>fe)) else
+          (if tb \<in> dom s then Some (s(c\<mapsto>ce, fb\<mapsto>fe)) else
+          (if fb \<in> dom s then Some (s(c\<mapsto>ce, tb\<mapsto>te)) else
+          Some (s(c\<mapsto>ce, tb\<mapsto>te, fb\<mapsto>fe)))))))))))) |
       Some _ \<Rightarrow> None |
       None \<Rightarrow> None)" |
   "eval_match (match v (ConstantPattern c1)) s =
@@ -490,7 +506,7 @@ fun eval_match :: "MATCH \<Rightarrow> Subst \<Rightarrow> Subst option" where
       Some _ \<Rightarrow> None |
       None \<Rightarrow> None)" |
   "eval_match (equality v1 v2) s =
-    (if s v1 = s v2 then Some s else None)" |
+    (if v1 \<in> dom s \<and> v2 \<in> dom s \<and> s v1 = s v2 then Some s else None)" |
   "eval_match (andthen m1 m2) s =
       (case eval_match m1 s of 
         None \<Rightarrow> None |
@@ -1023,13 +1039,13 @@ using assms proof (induction m u arbitrary: a rule: eval_match.induct)
 next
   case (2 v op1 x y s)
   have "\<exists>e1 e2. a = s(y\<mapsto>e1, x\<mapsto>e2)"
-    by (smt (verit) "2" IRExpr.case_eq_if eval_match.simps(2) fun_upd_twist option.case_eq_if option.distinct(1) option.sel)
+    by (smt (verit) "2" IRExpr.case_eq_if eval_match.simps(2) fun_upd_idem_iff fun_upd_twist option.case_eq_if option.distinct(1) option.sel)
   then show ?case
     by fastforce
 next
   case (3 v c tb fb s)
   have "\<exists>e1 e2 e3. a = s(c\<mapsto>e1, tb\<mapsto>e2, fb\<mapsto>e3)"
-    by (smt (verit, best) "3" IRExpr.case_eq_if eval_match.simps(3) option.case_eq_if option.distinct(1) option.inject)  
+    by (smt (verit) "3" IRExpr.case_eq_if eval_match.simps(3) fun_upd_idem_iff fun_upd_twist option.case_eq_if option.distinct(1) option.sel)
   then show ?case
     by force
 next
@@ -1201,11 +1217,176 @@ next
   then show ?case sorry
 qed
 
-lemma match_use_idemp:
+lemma eval_match_subset:
+  assumes "eval_match m u = Some a"
+  assumes "valid_match m"
+  shows "u \<subseteq>\<^sub>m a"
+  using assms proof (induction m arbitrary: u a)
+  case (match x1 x2)
+  then show ?case proof (cases x2)
+    case (UnaryPattern x11 x12)
+    then show ?thesis using match apply simp
+      by (smt (verit) IRExpr.case_eq_if fun_upd_other map_le_def option.case_eq_if option.distinct(1) option.inject)
+  next
+    case (BinaryPattern x21 x22 x23)
+    then show ?thesis using match apply simp
+      by (smt (verit) IRExpr.case_eq_if fun_upd_other map_le_def option.case_eq_if option.distinct(1) option.sel)
+  next
+    case (ConditionalPattern x31 x32 x33)
+    then show ?thesis using match apply simp
+      by (smt (verit) IRExpr.case_eq_if fun_upd_def map_le_def option.case_eq_if option.distinct(1) option.sel)
+  next
+    case (VariablePattern x4)
+    then show ?thesis 
+      using match.prems(1) by force
+  next
+    case (ConstantPattern x5)
+    then show ?thesis 
+      by (metis def_vars.simps(1) empty_iff map_le_def match.prems(1) match_def_affect pattern_variables.simps(5))
+  next
+    case (ConstantVarPattern x6)
+    then show ?thesis 
+      using match.prems(1) by auto
+  qed
+next
+  case (equality x1 x2)
+  then show ?case 
+    by (metis eval_match.simps(5) map_le_refl option.distinct(1) option.sel)
+next
+  case (andthen m1 m2)
+  then show ?case
+    by (metis eval_match.simps(6) map_le_trans not_None_eq option.case_eq_if option.sel valid_match.simps(4))
+next
+  case (condition x)
+  then show ?case
+    using match_def_affect by fastforce
+next
+  case noop
+  then show ?case by simp
+qed
+
+lemma lift_idempotence:
+  assumes "eval_match m a' = Some a'"
+  assumes "a' \<subseteq>\<^sub>m a"
+  assumes "valid_match m"
+  shows "eval_match m a = Some a"
+  using assms proof (induction m arbitrary: a a')
+  case (match x1 x2)
+  then show ?case proof (cases x2)
+    case (UnaryPattern x11 x12)
+    then show ?thesis using match apply simp
+      by (smt (verit) IRExpr.case_eq_if domI domIff fun_upd_idem_iff map_le_def option.case_eq_if option.sel)
+  next
+    case (BinaryPattern x21 x22 x23)
+    then show ?thesis using match apply simp
+      by (smt (verit) IRExpr.case_eq_if domIff map_le_def map_upd_Some_unfold option.case_eq_if option.distinct(1) option.sel)
+  next
+    case (ConditionalPattern x31 x32 x33)
+    then show ?thesis using match apply simp
+      by (smt (verit) IRExpr.case_eq_if domIff map_le_def map_upd_Some_unfold option.case_eq_if option.distinct(1) option.inject)
+  next
+    case (VariablePattern x4)
+    then show ?thesis
+      using match.prems(1) by fastforce
+  next
+    case (ConstantPattern x5)
+    then show ?thesis using match apply simp
+      by (smt (verit) IRExpr.case_eq_if domIff map_le_def option.case_eq_if option.distinct(1))
+  next
+    case (ConstantVarPattern x6)
+    then show ?thesis
+      using match.prems(1) by auto
+  qed
+next
+  case (equality x1 x2)
+  from equality show ?case apply simp
+    by (metis domIff map_le_def option.distinct(1))
+next
+  case (andthen m1 m2)
+  obtain a'' where m1eval: "eval_match m1 a' = Some a''"
+    using andthen.prems(1) by fastforce
+  then have m2eval: "eval_match m2 a'' = Some a'"
+    using andthen.prems(1) by auto
+  then have "a'' \<subseteq>\<^sub>m a'"
+    using andthen.prems(3) eval_match_subset valid_match.simps(4) by blast
+  then show ?case
+    by (metis m1eval m2eval andthen.IH(1) andthen.IH(2) andthen.prems(2) andthen.prems(3) eval_match.simps(6) eval_match_subset map_le_antisym option.simps(5) valid_match.simps(4))
+next
+  case (condition x)
+  then show ?case
+    by (metis eval_match.simps(8) option.distinct(1))
+next
+  case noop
+  then show ?case by simp
+qed
+
+lemma idempotent_match:
   assumes "eval_match m u = Some a"
   assumes "valid_match m"
   shows "eval_match m a = Some a"
-  using assms proof (induction m u arbitrary: u a rule: eval_match.induct)
+  using assms proof (induction m arbitrary: u a)
+  case (match x1 x2)
+  then show ?case proof (cases x2)
+    case (UnaryPattern x11 x12)
+    then show ?thesis using match apply simp
+      by (smt (verit) IRExpr.case_eq_if fun_upd_other fun_upd_same map_upd_triv option.case_eq_if option.distinct(1) option.sel)
+  next
+    case (BinaryPattern x21 x22 x23)
+    then show ?thesis using match apply simp
+      by (smt (verit) IRExpr.case_eq_if fun_upd_other fun_upd_same map_upd_triv option.case_eq_if option.distinct(1) option.sel)
+  next
+    case (ConditionalPattern x31 x32 x33)
+    then show ?thesis using match apply simp
+      by (smt (verit) IRExpr.case_eq_if domI domIff fun_upd_def option.case_eq_if option.sel)
+  next
+    case (VariablePattern x4)
+    then show ?thesis
+      using match.prems(1) by auto
+  next
+    case (ConstantPattern x5)
+    then show ?thesis using match apply simp
+      by (smt (verit) IRExpr.case_eq_if option.case_eq_if option.sel)
+  next
+    case (ConstantVarPattern x6)
+    then show ?thesis
+      using match.prems(1) by auto
+  qed
+next
+  case (equality x1 x2)
+  then show ?case
+    by (metis eval_match.simps(5) option.sel)
+next
+  case (andthen m1 m2)
+  obtain a' where m1eval: "eval_match m1 u = Some a'"
+    using andthen.prems(1) by fastforce
+  have m1idem: "eval_match m1 a' = Some a'"
+    using andthen.IH(1) andthen.prems(2) m1eval valid_match.simps(4) by blast
+  have validm1: "valid_match m1"
+    using andthen.prems(2) by auto
+  have m2eval: "eval_match m2 a' = Some a"
+    using andthen.prems(1) m1eval by auto
+  have validm2: "valid_match m2"
+    using andthen.prems(2) by auto
+  have m2idem: "eval_match m2 a = Some a"
+    using m2eval validm2
+    using andthen.IH(2) by blast
+  have "a' \<subseteq>\<^sub>m a"
+    using eval_match_subset m2eval validm2 by simp
+  then have "eval_match m1 a = Some a"
+    using m1idem lift_idempotence validm1 by simp
+  then show ?case
+    by (simp add: m2idem)
+next
+  case (condition x)
+  then show ?case
+    by (metis eval_match.simps(8))
+next
+  case noop
+  then show ?case
+    by simp
+qed
+
+(*
   case (1 v op1 x s)
   then have "u v = a v"
     by (metis insertI1 match_use_affect use_vars.simps(1))
@@ -1244,17 +1425,17 @@ next
     valid_match m2 \<longrightarrow> eval_match m2 a = Some a))"
     using "6"(2)
     by blast
-  obtain a'' where m2eval: "eval_match m2 a' = Some a''"
+  have m2eval: "eval_match m2 a' = Some a"
     using "6.prems"(1) m1eval by auto
   have validm2: "valid_match m2"
     using "6.prems"(2) by auto
-  then have m1use: "\<forall>v \<in> use_vars m2. a' v = a'' v"
+  then have m1use: "\<forall>v \<in> use_vars m2. a' v = a v"
     using m2eval
     by (simp add: match_use_affect)
   have existm1: "(\<exists>s x2. eval_match m1 s = Some x2)"
     using \<open>eval_match m1 a' = Some a'\<close> by auto
-  have m2idem: "eval_match m2 a'' = Some a''"
-    using drops existm1 m2eval validm2 m1eval sorry
+  have m2idem: "eval_match m2 a = Some a"
+    using 6(2) m2eval validm2 sorry
     (*by blast
     by (simp add: "6.IH"(2) \<open>valid_match m2\<close> m1eval m2eval)*)
   have "a = a''"
@@ -1279,8 +1460,9 @@ next
   case ("9_2" v vb s)
   then show ?case sorry
 qed
+*)
 
-lemma disjoint_match_use:
+(*lemma disjoint_match_use:
   assumes "valid_match m"
   shows "use_vars m \<inter> def_vars m = {}"
   using assms apply (induction m)
@@ -1288,85 +1470,15 @@ lemma disjoint_match_use:
   subgoal for x1 x2
     apply (cases x2) by simp+
      apply simp+
-  sorry
-
-lemma idempotent_match:
-  assumes "valid_match m"
-  assumes "eval_match m u = Some a"
-  shows "eval_match m a = Some a"
-  using assms match_def_affect match_use_idemp disjoint_match_use
-  by (metis (no_types, opaque_lifting) disjoint_iff_not_equal) (*
-  using assms proof (induction m u arbitrary: u a rule: eval_match.induct)
-  case (1 v op1 x s)
-  then obtain e where e: "u v = Some (UnaryExpr op1 e)"
-    by (smt (verit) IRExpr.case_eq_if IRExpr.sel(1) eval_match.simps(1) is_UnaryExpr_def map_upd_Some_unfold option.case_eq_if option.distinct(1) option.exhaust_sel option.sel valid_match.simps(1))
-    then have "a = u(x:=Some e)"
-        using "1.prems"(2) by auto
-    then show ?case
-      using "1.prems"(1) e by auto
-next
-  case (2 v op1 x y s)
-  then show ?case sorry
-  (*then obtain e1 e2 where e: "u v = Some (BinaryExpr op1 e1 e2)"
-    by (smt (verit, del_insts) IRExpr.case_eq_if IRExpr.simps(66) eval_match.simps(2) is_BinaryExpr_def option.case_eq_if option.distinct(1) option.exhaust_sel)
-  then have "s = u(x:=Some e1, y:=Some e2)"
-    using "2.prems"(2) by auto
-  then show ?case
-    using "2.prems"(1) e by auto*)
-next
-  case (3 v c tb fb s)
-  then show ?case sorry
-  (*then obtain cv t f where e: "u v = Some (ConditionalExpr cv t f)"
-    unfolding eval_match.simps
-    by (smt (verit, del_insts) IRExpr.split_sel_asm is_none_code(2) is_none_simps(1) option.case_eq_if option.exhaust_sel)
-  then have "s = u(c:=Some cv, tb:=Some t, fb:=Some f)"
-    using "3.prems"(2) by auto
-  then show ?case
-    using "3.prems"(1) e by auto*)
-next
-  case (4 v c1 s)
-  then show ?case unfolding eval_match.simps
-    by (smt (verit) IRExpr.case_eq_if option.case_eq_if option.sel)
-next
-  case (5 v1 v2 s)
-  then show ?case unfolding eval_match.simps
-    by (metis option.inject)
-next
-  case (6 m1 m2 s)
-  (*obtain a' u where a': "eval_match m1 u = Some a'"
-    using "6.prems"(2) by fastforce
-  then have s1: "eval_match m1 u = Some a'"
-    using "6.IH"(1) "6.prems"(1) valid_match.simps(4) by blast
-  obtain a'' where a'': "eval_match m2 u = Some a''"
-    using "6.prems"(2) \<open>eval_match m1 u = Some a'\<close> by auto
-  then have s2: "eval_match m2 a'' = Some a''"
-    using "6.IH"(2) "6.prems"(1) \<open>eval_match m1 s = Some a'\<close> valid_match.simps(4) by blast
-  have "a = a''"
-    using "6.prems"(2) a' a'' by auto
-  have "eval_match m1 a = Some a"
-    sorry*)
-  then show ?case sorry (*using "6.prems"(2) unfolding eval_match.simps
-    by (simp add: \<open>a = a''\<close> s2)*)
-next
-  case (7 s)
-  then show ?case sorry
-next
-  case (8 sc s)
-  then show ?case sorry
-next
-  case ("9_1" v vb s)
-  then show ?case sorry
-next
-  case ("9_2" v vb s)
-  then show ?case sorry
-qed
-*)
+  sorry*)
 
 lemma match_eq:
   assumes "valid_match m"
   shows "eval_match (m && m) u = eval_match m u"
   using assms
   by (simp add: idempotent_match option.case_eq_if)
+
+
 (*
 proof (cases "eval_match m u")
   case None
