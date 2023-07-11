@@ -12,7 +12,7 @@ lemma intval_distribute_and_over_or:
 
 lemma exp_distribute_and_over_or:
   "exp[z & (x | y)] \<ge> exp[(z & x) | (z & y)]"
-  apply auto
+  apply auto[1]
   by (metis bin_eval.simps(4,5) intval_or.simps(2,6) intval_distribute_and_over_or BinaryExpr)
 
 lemma intval_and_commute:
@@ -84,7 +84,7 @@ lemma intval_or_absorb_and:
 
 lemma exp_and_absorb_or:
   "exp[x & (x | y)] \<ge> exp[x]"
-  apply auto
+  apply auto[1]
   subgoal premises p for m p xa xaa ya
   proof-
     obtain xv where xv: "[m,p] \<turnstile> x \<mapsto> xv"
@@ -106,7 +106,7 @@ lemma exp_and_absorb_or:
 
 lemma exp_or_absorb_and:
   "exp[x | (x & y)] \<ge> exp[x]"
-  apply auto
+  apply auto[1]
   subgoal premises p for m p xa xaa ya
   proof-
     obtain xv where xv: "[m,p] \<turnstile> x \<mapsto> xv"
@@ -338,7 +338,7 @@ lemma map_join_horner:
   shows "horner_sum of_bool (2::'a::len word) (map f [0..<n]) = horner_sum of_bool 2 (map f [0..<j])"
 proof -
   have "horner_sum of_bool (2::'a::len word) (map f [0..<n]) = horner_sum of_bool 2 (map f [0..<j]) + 2 ^ length [0..<j] * horner_sum of_bool 2 (map f [j..<n])"
-    using assms apply auto
+    using assms apply auto[1]
     by (smt (verit) assms diff_le_self diff_zero le_add_same_cancel2 length_append length_map
         length_upt map_append upt_add_eq_append horner_sum_append)
   also have "... = horner_sum of_bool 2 (map f [0..<j]) + 2 ^ length [0..<j] * horner_sum of_bool 2 (map (\<lambda>x. False) [j..<n])"
@@ -802,24 +802,24 @@ phase NewAnd
   terminating size
 begin
 
-optimization redundant_lhs_y_or: "((x | y) & z) \<longmapsto> x & z
+optimization RedundantLHSYOr: "((x | y) & z) \<longmapsto> x & z
                                 when UpMaskCancels y z"
   apply (simp add: IRExpr_up_def)
   using simple_mask.exp_eliminate_y by blast
 
-optimization redundant_lhs_x_or: "((x | y) & z) \<longmapsto> y & z
+optimization RedundantLHSXOr: "((x | y) & z) \<longmapsto> y & z
                                 when UpMaskCancels x z"
   apply (simp add: IRExpr_up_def)
   using simple_mask.exp_eliminate_y
   by (meson exp_or_commute mono_binary order_refl order_trans)
 
-optimization redundant_rhs_y_or: "(z & (x | y)) \<longmapsto> z & x
+optimization RedundantRHSYOr: "(z & (x | y)) \<longmapsto> z & x
                                 when UpMaskCancels y z"
   apply (simp add: IRExpr_up_def)
   using simple_mask.exp_eliminate_y
   by (meson exp_and_commute order.trans)
 
-optimization redundant_rhs_x_or: "(z & (x | y)) \<longmapsto> z & y
+optimization RedundantRHSXOr: "(z & (x | y)) \<longmapsto> z & y
                                 when UpMaskCancels x z"
   apply (simp add: IRExpr_up_def)
   using simple_mask.exp_eliminate_y
@@ -832,10 +832,10 @@ optimization redundant_lhs_add: "((x + y) & z) \<longmapsto> x & z
 
 value "
   (optimized_export
-    ((redundant_lhs_y_or_code else
-      redundant_lhs_x_or_code) else
-      (redundant_rhs_y_or_code else
-      redundant_rhs_x_or_code)
+    ((RedundantLHSYOr_code else
+      RedundantLHSXOr_code) else
+      (RedundantRHSYOr_code else
+      RedundantRHSXOr_code)
     ))"
 
 end

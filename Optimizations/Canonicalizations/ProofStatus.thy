@@ -84,22 +84,20 @@ val _ =
 \<close>
 
 
-gencode "Test" "choice [condition_bounds_y_code]"
+gencode "Test" "choice [ZeroSubtractValue_code]"
 
 print_phases
 
 gencode "ConditionalCode" "( (optimized_export (
   choice [
-  opt_optimise_integer_test_2_code,
-  OptimiseIntegerTest_code,
-  flipX2_code,
-  flipX_code,
-  normalizeX2_code,
-  normalizeX_code,
+  FlipX2_code,
+  FlipX_code,
+  NormalizeX2_code,
+  NormalizeX_code,
   ConditionalEqualIsRHS_code,
   ConditionalEliminateKnownLess_code,
-  condition_bounds_y_code,
-  condition_bounds_x_code,
+  ConditionBoundsY_code,
+  ConditionBoundsX_code,
   ConditionalEqualBranches_code,
   DefaultFalseBranch_code,
   DefaultTrueBranch_code,
@@ -107,14 +105,11 @@ gencode "ConditionalCode" "( (optimized_export (
 
 print_phases
 
-definition optimized_export2 where
-  "optimized_export2 = eliminate_choice o collapse_conditions o lift_common o lift_match o eliminate_noop o eliminate_empty"
 
-
-gencode "AllOpts" "(optimized_export2
+gencode "AllOpts" "(optimized_export
   (choice [
   EliminateRedundantFalse_code,
-  distribute_sub_code,
+  DistributeSub_code,
   opt_add_left_negate_to_sub_code,
   SubNegativeValue_code,
   SubThenSubLeft_code,
@@ -127,23 +122,21 @@ gencode "AllOpts" "(optimized_export2
   EliminateRedundantFalse_code,
   OrEqual_code,
   NotCancel_code,
-  redundant_rhs_x_or_code,
-  redundant_rhs_y_or_code,
-  redundant_lhs_x_or_code,
-  redundant_lhs_y_or_code,
+  RedundantRHSXOr_code,
+  RedundantRHSYOr_code,
+  RedundantLHSXOr_code,
+  RedundantLHSYOr_code,
   DistributeSubtraction_code,
   NegateCancel_code,
   EliminateRedundantNegative_code,
-  opt_optimise_integer_test_2_code,
-  OptimiseIntegerTest_code,
-  flipX2_code,
-  flipX_code,
-  normalizeX2_code,
-  normalizeX_code,
+  FlipX2_code,
+  FlipX_code,
+  NormalizeX2_code,
+  NormalizeX_code,
   ConditionalEqualIsRHS_code,
   ConditionalEliminateKnownLess_code,
-  condition_bounds_y_code,
-  condition_bounds_x_code,
+  ConditionBoundsY_code,
+  ConditionBoundsX_code,
   ConditionalEqualBranches_code,
   DefaultFalseBranch_code,
   DefaultTrueBranch_code,
@@ -157,7 +150,6 @@ gencode "AllOpts" "(optimized_export2
   RedundantSubAdd2_code,
   RedundantSubAdd_code,
   AddNeutral_code,
-  AddShiftConstantRight2_code,
   AddShiftConstantRight_code,
   AbsNegate_code,
   AbsIdempotence_code
@@ -225,10 +217,10 @@ value "export_rules (optimized_export (
   NotCancel_code))"
 
 value "export_rules (optimized_export (
-  redundant_rhs_x_or_code else
-  redundant_rhs_y_or_code else
-  redundant_lhs_x_or_code else
-  redundant_lhs_y_or_code))"
+  RedundantRHSXOr_code else
+  RedundantRHSYOr_code else
+  RedundantLHSXOr_code else
+  RedundantLHSYOr_code))"
 
 value "export_rules (optimized_export (
   DistributeSubtraction_code else
@@ -237,32 +229,26 @@ value "export_rules (optimized_export (
 value "export_rules (optimized_export (
   EliminateRedundantNegative_code))"
 
-value "opt_optimise_integer_test_2_code"
-value "OptimiseIntegerTest_code"
 value "export_rules (optimized_export (
   choice [
-  OptimiseIntegerTest_code,
-  normalizeX_code,
   ConditionalEqualIsRHS_code,
   ConditionalEliminateKnownLess_code,
-  condition_bounds_y_code,
-  condition_bounds_x_code,
+  ConditionBoundsY_code,
+  ConditionBoundsX_code,
   ConditionalEqualBranches_code,
   DefaultFalseBranch_code,
   DefaultTrueBranch_code,
   NegateConditionFlipBranches_code]))"
 
 value "export_rules (optimized_export (optimized_export (optimized_export (optimized_export (optimized_export (optimized_export (optimized_export (optimized_export (optimized_export (optimized_export (optimized_export (optimized_export (optimized_export (optimized_export (optimized_export (
-  opt_optimise_integer_test_2_code else
-  OptimiseIntegerTest_code else
-  flipX2_code else
-  flipX_code else
-  normalizeX2_code else
-  normalizeX_code else
+  FlipX2_code else
+  FlipX_code else
+  NormalizeX2_code else
+  NormalizeX_code else
   ConditionalEqualIsRHS_code else
   ConditionalEliminateKnownLess_code else
-  condition_bounds_y_code else
-  condition_bounds_x_code else
+  ConditionBoundsY_code else
+  ConditionBoundsX_code else
   ConditionalEqualBranches_code else
   DefaultFalseBranch_code else
   DefaultTrueBranch_code else

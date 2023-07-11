@@ -34,7 +34,7 @@ thm_oracles exp_distribute_sub
 
 lemma exp_negative_cancel:
   shows "exp[-(-x)] \<ge> exp[x]"
-  apply auto
+  apply auto[1]
   by (metis (no_types, opaque_lifting) eval_unused_bits_zero intval_negate.elims new_int.simps
       intval_negate.simps(1) minus_equation_iff take_bit_dist_neg) 
  

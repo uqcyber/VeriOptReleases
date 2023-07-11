@@ -15,12 +15,9 @@ lemma binadd_commute:
   by (simp add: intval_add_sym)
 
 (* horrible backward proof - needs improving *)
-optimization AddShiftConstantRight: "((const v) + y) \<longmapsto> y + (const v) when \<not>(is_ConstantExpr y)"
-  apply (metis add_2_eq_Suc' less_Suc_eq plus_1_eq_Suc size.simps(11) size_non_add)
+optimization AddShiftConstantRight: "(x + y) \<longmapsto> y + x when IsConstantExpr x && Not (IsConstantExpr y)"
+  using is_ConstantExpr_def size_flip_binary apply force
   using le_expr_def binadd_commute by blast
-
-optimization AddShiftConstantRight2: "((const v) + y) \<longmapsto> y + (const v) when \<not>(is_ConstantExpr y)"
-  using AddShiftConstantRight by auto
 
 (* TODO: define is_neutral and then lemmas like this: 
 lemma simp_neutral:
@@ -40,7 +37,7 @@ lemma is_neutral_0 [simp]:
 
 lemma AddNeutral_Exp:
   shows "exp[(e + (const (IntVal 32 0)))] \<ge> exp[e]"
-  apply auto
+  apply auto[1]
   subgoal premises p for m p x
   proof -
     obtain ev where ev: "[m,p] \<turnstile> e \<mapsto> ev"
@@ -73,7 +70,7 @@ lemma NeutralLeftSubVal:
 
 lemma RedundantSubAdd_Exp:
   shows "exp[((a - b) + b)] \<ge> a"
-  apply auto
+  apply auto[1]
   subgoal premises p for m p y xa ya
   proof -
     obtain bv where bv: "[m,p] \<turnstile> b \<mapsto> bv"
@@ -109,9 +106,9 @@ lemma just_goal2:
   unfolding le_expr_def unfold_binary bin_eval.simps by (metis assms evalDet evaltree_not_undef)
 
 optimization RedundantSubAdd2: " e2 + (e1 - e2) \<longmapsto> e1"
-  using size_binary_rhs_a apply simp apply auto
-  by (metis bin_eval.simps(1,3) BinaryExpr RedundantSubAdd(1) binadd_commute le_expr_def
-      rewrite_preservation.simps(1))
+  using size_binary_rhs_a apply simp apply auto[1]
+  by (smt (z3) NeutralLeftSubVal evalDet eval_unused_bits_zero intval_add_sym intval_sub.elims new_int.simps well_formed_equal_defn)
+
 
 (* Demonstration of our FOUR levels of expression rewrites:
    =======================================================
@@ -199,7 +196,7 @@ lemma exp_add_left_negate_to_sub:
 
 lemma RedundantAddSub_Exp:
   shows "exp[(b + a) - b] \<ge> a"
-  apply auto
+  apply auto[1]
     subgoal premises p for m p y xa ya
   proof -
     obtain bv where bv: "[m,p] \<turnstile> b \<mapsto> bv"

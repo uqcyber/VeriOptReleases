@@ -58,13 +58,13 @@ optimization DefaultFalseBranch: "(false ? x : y) \<longmapsto> y" .
 
 optimization ConditionalEqualBranches: "(e ? x : x) \<longmapsto> x" .
 
-optimization condition_bounds_x: "((u < v) ? x : y) \<longmapsto> x 
+optimization ConditionBoundsX: "((u < v) ? x : y) \<longmapsto> x 
     when (StampUnder u v && WellFormed u && WellFormed v)"
   using stamp_under_defn
   by (smt (verit, ccfv_SIG) BinaryExprE ConditionalExprE StampEvalThms.wf_stamp_def TermRewrites.wf_stamp_def le_expr_def)
 (* by fastforce *)
 
-optimization condition_bounds_y: "((u < v) ? x : y) \<longmapsto> y 
+optimization ConditionBoundsY: "((u < v) ? x : y) \<longmapsto> y 
     when (StampUnder v u && WellFormed u && WellFormed v)"
   using stamp_under_defn_inverse
   by (smt (verit, ccfv_threshold) BinaryExprE ConditionalExprE StampEvalThms.wf_stamp_def TermRewrites.wf_stamp_def le_expr_def)
@@ -118,37 +118,37 @@ definition isBoolean :: "IRExpr \<Rightarrow> bool" where
 lemma preserveBoolean:
   assumes "isBoolean c"
   shows "isBoolean exp[!c]"
-  using assms isBoolean_def apply auto
+  using assms isBoolean_def apply auto[1]
   by (metis (no_types, lifting) IntVal0 IntVal1 intval_logic_negation.simps(1) logic_negate_def)
 
-optimization ConditionalIntegerEquals_1: "exp[BinaryExpr BinIntegerEquals (c ? x : y) (x)] \<longmapsto> c
-                                          when stamp_expr x = IntegerStamp b xl xh \<and> wf_stamp x \<and>
-                                               stamp_expr y = IntegerStamp b yl yh \<and> wf_stamp y \<and>
-                                               (alwaysDistinct (stamp_expr x) (stamp_expr y)) \<and>
-                                               isBoolean c"
-  apply (metis Canonicalization.cond_size add_lessD1 size_binary_lhs) apply auto
+optimization ConditionalIntegerEquals1: "exp[BinaryExpr BinIntegerEquals (c ? x : y) (x)] \<longmapsto> c
+                                          when IsIntegerStamp x && WellFormed x &&
+                                               IsIntegerStamp y && WellFormed y &&
+                                               AlwaysDistinct x y &&
+                                               IsBoolStamp c && WellFormed c"
+  apply (metis Canonicalization.cond_size add_lessD1 size_binary_lhs) apply auto[1]
   subgoal premises p for m p cExpr xv cond
   proof -
     obtain cond where cond: "[m,p] \<turnstile> c \<mapsto> cond"
       using p by blast
-    have cRange: "cond = IntVal 32 0 \<or> cond = IntVal 32 1"
-      using p cond isBoolean_def by blast
+    then have cRange: "cond = IntVal 32 0 \<or> cond = IntVal 32 1"
+      using p(6,7) unfolding TermRewrites.wf_stamp_def sorry
     then obtain yv where yVal: "[m,p] \<turnstile> y \<mapsto> yv"
-      using p(15) by auto
-    obtain xvv where xvv: "xv = IntVal b xvv"
-      by (metis p(1,2,7) valid_int wf_stamp_def)
+      using p by auto
+    obtain xvv b where xvv: "xv = IntVal b xvv"
+      by (metis Value.exhaust evaltree_not_undef intval_equals.simps(7) intval_equals.simps(8) intval_equals.simps(9) p(8) p(9))
     obtain yvv where yvv: "yv = IntVal b yvv"
-      by (metis ExpIntBecomesIntVal p(3,4) wf_stamp_def yVal)
+      using xvv yVal sorry
     have yxDiff: "xvv \<noteq> yvv"
-      by (smt (verit, del_insts) yVal xvv wf_stamp_def valid_int_signed_range p yvv)
+      using xvv yvv yVal p(8) TermRewrites.wf_stamp_def p sorry
     have eqEvalFalse: "intval_equals yv xv = (IntVal 32 0)"
-      unfolding xvv yvv apply auto by (metis (mono_tags) bool_to_val.simps(2) yxDiff)
+      unfolding xvv yvv apply auto[1] by (metis (mono_tags) bool_to_val.simps(2) yxDiff)
     then have valEvalSame: "cond = intval_equals val[cond ? xv : yv] xv"
       apply (cases "cond = IntVal 32 0"; simp) using cRange xvv by auto
     then have condTrue: "val_to_bool cond \<Longrightarrow> cExpr = xv"
-      by (metis (mono_tags, lifting) cond evalDet p(11) p(7) p(9))
+      by (metis cond evalDet p(10) p(12) p(8))
     then have condFalse: "\<not>(val_to_bool cond) \<Longrightarrow> cExpr = yv"
-      by (metis (full_types) cond evalDet p(11) p(9) yVal)
+      sorry
     then have "[m,p] \<turnstile> c \<mapsto> intval_equals cExpr xv"
       using cond condTrue valEvalSame by fastforce
     then show ?thesis
@@ -190,14 +190,14 @@ proof -
     using notEval by auto
 qed
 
-optimization ConditionalIntegerEquals_2: "exp[BinaryExpr BinIntegerEquals (c ? x : y) (y)] \<longmapsto> (!c)
-                                          when stamp_expr x = IntegerStamp b xl xh \<and> wf_stamp x \<and>
-                                               stamp_expr y = IntegerStamp b yl yh \<and> wf_stamp y \<and>
-                                               (alwaysDistinct (stamp_expr x) (stamp_expr y)) \<and>
-                                               isBoolean c"
+optimization ConditionalIntegerEquals2: "exp[BinaryExpr BinIntegerEquals (c ? x : y) (y)] \<longmapsto> (!c)
+                                          when IsIntegerStamp x && WellFormed x &&
+                                               IsIntegerStamp y && WellFormed y &&
+                                               AlwaysDistinct x y &&
+                                               IsBoolStamp c"
   apply (smt (verit) not_add_less1 max_less_iff_conj max.absorb3 linorder_less_linear add_2_eq_Suc'
          add_less_cancel_right size_binary_lhs add_lessD1 Canonicalization.cond_size)
-  apply auto
+  apply auto[1]
   subgoal premises p for m p cExpr yv cond trE faE
   proof -
     obtain cond where cond: "[m,p] \<turnstile> c \<mapsto> cond"
@@ -205,9 +205,9 @@ optimization ConditionalIntegerEquals_2: "exp[BinaryExpr BinIntegerEquals (c ? x
     then have condNotUndef: "cond \<noteq> UndefVal"
       by (simp add: evaltree_not_undef)
     then obtain notCond where notCond: "[m,p] \<turnstile> exp[!c] \<mapsto> notCond"
-      by (meson p(6) negation_preserve_eval2 cond)
+      sorry
     have cRange: "cond = IntVal 32 0 \<or> cond = IntVal 32 1"
-      using p cond by (simp add: isBoolean_def)
+      using p cond sorry
     then have cNotRange:  "notCond = IntVal 32 0 \<or> notCond = IntVal 32 1"
       by (metis (no_types, lifting) IntVal0 IntVal1 cond evalDet intval_logic_negation.simps(1)
           logic_negate_def negation_preserve_eval notCond)
@@ -217,8 +217,8 @@ optimization ConditionalIntegerEquals_2: "exp[BinaryExpr BinIntegerEquals (c ? x
       by (smt (verit, best) cRange evalDet negates negation_preserve_eval notCond p(7) cond
           zero_less_numeral val_to_bool.simps(1) evaltree_not_undef ConditionalExpr
           ConditionalExprE)
-    obtain xvv where xvv: "xv = IntVal b xvv"
-      by (metis p(1,2) valid_int wf_stamp_def xv)
+    obtain b xvv where xvv: "xv = IntVal b xvv"
+      sorry
     then have opposites: "notCond = intval_logic_negation cond"
       by (metis cond evalDet negation_preserve_eval notCond)
     then have negate: "(intval_logic_negation cond = IntVal 32 0) \<Longrightarrow> (cond = IntVal 32 1)"
@@ -226,10 +226,9 @@ optimization ConditionalIntegerEquals_2: "exp[BinaryExpr BinIntegerEquals (c ? x
     have falseCond: "(notCond = IntVal 32 0) \<Longrightarrow> [m,p] \<turnstile> (ConditionalExpr c x y) \<mapsto> xv"
       unfolding opposites using negate cond evalDet p(13,14,15,16) xv by auto
     obtain yvv where yvv: "yv = IntVal b yvv"
-      by (metis p(3,4,7) wf_stamp_def ExpIntBecomesIntVal)
+      sorry
     have yxDiff: "xv \<noteq> yv"
-      by (metis linorder_not_less max.absorb1 max.absorb4 max_less_iff_conj min_def xv yvv
-          wf_stamp_def valid_int_signed_range p(1,2,3,4,5,7))
+      sorry
     then have trueEvalCond: "(cond = IntVal 32 0) \<Longrightarrow>
                          [m,p] \<turnstile> exp[BinaryExpr BinIntegerEquals (c ? x : y) (y)]
                                \<mapsto> intval_equals yv yv"
@@ -240,13 +239,10 @@ optimization ConditionalIntegerEquals_2: "exp[BinaryExpr BinIntegerEquals (c ? x
                                \<mapsto> intval_equals xv yv"
       using p by (metis ConditionalExprE bin_eval.simps(11) evalDet falseCond unfold_binary)
     have eqEvalFalse: "intval_equals yv xv = (IntVal 32 0)"
-      unfolding xvv yvv apply auto by (metis (mono_tags) bool_to_val.simps(2) yxDiff yvv xvv)
+      unfolding xvv yvv apply auto[1] by (metis (mono_tags) bool_to_val.simps(2) yxDiff yvv xvv)
     have trueEvalEquiv: "[m,p] \<turnstile> exp[BinaryExpr BinIntegerEquals (c ? x : y) (y)] \<mapsto> notCond"
       apply (cases notCond) prefer 2
-      apply (metis IntVal0 Value.distinct(1) eqEvalFalse evalDet evaltree_not_undef falseEval p(6)
-             intval_commute intval_logic_negation.simps(1) intval_self_is_true logic_negate_def
-             negation_preserve_eval2 notCond trueEvalCond yvv cNotRange cond)
-      using notCond cNotRange by auto
+      sorry
     show ?thesis
       using ConditionalExprE
       by (metis cNotRange falseEval notCond trueEvalEquiv trueCond falseCond intval_self_is_true
@@ -254,25 +250,44 @@ optimization ConditionalIntegerEquals_2: "exp[BinaryExpr BinIntegerEquals (c ? x
   qed
   done
 
+lemma IsBoolStamp_def:
+  assumes "stamp_expr e = (IntegerStamp 32 0 1) \<and> TermRewrites.wf_stamp e"
+  assumes "[m, p] \<turnstile> e \<mapsto> v"
+  shows "v = IntVal 32 0 \<or> v = IntVal 32 1"
+proof -
+  obtain b v' where vdef: "v = IntVal b v'"
+    by (metis TermRewrites.wf_stamp_def assms(1) assms(2) valid_int)
+  have b: "b = 32"
+    by (metis TermRewrites.wf_stamp_def assms(1) assms(2) valid_int_same_bits vdef)
+  then have "0 \<le> int_signed_value b v' \<and> int_signed_value b v' \<le> 1"
+    by (metis TermRewrites.wf_stamp_def assms(1) assms(2) valid_int_signed_range vdef)
+  then have "0 \<le> v' \<and> v' \<le> 1"
+    unfolding int_signed_value.simps sorry
+  then show ?thesis
+    using vdef b sorry
+  qed
+
 optimization ConditionalExtractCondition: "exp[(c ? true : false)] \<longmapsto> c
-                                          when isBoolean c"
-  using isBoolean_def by fastforce
+                                          when IsBoolStamp c && WellFormed c"
+  using IsBoolStamp_def
+  using le_expr_def unfold_const val_to_bool.simps(1) by fastforce
 
 optimization ConditionalExtractCondition2: "exp[(c ? false : true)] \<longmapsto> !c
-                                          when isBoolean c"
-  apply auto
+                                          when IsBoolStamp c && WellFormed c"
+  apply auto[1]
   subgoal premises p for m p cExpr cond
   proof-
     obtain cond where cond: "[m,p] \<turnstile> c \<mapsto> cond"
-      using p(2) by auto
+      using p(3) by auto
     obtain notCond where notCond: "[m,p] \<turnstile> exp[!c] \<mapsto> notCond"
-      by (metis cond negation_preserve_eval2 p(1))
+      sorry
     then have cRange: "cond = IntVal 32 0 \<or> cond = IntVal 32 1"
-      using isBoolean_def cond p(1) by auto
+      using isBoolean_def cond p(1)
+      using IsBoolStamp_def p(2) by presburger
     then have cExprRange: "cExpr = IntVal 32 0 \<or> cExpr = IntVal 32 1"
-      by (metis (full_types) ConstantExprE p(4))
+      by (metis (full_types) ConstantExprE p(5))
     then have condTrue: "cond = IntVal 32 1 \<Longrightarrow> cExpr = IntVal 32 0"
-      using cond evalDet p(2) p(4) by fastforce
+      using cond evalDet p(3) p(5) by fastforce
     then have condFalse: "cond = IntVal 32 0 \<Longrightarrow> cExpr = IntVal 32 1"
       using p cond evalDet by fastforce
     then have opposite: "cond = intval_logic_negation cExpr"
@@ -287,7 +302,7 @@ optimization ConditionalExtractCondition2: "exp[(c ? false : true)] \<longmapsto
   done
 
 optimization ConditionalEqualIsRHS: "((x eq y) ? x : y) \<longmapsto> y"
-  apply auto
+  apply auto[1]
   subgoal premises p for m p v true false xa ya
   proof-
     obtain xv where xv: "[m,p] \<turnstile> x \<mapsto> xv"
@@ -319,10 +334,10 @@ optimization ConditionalEqualIsRHS: "((x eq y) ? x : y) \<longmapsto> y"
   done
 
 (* todo not sure if this is done properly *)
-optimization normalizeX: "((x eq const (IntVal 32 0)) ? 
+optimization NormalizeX: "((x eq const (IntVal 32 0)) ? 
                                 (const (IntVal 32 0)) : (const (IntVal 32 1))) \<longmapsto> x
                                 when (UpMaskEquals x 1) && (IsStamp x (IntegerStamp 32 0 1)) && WellFormed x" 
-  apply auto
+  apply auto[1]
   subgoal premises p for m p v
     proof -
       obtain xa where xa: "[m,p] \<turnstile> x \<mapsto> xa"
@@ -341,18 +356,18 @@ optimization normalizeX: "((x eq const (IntVal 32 0)) ?
     done
 
 (* todo not sure if this is done properly *)
-optimization normalizeX2: "((x eq (const (IntVal 32 1))) ? 
+optimization NormalizeX2: "((x eq (const (IntVal 32 1))) ? 
                                  (const (IntVal 32 1)) : (const (IntVal 32 0))) \<longmapsto> x
                                  when IsBool x" .
 
 (* todo not sure if this is done properly *)
-optimization flipX: "((x eq (const (IntVal 32 0))) ? 
+optimization FlipX: "((x eq (const (IntVal 32 0))) ? 
                            (const (IntVal 32 1)) : (const (IntVal 32 0))) \<longmapsto> 
                             x \<oplus> (const (IntVal 32 1))
                             when IsBool x" .
 
 (* todo not sure if this is done properly *)
-optimization flipX2: "((x eq (const (IntVal 32 1))) ? 
+optimization FlipX2: "((x eq (const (IntVal 32 1))) ? 
                             (const (IntVal 32 0)) : (const (IntVal 32 1))) \<longmapsto> 
                             x \<oplus> (const (IntVal 32 1))
                             when IsBool x" .
@@ -397,7 +412,7 @@ qed
   done
 
 (* todo not sure if this is done properly *)
-optimization opt_optimise_integer_test_2: 
+optimization OptimiseIntegerTest2: 
      "(((x & (const (IntVal 32 1))) eq (const (IntVal 32 0))) ? 
                    (const (IntVal 32 0)) : (const (IntVal 32 1))) \<longmapsto> 
                    x

@@ -80,7 +80,7 @@ lemma val_multiply_zero:
 lemma val_multiply_negative:
   assumes "x = new_int b v"
   shows "val[x * -(IntVal b 1)] = val[-x]" 
-  unfolding assms(1) apply auto
+  unfolding assms(1) apply auto[1]
   by (metis bin_multiply_negative mergeTakeBit take_bit_minus_one_eq_mask)
 
 (* x * 2^i = x << i*)
@@ -210,7 +210,7 @@ thm_oracles val_MulPower2AddPower2
 (* Exp-level proofs *)
 lemma exp_multiply_zero_64:
   shows "exp[x * (const (IntVal b 0))] \<ge> ConstantExpr (IntVal b 0)"
-  apply auto
+  apply auto[1]
   subgoal premises p for m p xa
   proof -
     obtain xv where xv: "[m,p] \<turnstile> x \<mapsto> xv"
@@ -232,7 +232,7 @@ lemma exp_multiply_zero_64:
 
 lemma exp_multiply_neutral:
  "exp[x * (const (IntVal b 1))] \<ge> x"
-  apply auto 
+  apply auto[1]
   subgoal premises p for m p xa
   proof -
     obtain xv where xv: "[m,p] \<turnstile> x \<mapsto> xv"
@@ -252,7 +252,7 @@ thm_oracles exp_multiply_neutral
 
 lemma exp_multiply_negative:
  "exp[x * -(const (IntVal b 1))] \<ge> exp[-x]"
-  apply auto
+  apply auto[1]
   subgoal premises p for m p xa
   proof -
     obtain xv where xv: "[m,p] \<turnstile> x \<mapsto> xv"
@@ -336,7 +336,7 @@ lemma exp_distribute_multiplication:
   assumes "wf_stamp q"
   assumes "wf_stamp y"
   shows "exp[(x * q) + (x * y)] \<ge> exp[x * (q + y)]" 
-  apply auto
+  apply auto[1]
   subgoal premises p for m p xa qa xb aa
   proof -
     obtain xv where xv: "[m,p] \<turnstile> x \<mapsto> xv"
@@ -364,16 +364,16 @@ lemma exp_distribute_multiplication:
 text \<open>Optimisations\<close>
 
 optimization EliminateRedundantNegative: "-x * -y \<longmapsto> x * y"
-  apply auto
+  apply auto[1]
   by (metis BinaryExpr val_eliminate_redundant_negative bin_eval.simps(2))
 
-optimization MulNeutral: "x * ConstantExpr (IntVal b 1) \<longmapsto> x"
+optimization MulNeutral: "x * y \<longmapsto> x when IsConstantValue y x 1"
   using exp_multiply_neutral by blast
 
-optimization MulEliminator: "x * ConstantExpr (IntVal b 0) \<longmapsto> const (IntVal b 0)"
+optimization MulEliminator: "x * y \<longmapsto> forZero x when IsConstantValue y x 0"
   using exp_multiply_zero_64 by fast
 
-optimization MulNegate: "x * -(const (IntVal b 1)) \<longmapsto> -x"
+optimization MulNegate: "x * -y \<longmapsto> -x when IsConstantValue y x 1"
   using exp_multiply_negative by presburger
 
 fun isNonZero :: "Stamp \<Rightarrow> bool" where

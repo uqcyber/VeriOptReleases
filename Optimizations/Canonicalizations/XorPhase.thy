@@ -82,7 +82,8 @@ optimization XorSelfIsFalse: "(x \<oplus> x) \<longmapsto> false when
                       (wf_stamp x \<and> stamp_expr x = default_stamp)"
   using size_non_const exp_xor_self_is_false by auto 
 
-optimization XorShiftConstantRight: "((const x) \<oplus> y) \<longmapsto> y \<oplus> (const x) when \<not>(is_ConstantExpr y)"
+optimization XorShiftConstantRight: "(x \<oplus> y) \<longmapsto> y \<oplus> x when IsConstantExpr x && Not (IsConstantExpr y)"
+  apply (metis IRExpr.collapse(6) size_flip_binary)
   using size_flip_binary val_xor_commute by auto
 
 optimization EliminateRedundantFalse: "(x \<oplus> false) \<longmapsto> x"

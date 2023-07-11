@@ -68,7 +68,7 @@ optimization opt_add_left_negate_to_sub:
    apply (subgoal_tac "\<forall>x1. [m, p] \<turnstile> exp[-x + y] \<mapsto> x1") defer
   *)
    apply (solve "val[-x1 + y1]" "val[y1 - x1]" x1 y1)
-  apply simp apply auto using evaltree_not_undef sorry
+  apply simp apply auto[1] using evaltree_not_undef sorry
 (*
   apply (obtain_eval "exp[-x + y]" "val[-x1 + y1]")
   
@@ -91,7 +91,7 @@ lemma val_distribute_sub:
  "val[-(x-y)] \<approx> val[y-x]" 
   by (cases x; cases y; auto) 
 
-optimization distribute_sub: "-(x-y) \<longmapsto> (y-x)" 
+optimization DistributeSub: "-(x-y) \<longmapsto> (y-x)" 
   using val_distribute_sub unfold_binary unfold_unary by auto
 
 lemma val_xor_self_is_false:
@@ -139,12 +139,12 @@ text \<open>--- --- New Optimisations - submitted and added into Graal ---\<clos
 lemma OrInverseVal:
   assumes "n = IntVal 32 v"
   shows "val[n | ~n] \<approx> new_int 32 (-1)"
-  apply (auto simp: assms)
+  apply (auto simp: assms)[1]
   by (metis bit.disj_cancel_right mask_eq_take_bit_minus_one take_bit_or)
 
 optimization OrInverse: "exp[n | ~n] \<longmapsto> (const (new_int 32 (not 0)))
                         when (stamp_expr n = IntegerStamp 32 l h \<and> wf_stamp n)"
-   apply (auto simp: Suc_lessI)
+   apply (auto simp: Suc_lessI)[1]
   subgoal premises p for m p xa xaa
   proof -
     obtain nv where nv: "[m,p] \<turnstile> n \<mapsto> nv"
@@ -158,7 +158,7 @@ optimization OrInverse: "exp[n | ~n] \<longmapsto> (const (new_int 32 (not 0)))
                   (IntegerStamp 32 (int_signed_value 32 (mask 32)) (int_signed_value 32 (mask 32)))"
       by auto
     have wf: "wf_value (IntVal 32 (mask 32))"
-      unfolding wf_value_def stamp apply auto by eval+
+      unfolding wf_value_def stamp apply auto[1] by eval+
     then have unfoldOr: "val[nv | ~nv] = (new_int 32 (or (not nvv) nvv))"
       using intval_or.simps OrInverseVal nvv width by auto
     then have eq: "val[nv | ~nv] = new_int 32 (not 0)"
@@ -176,13 +176,13 @@ optimization OrInverse2: "exp[~n | n] \<longmapsto> (const (new_int 32 (not 0)))
 lemma XorInverseVal:
   assumes "n = IntVal 32 v"
   shows "val[n \<oplus> ~n] \<approx> new_int 32 (-1)"
-  apply (auto simp: assms)
+  apply (auto simp: assms)[1]
   by (metis (no_types, opaque_lifting) bit.compl_zero bit.xor_compl_right bit.xor_self take_bit_xor
       mask_eq_take_bit_minus_one)
 
 optimization XorInverse: "exp[n \<oplus> ~n] \<longmapsto> (const (new_int 32 (not 0)))
                         when (stamp_expr n = IntegerStamp 32 l h \<and> wf_stamp n)"
-  apply (auto simp: Suc_lessI)
+  apply (auto simp: Suc_lessI)[1]
   subgoal premises p for m p xa xaa
   proof-
     obtain xv where xv: "[m,p] \<turnstile> n \<mapsto> xv"
@@ -215,12 +215,12 @@ optimization XorInverse2: "exp[(~n) \<oplus> n] \<longmapsto> (const (new_int 32
 lemma AndSelfVal:
   assumes "n = IntVal 32 v"
   shows "val[~n & n] = new_int 32 0"
-  apply (auto simp: assms) 
+  apply (auto simp: assms)[1]
   by (metis take_bit_and take_bit_of_0 word_and_not)
 
 optimization AndSelf: "exp[(~n) & n] \<longmapsto> (const (new_int 32 (0)))
                         when (stamp_expr n = IntegerStamp 32 l h \<and> wf_stamp n)"
-  apply (auto simp: Suc_lessI) unfolding size.simps
+  apply (auto simp: Suc_lessI)[1] unfolding size.simps
   by (metis (no_types) val_and_commute ConstantExpr IntVal0 Value.inject(1) evalDet wf_stamp_def
       eval_bits_1_64 new_int.simps validDefIntConst valid_int wf_value_def AndSelfVal)
 
@@ -232,7 +232,7 @@ lemma NotXorToXorVal:
   assumes "x = IntVal 32 xv"
   assumes "y = IntVal 32 yv"
   shows "val[(~x) \<oplus> (~y)] = val[x \<oplus> y]" 
-  apply (auto simp: assms) 
+  apply (auto simp: assms)[1]
   by (metis (no_types, opaque_lifting) bit.xor_compl_left bit.xor_compl_right take_bit_xor 
       word_not_not) 
 
@@ -242,7 +242,7 @@ lemma NotXorToXorExp:
   assumes "stamp_expr y = IntegerStamp 32 ly hy"
   assumes "wf_stamp y"
   shows "exp[(~x) \<oplus> (~y)] \<ge> exp[x \<oplus> y]" 
-  apply auto 
+  apply auto[1]
   subgoal premises p for m p xa xb
     proof -
       obtain xa where xa: "[m,p] \<turnstile> x \<mapsto> xa"
@@ -289,7 +289,7 @@ lemma OrGeneralization:
   assumes "wf_stamp exp[x | y]"
   assumes "(or (\<down>x) (\<down>y)) = not 0" 
   shows "exp[x | y] \<ge> exp[(const (new_int b (not 0)))]"
-  using assms apply auto
+  using assms apply auto[1]
   subgoal premises p for m p xvv yvv
   proof -
     obtain xv where xv: "[m, p] \<turnstile> x \<mapsto> IntVal b xv"
@@ -340,7 +340,7 @@ lemma AddNotExp:
   assumes "stamp_expr n = IntegerStamp b l h"
   assumes "wf_stamp n"
   shows "exp[n + (~n)] \<ge> exp[(const (new_int b (not 0)))]"
-  apply auto
+  apply auto[1]
   subgoal premises p for m p x xa
   proof -
     have xaDef: "[m,p] \<turnstile> n \<mapsto> xa"
@@ -398,7 +398,7 @@ lemma ExpNeverNotSelf:
   assumes "wf_stamp x"
   shows "exp[BinaryExpr BinIntegerEquals (\<not>x) x] \<ge>
          exp[(const (bool_to_val False))]" 
-  using assms apply auto
+  using assms apply auto[1]
   subgoal premises p for m p xa xaa
   proof -
     obtain xa where xa: "[m,p] \<turnstile> x \<mapsto> xa"
@@ -410,7 +410,7 @@ lemma ExpNeverNotSelf:
       by (metis p(3,4,5,6) unary_eval.simps(3) evaltree.BinaryExpr bin_eval.simps(11) xa UnaryExpr 
           evalDet)
     have wfVal: "wf_value (IntVal 32 0)" 
-      using wf_value_def apply rule 
+      using wf_value_def
       by (metis IntVal0 intval_word.simps nat_le_linear new_int.simps numeral_le_iff wf_value_def
           semiring_norm(71,76) validDefIntConst verit_comp_simplify1(3) zero_less_numeral)
     then have rhsVal: "[m,p] \<turnstile> exp[(const (bool_to_val False))] \<mapsto> val[bool_to_val False]"
@@ -484,7 +484,7 @@ lemma ExpXorFallThrough:
   assumes "wf_stamp y"
   shows "exp[BinaryExpr BinIntegerEquals (x \<oplus> y) x] \<ge>
          exp[BinaryExpr BinIntegerEquals y (const (new_int b 0))]"
-  using assms apply auto 
+  using assms apply auto[1]
   subgoal premises p for m p xa xaa ya
   proof -
     obtain b xv where xa: "[m,p] \<turnstile> x \<mapsto> new_int b xv"
@@ -515,8 +515,8 @@ lemma ExpXorFallThrough2:
 
 optimization XorFallThrough1: "exp[BinaryExpr BinIntegerEquals (x \<oplus> y) x] \<longmapsto> 
                                exp[BinaryExpr BinIntegerEquals y (const (new_int b 0))]
-                        when (stamp_expr x = IntegerStamp b xl xh \<and> wf_stamp x) \<and> 
-                             (stamp_expr y = IntegerStamp b yl yh \<and> wf_stamp y)"
+                        when (IsIntegerStamp x && WellFormed x) && 
+                             (IsIntegerStamp x && WellFormed y)"
   using ExpXorFallThrough by force
 
 optimization XorFallThrough2: "exp[BinaryExpr BinIntegerEquals x (x \<oplus> y)] \<longmapsto> 
@@ -567,7 +567,7 @@ lemma RemoveLHSOrMask:
   assumes "(and (\<up>x) (\<down>y)) = (\<up>x)"
   assumes "(or (\<up>x) (\<down>y)) = (\<down>y)"
   shows "exp[x | y] \<ge> exp[y]"
-  using assms apply auto
+  using assms apply auto[1]
   subgoal premises p for m p v
   proof -
     obtain b ev where exp: "[m, p] \<turnstile> exp[x | y] \<mapsto> IntVal b ev" 
@@ -577,11 +577,11 @@ lemma RemoveLHSOrMask:
     from exp obtain xv where xv: "[m, p] \<turnstile> x \<mapsto> IntVal b xv"
       apply (subst (asm) unfold_binary_width) by force+
     then have "yv = (or xv yv)"
-      using assms yv xv apply auto
+      using assms yv xv apply auto[1]
       by (metis (no_types, opaque_lifting) down_spec ucast_id up_spec word_ao_absorbs(1) word_or_not
           word_ao_equiv word_log_esimps(3) word_oa_dist word_oa_dist2)
     then have "(IntVal b yv) = val[(IntVal b xv) | (IntVal b yv)]"
-      apply auto using eval_unused_bits_zero yv by presburger
+      apply auto[1] using eval_unused_bits_zero yv by presburger
     then show ?thesis    
       by (metis p(3,4) evalDet xv yv)
   qed
@@ -592,7 +592,7 @@ lemma RemoveRHSAndMask:
   assumes "(and (\<up>x) (\<down>y)) = (\<up>x)"
   assumes "(or (\<up>x) (\<down>y)) = (\<down>y)"
   shows "exp[x & y] \<ge> exp[x]"
-  using assms apply auto
+  using assms apply auto[1]
   subgoal premises p for m p v
   proof -
     obtain b ev where exp: "[m, p] \<turnstile> exp[x & y] \<mapsto> IntVal b ev"
@@ -602,7 +602,7 @@ lemma RemoveRHSAndMask:
     from exp obtain xv where xv: "[m, p] \<turnstile> x \<mapsto> IntVal b xv"
       apply (subst (asm) unfold_binary_width) by force+
     then have "IntVal b xv = val[(IntVal b xv) & (IntVal b yv)]"
-      apply auto 
+      apply auto [1]
       by (smt (verit, ccfv_threshold) or.right_neutral not_down_up_mask_and_zero_implies_zero p(1)
           bit.conj_cancel_right word_bw_comms(1) eval_unused_bits_zero yv word_bw_assocs(1)
           word_ao_absorbs(4) or_eq_not_not_and)
@@ -623,7 +623,7 @@ lemma ReturnZeroAndMask:
   assumes "wf_stamp exp[x & y]"
   assumes "(and (\<up>x) (\<up>y)) = 0"
   shows "exp[x & y] \<ge> exp[const (new_int b 0)]"
-  using assms apply auto
+  using assms apply auto[1]
   subgoal premises p for m p v
   proof -
     obtain yv where yv: "[m, p] \<turnstile> y \<mapsto> IntVal b yv"
@@ -637,7 +637,7 @@ lemma ReturnZeroAndMask:
     then have lhsEq: "IntVal b ev = val[(IntVal b xv) & (IntVal b yv)]"
       by (metis bin_eval.simps(4) yv xv evalDet exp unfold_binary)
     then have newIntEquiv: "new_int b 0 = IntVal b ev" 
-      apply auto by (smt (z3) p(6) eval_unused_bits_zero xv yv up_mask_and_zero_implies_zero)
+      apply auto[1] by (smt (z3) p(6) eval_unused_bits_zero xv yv up_mask_and_zero_implies_zero)
     then have isZero: "ev = 0"
       by auto
     then show ?thesis
@@ -786,7 +786,7 @@ lemma expXorIsEqual_64:
   assumes "wf_stamp z"
     shows "exp[BinaryExpr BinIntegerEquals (x \<oplus> y) (x \<oplus> z)] \<ge>
            exp[BinaryExpr BinIntegerEquals y z]"
-  using assms apply auto
+  using assms apply auto[1]
   subgoal premises p for m p x1 y1 x2 z1
   proof -
     obtain xVal where xVal: "[m,p] \<turnstile> x \<mapsto> xVal"
@@ -841,7 +841,7 @@ XorEqZero
 
 lemma unwrap_bool_to_val:
   shows "(bool_to_val a = bool_to_val b) = (a = b)"
-  apply auto using bool_to_val.elims by fastforce+
+  apply auto[1] using bool_to_val.elims by fastforce+
 
 lemma take_bit_size_eq:
   shows "take_bit 64 a = take_bit LENGTH(64) (a::64 word)"
@@ -866,7 +866,7 @@ lemma expXorEqZero_64:
   assumes "wf_stamp y"
     shows "exp[BinaryExpr BinIntegerEquals (x \<oplus> y) (const (IntVal 64 0))] \<ge>
            exp[BinaryExpr BinIntegerEquals (x) (y)]"
-  using assms apply auto
+  using assms apply auto[1]
   subgoal premises p for m p x1 y1
   proof -
     obtain xv where xv: "[m,p] \<turnstile> x \<mapsto> xv"
@@ -915,7 +915,7 @@ lemma expXorEqNeg1_64:
   assumes "wf_stamp y"
     shows "exp[BinaryExpr BinIntegerEquals (x \<oplus> y) (const (IntVal 64 (not 0)))] \<ge>
            exp[BinaryExpr BinIntegerEquals (x) (\<not>y)]"
-  using assms apply auto
+  using assms apply auto[1]
   subgoal premises p for m p x1 y1
   proof -
     obtain xv where xv: "[m,p] \<turnstile> x \<mapsto> xv"

@@ -23,7 +23,7 @@ lemma val_not_cancel:
 (* Exp level proofs *)
 lemma exp_not_cancel:
    "exp[~(~a)] \<ge> exp[a]" 
-  apply auto
+  apply auto[1]
   subgoal premises p for m p x
   proof -
     obtain av where av: "[m,p] \<turnstile> a \<mapsto> av"

@@ -205,9 +205,12 @@ subsection \<open>Side-Conditions\<close>
 datatype SideCondition =
   IsConstantExpr IRExpr |
   IsIntegerStamp IRExpr |
+  IsBoolStamp IRExpr |
   WellFormed IRExpr |
   IsStamp IRExpr Stamp |
   IsConstantValue IRExpr IRExpr "64 word" |
+  AlwaysDistinct IRExpr IRExpr |
+  NeverDistinct IRExpr IRExpr |
   StampUnder IRExpr IRExpr |
   UpMaskEquals IRExpr "64 word" |
   DownMaskEquals IRExpr "64 word" |
@@ -223,9 +226,12 @@ definition wf_stamp :: "IRExpr \<Rightarrow> bool" where
 fun eval_condition :: "SideCondition \<Rightarrow> bool" where
   "eval_condition (IsConstantExpr e) = is_ConstantExpr e" |
   "eval_condition (IsIntegerStamp e) = is_IntegerStamp (stamp_expr e)" |
+  "eval_condition (IsBoolStamp e) = (stamp_expr e = IntegerStamp 32 0 1)" |
   "eval_condition (WellFormed e) = wf_stamp e" |
   "eval_condition (IsStamp e s) = ((stamp_expr e) = s)" |
   "eval_condition (IsConstantValue e s v) = (e = ConstantExpr (IntVal (stp_bits (stamp_expr s)) v))" |
+  "eval_condition (AlwaysDistinct e1 e2) = alwaysDistinct (stamp_expr e1) (stamp_expr e2)" |
+  "eval_condition (NeverDistinct e1 e2) = neverDistinct (stamp_expr e1) (stamp_expr e2)" |
   "eval_condition (StampUnder e1 e2) = (stamp_under (stamp_expr e1) (stamp_expr e2))" |
   "eval_condition (UpMaskEquals e m) = (IRExpr_up e = m)" |
   "eval_condition (DownMaskEquals e m) = (IRExpr_down e = m)" |
@@ -423,9 +429,12 @@ snipend -
 fun ground_condition :: "SideCondition \<Rightarrow> Scope \<Rightarrow> SideCondition" where
   "ground_condition (IsConstantExpr p) s = (IsConstantExpr (ground_expr p s))" |
   "ground_condition (IsIntegerStamp p) s = (IsIntegerStamp (ground_expr p s))" |
+  "ground_condition (IsBoolStamp p) s = (IsBoolStamp (ground_expr p s))" |
   "ground_condition (WellFormed st) s = (WellFormed st)" |
   "ground_condition (IsStamp e st) s = (IsStamp (ground_expr e s) st)" |
   "ground_condition (IsConstantValue e s' v) s = (IsConstantValue (ground_expr e s) (ground_expr s' s) v)" |
+  "ground_condition (AlwaysDistinct e1 e2) s = (AlwaysDistinct (ground_expr e1 s) (ground_expr e2 s))" |
+  "ground_condition (NeverDistinct e1 e2) s = (NeverDistinct (ground_expr e1 s) (ground_expr e2 s))" |  
   "ground_condition (StampUnder e1 e2) s = (StampUnder (ground_expr e1 s) (ground_expr e2 s))" |
   "ground_condition (UpMaskEquals e m) s = (UpMaskEquals (ground_expr e s) m)" |
   "ground_condition (DownMaskEquals e m) s = (DownMaskEquals (ground_expr e s) m)" |
@@ -2168,21 +2177,20 @@ corollary
           (VariableExpr STR ''az'' VoidStamp))))))))"
   by eval
 
-(*
 corollary
   "lift_common (lift_match (RedundantSub else AddLeftNegateToSub)) =
    (MATCH.match STR ''e'' (BinaryPattern BinAdd STR ''a'' STR ''b'') ?
    (MATCH.match STR ''a'' (BinaryPattern BinSub STR ''az'' STR ''bz'') ?
     (noop ?
-     (STR ''bz'' == STR ''b'' ? (condition Empty ? base (VariableExpr STR ''az'' VoidStamp)))) else
+     (STR ''bz'' == STR ''b'' ? (condition Empty ? base (ExpressionResult (VariableExpr STR ''az'' VoidStamp))))) else
     noop ?
     (MATCH.match STR ''b'' (UnaryPattern UnaryNeg STR ''az'') ?
      (noop ?
       (condition Empty ?
        base
-        (BinaryExpr BinSub (VariableExpr STR ''a'' VoidStamp)
-          (VariableExpr STR ''az'' VoidStamp)))))))"
-  by eval*)
+        (ExpressionResult (BinaryExpr BinSub (VariableExpr STR ''a'' VoidStamp)
+          (VariableExpr STR ''az'' VoidStamp))))))))"
+  by eval
 
 corollary
   "optimized_export (RedundantSub else AddLeftNegateToSub) =

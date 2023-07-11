@@ -172,7 +172,9 @@ text \<open>Optimisations\<close>
 optimization OrEqual: "x | x \<longmapsto> x"
   by (meson exp_or_equal)
 
-optimization OrShiftConstantRight: "((const x) | y) \<longmapsto> y | (const x) when \<not>(is_ConstantExpr y)"
+optimization OrShiftConstantRight: "(x | y) \<longmapsto> y | x
+                                    when IsConstantExpr x && Not (IsConstantExpr y)"
+  using is_ConstantExpr_def size_flip_binary apply fastforce
   using size_flip_binary by (auto simp: BinaryExpr unfold_const val_shift_const_right_helper)
 
 optimization EliminateRedundantFalse: "x | false \<longmapsto> x"

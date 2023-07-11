@@ -183,7 +183,7 @@ proof -
       using in_def by fastforce
   qed
 qed
-  
+
 lemma val_abs_negate:
   assumes "intval_abs val[-x] \<noteq> UndefVal"
   shows   "intval_abs val[-x] = intval_abs x"

@@ -115,8 +115,8 @@ lemma exp_EliminateRHS:
 
 text \<open>Optimisations\<close>
 
-optimization EliminateRHS_64: "(x << const(y)) \<longmapsto> x when 
-                               (IsStamp x (IntegerStamp 64 lo hi) && 
+optimization EliminateRHS64: "(x << const(y)) \<longmapsto> x when 
+                               (IsIntegerStamp x && 
                                 WellFormed x)"
   using exp_EliminateRHS wf_stamp_def  bin_eval.simps(8)  sorry
 

@@ -24,7 +24,7 @@ lemma exp_ReturnXOnZeroShift:
   assumes "stamp_expr x = IntegerStamp 32 lo hi"
   and     "wf_stamp x"
   shows "exp[x >> const(IntVal 32 0)] \<ge> exp[x]" 
-  apply auto
+  apply auto[1]
   subgoal premises p for m p xa
   proof - 
     obtain xa where xa: "[m,p] \<turnstile> x \<mapsto> xa"

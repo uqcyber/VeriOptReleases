@@ -174,7 +174,7 @@ lemma exp_and_neutral:
   assumes "wf_stamp x"
   assumes "stamp_expr x = IntegerStamp b lo hi"
   shows "exp[(x & ~(const (IntVal b 0)))] \<ge> x"
-  using assms apply auto
+  using assms apply auto[1]
   subgoal premises p for m p xa
   proof-
     obtain xv where xv: "[m,p] \<turnstile> x \<mapsto> xv"
@@ -218,15 +218,16 @@ optimization AndEqual: "x & x \<longmapsto> x"
 value AndEqual_code
 
 value "exp[y & (const x)]"
-optimization AndShiftConstantRight: "((const x) & y) \<longmapsto> y & (const x) 
-                                         when Not (IsConstantExpr y)"
-  using size_flip_binary by auto
+optimization AndShiftConstantRight: "(x & y) \<longmapsto> y & x 
+                                         when IsConstantExpr x && Not (IsConstantExpr y)"
+  using size_flip_binary
+  using is_ConstantExpr_def by auto
 value AndShiftConstantRight_code
 value "export_rules AndShiftConstantRight_code"
 
 optimization AndNots: "(~x) & (~y) \<longmapsto> ~(x | y)"
-  by (metis add_2_eq_Suc' less_SucI less_add_Suc1 not_less_eq size_binary_const size_non_add
-      exp_and_nots)+
+   apply (metis add_2_eq_Suc' less_SucI less_add_Suc1 not_less_eq size_binary_const size_non_add)
+  using exp_and_nots by blast
 
 (* Need to prove exp_sign_extend*)
 optimization AndSignExtend: "BinaryExpr BinAnd (UnaryExpr (UnarySignExtend In Out) (x)) 
@@ -235,12 +236,14 @@ optimization AndSignExtend: "BinaryExpr BinAnd (UnaryExpr (UnarySignExtend In Ou
                                   when (e = (1 << In) - 1)"
    using exp_sign_extend by simp 
 
-optimization AndNeutral: "(x & ~(const (IntVal b 0))) \<longmapsto> x 
-   when (WellFormed x && IsStamp x (IntegerStamp b lo hi))"
-   apply auto 
-  by (smt (verit) Value.sel(1) eval_unused_bits_zero intval_and.elims intval_word.simps 
-      new_int.simps new_int_bin.simps take_bit_eq_mask)
+lemma wf_stamp_eq:
+  "TermRewrites.wf_stamp = wf_stamp"
+  using StampEvalThms.wf_stamp_def TermRewrites.wf_stamp_def by presburger
 
+optimization AndNeutral: "(x & ~y) \<longmapsto> x 
+   when (WellFormed x && IsIntegerStamp x && IsConstantValue y x 0)"
+  using exp_and_neutral
+  by (metis Stamp.collapse(1) wf_stamp_eq)
 
 
 optimization AndRightFallThrough: "(x & y) \<longmapsto> y
