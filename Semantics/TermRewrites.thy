@@ -2,15 +2,6 @@ theory TermRewrites
   imports Semantics.IRTreeEvalThms Semantics.TreeToGraphThms Snippets.Snipping
 begin
 
-(*
-typedef Substitution = "{\<sigma> :: string \<Rightarrow> IRExpr option . finite (dom \<sigma>)}"
-proof -
-  have "finite(dom(Map.empty)) \<and> ran Map.empty = {}" by auto
-  then show ?thesis
-    by fastforce
-qed
-*)
-
 fun expr_at_node :: "IRGraph \<Rightarrow> ID \<Rightarrow> IRExpr"
   (infix "@@" 50) where
   "expr_at_node g n = (SOME e . (g \<turnstile> n \<simeq> e))"
@@ -30,39 +21,6 @@ datatype SubValue = SubExpr(s_expr: IRExpr) | SubConst(s_val: Value)
 
 type_synonym Substitution = "String.literal \<rightharpoonup> SubValue"
 
-(*
-setup_lifting type_definition_Substitution
-
-lift_definition subst :: "(String.literal \<times> SubValue) list \<Rightarrow> Substitution"
-  is "map_of"
-  by (simp add: finite_dom_map_of)
-
-lift_definition subst_set :: "Substitution \<Rightarrow> (String.literal \<times> SubValue) set"
-  is "Map.graph" .
-
-lemma subst_reconstruct:
-  "distinct (map fst x) \<Longrightarrow> set x = subst_set (subst x)"
-  by (simp add: graph_map_of_if_distinct_dom subst.rep_eq subst_set.rep_eq)
-
-lift_definition dom :: "Substitution \<Rightarrow> String.literal set"
-  is Map.dom .
-
-lift_definition maps_to :: "Substitution \<Rightarrow> String.literal \<Rightarrow> SubValue option"
-  is "\<lambda> \<sigma> x . \<sigma> x" .
-
-code_datatype subst Abs_Substitution
-
-lemma [code]: "Rep_Substitution (subst m) = map_of m"
-  using Abs_Substitution_inverse
-  using subst.rep_eq by blast
-
-lemma dom_code[code]: "dom (subst m) = set (map fst m)"
-  by (simp add: dom.rep_eq dom_map_of_conv_image_fst subst.rep_eq)
-
-lemma in_dom: "x \<in> dom \<sigma> \<Longrightarrow> maps_to \<sigma> x \<noteq> None"
-  by (simp add: dom.rep_eq domIff maps_to.rep_eq)
-*)
-  
 fun substitute :: "Substitution \<Rightarrow> IRExpr \<Rightarrow> IRExpr" (infix "$" 60) where
   "substitute \<sigma> (UnaryExpr op e) = UnaryExpr op (\<sigma> $ e)" |
   "substitute \<sigma> (BinaryExpr op e1 e2) = BinaryExpr op (\<sigma> $ e1) (\<sigma> $ e2)" |
@@ -74,16 +32,6 @@ fun substitute :: "Substitution \<Rightarrow> IRExpr \<Rightarrow> IRExpr" (infi
       (case \<sigma> x of Some (SubConst v) \<Rightarrow> ConstantExpr v | _ \<Rightarrow> ConstantVar x)" |
   "substitute \<sigma> (VariableExpr x s) = 
       (case \<sigma> x of None \<Rightarrow> (VariableExpr x s) | Some (SubExpr y) \<Rightarrow> y)"
-
-(*
-lift_definition union :: "Substitution \<Rightarrow> Substitution \<Rightarrow> Substitution"
-  is "\<lambda>\<sigma>1 \<sigma>2. \<sigma>1 ++ \<sigma>2"
-  by simp
-*)
-
-(*fun union :: "Substitution \<Rightarrow> Substitution \<Rightarrow> Substitution" where
-  "union \<sigma>1 \<sigma>2 = Abs_Substitution (\<lambda>name. if maps_to \<sigma>1 name = None then maps_to \<sigma>2 name else maps_to \<sigma>1 name)"
-*)
 
 lemma not_empty_has_member:
   assumes "xs \<noteq> []"
@@ -99,80 +47,6 @@ lemma equal_mapping_implies_equal:
   using assms
   by auto
 
-(*
-lemma 
-  "maps_to (union (subst \<sigma>1) (subst \<sigma>2)) k = maps_to (subst (\<sigma>1 @ \<sigma>2)) k"
-  (is "maps_to ?union k = maps_to ?add k")
-proof (cases "\<exists> v. List.member \<sigma>1 (k, v)"; cases "\<exists> v. List.member \<sigma>2 (k, v)")
-  case True \<comment>\<open>key has mapping in both\<close>
-  then show ?thesis sorry
-next
-  case False \<comment>\<open>key in \<sigma>1 but not \<sigma>2\<close>
-  then show ?thesis sorry
-next
-  \<comment>\<open>key in \<sigma>2 but not \<sigma>1\<close>
-  assume a1: "\<nexists>v. List.member \<sigma>1 (k, v)"
-  assume a2: "\<exists>v. List.member \<sigma>2 (k, v)"
-  obtain v where v: "List.member \<sigma>2 (k, v)"
-    using a2 by auto
-  from a1 v have "maps_to ?add k = Some v"
-    unfolding maps_to_def subst_def using map_of_append sledgehammer
-  then show ?thesis sorry
-next
-  \<comment>\<open>key in neither\<close>
-  assume a1: "\<nexists>v. List.member \<sigma>1 (k, v)"
-  assume a2: "\<nexists>v. List.member \<sigma>2 (k, v)"
-  from a1 a2 have "maps_to ?add k = None"
-    by (metis domD in_set_member map_add_dom_app_simps(2) map_of_SomeD map_of_append maps_to.rep_eq opt_to_list.cases option.discI subst.rep_eq)
-  then show ?thesis
-    by (metis map_add_None map_of_append maps_to.rep_eq subst.rep_eq union.rep_eq)
-qed
-*)
-
-(*
-lemma union_code[code]:
-  "union (subst \<sigma>1) (subst \<sigma>2) = (subst (\<sigma>2 @ \<sigma>1))"
-  (is "?union = ?add")
-  using map_of_append unfolding subst_def union_def
-  using subst.abs_eq subst.rep_eq by auto
-*)
-
-(*
-proof (cases "\<sigma>1 = []")
-  case True
-  then show ?thesis
-    by (metis Rep_Substitution_inverse append.right_neutral append_Nil map_of_append subst.rep_eq union.rep_eq)
-next
-  case False
-  then obtain k v where v: "List.member \<sigma>1 (k, v)"
-    using not_empty_has_member by blast
-  show ?thesis
-  proof (cases "\<exists>v. List.member \<sigma>2 (k, v)")
-    case True
-    obtain v' where v': "List.member \<sigma>2 (k, v')"
-      using True
-      by blast
-    have rhs: "maps_to (?add) k = Some v"
-      using v v' unfolding maps_to_def subst_def sorry
-    have lhs: "maps_to (?union) k = Some v"
-      sorry
-    from lhs rhs have "maps_to (?add) k = maps_to (?union) k"
-      sorry
-    then show ?thesis using equal_mapping_implies_equal sorry
-  next
-    case False
-    then show ?thesis
-      by simp
-  qed
-qed
-  
-  apply (induction \<sigma>1; induction \<sigma>2; auto)
-  apply (metis append_Nil map_of_append subst.abs_eq subst.rep_eq)
-  apply (metis map_of_append self_append_conv subst.abs_eq subst.rep_eq)
-   apply (metis append_Nil map_of_append subst.abs_eq subst.rep_eq)
-  sorry
-*)
-
 fun compatible :: "Substitution \<Rightarrow> Substitution \<Rightarrow> bool" where
   "compatible \<sigma>1 \<sigma>2 = (\<forall>x \<in> dom \<sigma>1. \<sigma>2 x \<noteq> None \<longrightarrow> \<sigma>1 x = \<sigma>2 x)"
 
@@ -186,9 +60,6 @@ fun substitution_union :: "Substitution option \<Rightarrow> Substitution option
             Some \<sigma>2 \<Rightarrow> (if compatible \<sigma>1 \<sigma>2 then Some (\<sigma>1 ++ \<sigma>2) else None)
            )
       )"
-
-(*lemma "sup x y = x"*)
-
 
 
 definition EmptySubstitution :: "Substitution" where 
@@ -223,7 +94,7 @@ fun vars :: "IRExpr \<Rightarrow> String.literal fset" where
   "vars (ConstantVar x) = {|x|}" |
   "vars (VariableExpr x s) = {|x|}"
 
-(*
+
 typedef Rewrite = "{ (e1,e2,cond) :: IRExpr \<times> IRExpr \<times> (Substitution \<Rightarrow> bool) | e1 e2 cond . vars e2 |\<subseteq>| vars e1 }" 
 proof -
   have "\<exists>v. vars (ConstantExpr v) |\<subseteq>| vars (ConstantExpr v)" by simp
@@ -232,7 +103,6 @@ proof -
 qed
 
 setup_lifting type_definition_Rewrite
-
 
 fun construct_rewrite :: "IRExpr \<times> IRExpr \<times> (Substitution \<Rightarrow> bool) \<Rightarrow> Rewrite option" where
   "construct_rewrite (e1, e2, cond) =
@@ -243,25 +113,21 @@ code_datatype Abs_Rewrite
 lemma "Abs_Rewrite (Rep_Rewrite r) = r"
   by (simp add: Rep_Rewrite_inverse)
 
-lemma [code]: "Rep_Rewrite (Abs_Rewrite (e1, e2)) = (e1, e2)"
-  sorry
+(*lemma [code]: "Rep_Rewrite (Abs_Rewrite (e1, e2)) = (e1, e2)"*)
 
 fun rewrite :: "Rewrite \<Rightarrow> IRExpr \<Rightarrow> IRExpr option" where
   "rewrite r e = (let (e1,e2,cond) = Rep_Rewrite r in 
-                   (case match e1 e of
+                   (case match_tree e1 e of
                     Some \<sigma> \<Rightarrow> 
                       (if cond \<sigma> then Some (\<sigma> $ e2) else None) |
                     None \<Rightarrow> None))"
 
 definition rewrite_valid :: "Rewrite \<Rightarrow> bool" where
   "rewrite_valid r = (let (e1,e2,cond) = Rep_Rewrite r in
-    (\<forall>\<sigma> e. is_ground e \<longrightarrow> match e1 e = Some \<sigma> \<longrightarrow> (e \<ge> (\<sigma> $ e2))))"
+    (\<forall>\<sigma> e. is_ground e \<longrightarrow> match_tree e1 e = Some \<sigma> \<longrightarrow> (e \<ge> (\<sigma> $ e2))))"
 
 definition rewrite_valid_rep :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> bool" where
-  "rewrite_valid_rep e1 e2 = (vars e1 |\<subseteq>| vars e2 \<longrightarrow> (\<forall>\<sigma> e.  match e1 e = Some \<sigma> \<longrightarrow> (e \<ge> (\<sigma> $ e2))))"
-
-*)
-
+  "rewrite_valid_rep e1 e2 = (vars e1 |\<subseteq>| vars e2 \<longrightarrow> (\<forall>\<sigma> e.  match_tree e1 e = Some \<sigma> \<longrightarrow> (e \<ge> (\<sigma> $ e2))))"
 
 
 
@@ -516,13 +382,12 @@ fun eval_match :: "MATCH \<Rightarrow> Subst \<Rightarrow> Subst option" where
   "eval_match _ s = None"
 snipend -
 
+(*
 fun IROnly :: "Substitution option \<Rightarrow> Subst option" where
   "IROnly (Some s) = Some (map_of (map (\<lambda>k. (k, (s_expr (the (s k))))) (sorted_list_of_set (dom s))))" |
   "IROnly None = None"
 
-
-lemma "IROnly (match_tree p e) = eval_match (gen_pattern p v) [v\<mapsto>e]"
-  sorry
+lemma "IROnly (match_tree p e) = eval_match (gen_pattern p v) [v\<mapsto>e]"*)
 
 
 subsection \<open>Combining Rules\<close>
@@ -667,23 +532,6 @@ inductive_cases choiceE: "eval_rules (choice r) u e"
 inductive_cases seqE: "eval_rules (r1 \<then> r2) u e"
 
 code_pred [show_modes] eval_rules .
-(*
-  apply (metis Rules.exhaust old.prod.exhaust) by simp+
-termination
-  apply (relation "measure (size o fst)") 
-       apply auto[1] apply simp+
-  subgoal for rules r' rs rule apply (induction rules) apply simp apply (rule someI2) apply auto[1]
-    using size_list_estimation
-    using not_less_eq by fastforce
-  subgoal premises x for rules rs u x rule
-  proof -
-    have "rule \<in> set rules" using x(1) apply simp apply (rule someI_ex)
-      by (metis list.set_intros(1) set_ConsD someI_ex x(2))
-    then show ?thesis using remove1_size apply simp
-      by (smt (verit) One_nat_def Suc_pred ab_semigroup_add_class.add_ac(1) add_Suc_right length_pos_if_in_set length_remove1 not_add_less2 not_less_eq size_list_conv_sum_list sum_list_map_remove1)
-  qed
-  done
-*)
 
 
 subsection \<open>Rule Optimization\<close>
@@ -731,18 +579,6 @@ lemma sound_optimize_noop:
   using noop_semantics_rhs apply force+
   using seq_det_rhs by force+
 
-(*lemma monotonic_choice:
-  assumes "\<forall> r e. eval_rules r u e = eval_rules (f r) u e"
-  shows "eval_rules (choice rs) u e = eval_rules (choice (map f rs)) u e"
-  apply (induction rs) apply simp using choiceE assms sorry
-  subgoal for a rs apply (induction "choice rs" u rule: eval_rules.induct)*)
-
-fun optimize_match :: "(MATCH \<Rightarrow> MATCH) \<Rightarrow> Rules \<Rightarrow> Rules" where
-  "optimize_match f (base e) = base e" |
-  "optimize_match f (m ? r) = f m ? optimize_match f r" |
-  "optimize_match f (r1 else r2) = (optimize_match f r1 else optimize_match f r2)" |
-  "optimize_match f (choice rules) = choice (map (optimize_match f) rules)" |
-  "optimize_match f (r1 \<then> r2) = (optimize_match f r1 \<then> optimize_match f r2)"
 
 lemma choice_join:
   assumes "eval_rules (a) u e = eval_rules (f a) u e"
@@ -751,14 +587,6 @@ lemma choice_join:
   using assms
   by (smt (verit, ccfv_threshold) choiceE eval_rules.intros(6) eval_rules.intros(7) list.map_disc_iff list.set_intros(1) list.set_intros(2) list.simps(9) option.distinct(1) set_ConsD)
 
-(*lemma optimize_match_valid:
-  fixes f :: "MATCH \<Rightarrow> MATCH"
-  assumes "eval_match m s = eval_match (f m) s"
-  shows "eval_rules r u e = eval_rules (optimize_match f r) u e"
-  apply (induction r arbitrary: u e rule: optimize_match.induct)
-  apply simp
-  using optimize_match.simps(2) condE assms *)
-
 
 fun eliminate_noop :: "Rules \<Rightarrow> Rules" where
   "eliminate_noop (base e) = base e" |
@@ -766,7 +594,6 @@ fun eliminate_noop :: "Rules \<Rightarrow> Rules" where
   "eliminate_noop (r1 else r2) = (eliminate_noop r1 else eliminate_noop r2)" |
   "eliminate_noop (choice rules) = choice (map eliminate_noop rules)" |
   "eliminate_noop (r1 \<then> r2) = (eliminate_noop r1 \<then> eliminate_noop r2)"
-
 
 lemma eliminate_noop_valid:
   "eval_rules r u e = eval_rules (eliminate_noop r) u e"
@@ -779,8 +606,6 @@ lemma eliminate_noop_valid:
   unfolding eliminate_noop.simps(4)
   subgoal premises ind for rules u e 
     using ind apply (induction rules) apply simp
-    (*using choice_join
-    by (metis list.set_intros(1) list.set_intros(2))*)
     subgoal premises ind' for a rules'
     proof -
       have a: "eval_rules (a) u e = eval_rules (eliminate_noop a) u e"
@@ -908,23 +733,9 @@ lemma join_conditions_shrinks:
   "join_conditions r = Some r' \<Longrightarrow> size r' < size r"
   apply (induction r rule: join_conditions.induct) 
   apply (metis Rules.size(7) Rules.size(8) Suc_le_eq add.left_commute add.right_neutral antisym_conv1 join_conditions.simps(1) le_simps(1) option.distinct(1) option.sel plus_nat.simps(2))
-   apply (metis One_nat_def Rules.size(7) join_conditions.simps(2) less_add_same_cancel1 less_numeral_extra(1) option.discI option.inject)
+  apply fastforce
   by simp+
 
-(*
-lemma join_conditions_shrinks_cond:
-  "join_conditions (m ? r) = Some r' \<Longrightarrow> combined_size r' < combined_size (m ? r)"
-  apply (induction "m ? r" rule: join_conditions.induct)
-  apply auto subgoal for m2 r1 apply (cases "m = m2") apply auto sorry
-
-lemma join_conditions_shrinks_combined:
-  "join_conditions r = Some r' \<Longrightarrow> combined_size r' < combined_size r"
-  apply (induction r rule: join_conditions.induct) apply auto
-  subgoal for m1 r1 m2 r2
-  apply (cases "m1 = m2") apply auto sledgehammer
-  apply (metis One_nat_def Rules.size(6) Rules.size(7) Suc_eq_plus1 add_Suc_right add_Suc_shift join_conditions.simps(1) lessI option.distinct(1) option.sel)
-   apply (metis One_nat_def Rules.size(6) join_conditions.simps(2) less_add_same_cancel1 option.discI option.inject zero_less_one)
-  by simp+*)
 
 function lift_common :: "Rules \<Rightarrow> Rules" where
   "lift_common (r1 else r2) = (
@@ -985,48 +796,7 @@ fun valid_rules :: "Rules \<Rightarrow> bool" where
   "valid_rules (choice rules) = (\<forall>r \<in> set rules. valid_rules r)" |
   "valid_rules _ = True"
 
-lemma
-  assumes "v |\<in>| vs"
-  shows "fresh_var v' (vs, m) \<noteq> v"
-  using assms apply (induction vs)
-   apply auto[1]
-  sorry
 
-lemma valid_generation:
-  assumes "match_pattern e v (vs, m) = ((vs', m'), p)"
-  assumes "v |\<in>| vs"
-  shows "valid_match p"
-  using assms proof (induction e v arbitrary: vs m rule: match_pattern.induct)
-  case (1 op e v)
-  have "(snd (fresh STR ''a'' (vs, m))) \<noteq> v"
-    unfolding fresh.simps using fresh_var.psimps 1(3) sorry
-  then have "valid_match (snd ((MATCH.match v \<langle> (UnaryPattern op \<langle> fresh STR ''a'')) (vs, m)))"
-    unfolding la_def by simp
-  then show ?case using 1 unfolding match_pattern.simps unfolding join_def sorry
-next
-  case (2 op e1 e2 v)
-  then show ?case sorry
-next
-  case (3 b e1 e2 v)
-  then show ?case sorry
-next
-  case (4 vn st v)
-  then show ?case sorry
-next
-  case (5 c v)
-  then show ?case sorry
-next
-  case (6 c v)
-  then show ?case sorry
-next
-  case ("7_1" v va b)
-  then show ?case sorry
-next
-  case ("7_2" v va b)
-  then show ?case sorry
-qed
-
-experiment begin
 lemma match_def_affect:
   assumes "eval_match m u = Some a"
   shows "\<forall>v. v \<notin> def_vars m \<longrightarrow> u v = a v"
@@ -1060,7 +830,6 @@ next
   case (6 m1 m2 s)
   then show ?case
     by (metis (no_types, lifting) UnCI def_vars.simps(3) eval_match.simps(6) option.case_eq_if option.exhaust_sel)
-    (*by (smt (verit) UnCI def_vars.simps(3) eval_match.simps(6) option.case_eq_if option.exhaust_sel)*)
 next
   case (7 s)
   then show ?case
@@ -1094,128 +863,7 @@ lemma match_use_affect:
   shows "\<forall>v \<in> use_vars m. u v = a v"
   using assms apply (induction m u arbitrary: u a rule: eval_match.induct)
   by (meson disjoint_iff_not_equal match_def_affect use_def)+
-(*  case (1 v op1 x s)
-  then show ?case
-    by (meson disjoint_iff_not_equal match_def_affect use_def)
-next
-  case (2 v op1 x y s)
-  then show ?case
-    by (meson disjoint_iff_not_equal match_def_affect use_def)
-next
-  case (3 v c tb fb s)
-  then show ?case
-    by (meson disjoint_iff_not_equal match_def_affect use_def)
-next
-  case (4 v c1 s)
-  then show ?case
-    by (meson disjoint_iff_not_equal match_def_affect use_def)
-next
-  case (5 v1 v2 s)
-  then show ?case
-    by (meson disjoint_iff_not_equal match_def_affect use_def)
-next
-  case (6 m1 m2 s)
-  then show ?case
-    by (meson disjoint_iff_not_equal match_def_affect use_def)
-  have drops: "\<exists>u a. (\<exists>s x2. eval_match m1 s = Some x2) \<longrightarrow>
-    eval_match m2 u = Some a \<longrightarrow> valid_match m2 \<longrightarrow> (\<forall>v. v \<in> use_vars m2 \<longrightarrow> u v = a v)"
-    by blast
-  obtain a' where a': "eval_match m1 u = Some a'"
-    using "6.prems"(1) by fastforce
-  then have m1: "\<forall>v. v \<in> use_vars m1 \<longrightarrow> u v = a' v"
-    using "6.IH"(1) "6.prems"(2) valid_match.simps(4) by blast
-  have validm2: "valid_match m2"
-    using "6.prems"(2) by auto
-  obtain a'' where a'': "eval_match m2 a' = Some a''"
-    using "6.prems"(1) \<open>eval_match m1 u = Some a'\<close> by fastforce
-  then have "\<forall>v. v \<in> use_vars m2 \<longrightarrow> a' v = a'' v"
-    using drops a' validm2
-    by (meson disjoint_iff match_def_affect use_def)
-  then show ?case unfolding use_vars.simps using m1 6(3) unfolding eval_match.simps
-    using a' a''
-    by (metis "6.prems"(2) disjoint_iff eval_match.simps(6) match_def_affect use_def use_vars.simps(3))
-next
-  case (7 s)
-  then show ?case sorry
-next
-  case (8 sc s)
-  then show ?case sorry
-next
-  case ("9_1" v vb s)
-  then show ?case sorry
-next
-  case ("9_2" v vb s)
-  then show ?case sorry
-qed*)
 
-
-lemma use_unchange:
-  assumes "eval_match m u = Some a"
-  assumes "eval_match m u' = Some a'"
-  assumes "valid_match m"
-  assumes "\<forall>v \<in> use_vars m. u v = u' v"
-  shows "\<forall>v \<in> def_vars m. a v = a' v"
-  using assms proof (induction m u arbitrary: u a u' a' rule: eval_match.induct)
-  case (1 v op1 x s)
-  then show ?case
-    by (smt (verit) IRExpr.case_eq_if def_vars.simps(1) eval_match.simps(1) insertCI map_upd_Some_unfold option.case_eq_if option.distinct(1) option.sel pattern_variables.simps(1) singletonD use_vars.simps(1))
-next
-  case (2 v op1 x y s)
-  then show ?case sorry
-next
-  case (3 v c tb fb s)
-  then show ?case sorry
-next
-  case (4 v c1 s)
-  then show ?case sorry
-next
-  case (5 v1 v2 s)
-  then show ?case sorry
-next
-  case (6 m1 m2 s)
-  obtain a'' where m1eval: "eval_match m1 u = Some a''"
-    using "6.prems"(1)
-    by fastforce
-  obtain a''' where m1eval': "eval_match m1 u' = Some a'''"
-    using "6.prems"(2)
-    by fastforce
-  have "valid_match m1"
-    using "6.prems"(3) valid_match.simps(4) by blast
-  then have "\<forall>v \<in> use_vars m1. u v = u' v"
-    using m1eval match_use_affect
-    by (simp add: "6.prems"(4))
-  then have m1def: "\<forall>v\<in>def_vars m1. a'' v = a''' v"
-    using "6.IH"(1) \<open>valid_match m1\<close> m1eval m1eval' by presburger
-  have drops: "\<forall>u u' a a'. \<exists>s x2. (eval_match m1 s = Some x2 \<longrightarrow>
-    eval_match m2 u = Some a \<longrightarrow>
-    eval_match m2 u' = Some a' \<longrightarrow>
-    valid_match m2 \<longrightarrow> (\<forall>v\<in>use_vars m2. u v = u' v) \<longrightarrow> (\<forall>v\<in>def_vars m2. a v = a' v))"
-    by (meson "6.IH"(2))
-  obtain b'' where m2eval: "eval_match m2 a'' = Some b''"
-    using "6.prems"(1) m1eval by auto
-  obtain b''' where m2eval': "eval_match m2 a''' = Some b'''"
-    using "6.prems"(2) m1eval' by force
-  have validm2: "valid_match m2"
-    using "6.prems"(3) valid_match.simps(4) by blast
-  then have m1use: "\<forall>v \<in> use_vars m2. a'' v = a''' v"
-    by (metis "6.prems"(4) Diff_iff UnI2 m1def m1eval m1eval' match_def_affect use_vars.simps(3))
-  then have m1def: "\<forall>v\<in>def_vars m2. b'' v = b''' v" 
-    using 6 m1eval m2eval m2eval' validm2 apply simp sorry
-  then show ?case unfolding valid_match.simps sorry
-    (*by (smt (verit, best) "6.IH"(1) "6.prems"(1) "6.prems"(2) Un_iff \<open>\<forall>v\<in>use_vars m1. u v = u' v\<close> \<open>valid_match m1\<close> def_vars.simps(3) eval_match.simps(6) m1eval m1eval' m2eval m2eval' match_def_affect option.inject option.simps(5))
-*)next
-  case (7 s)
-  then show ?case sorry
-next
-  case (8 sc s)
-  then show ?case sorry
-next
-  case ("9_1" v vb s)
-  then show ?case sorry
-next
-  case ("9_2" v vb s)
-  then show ?case sorry
-qed
 
 lemma eval_match_subset:
   assumes "eval_match m u = Some a"
@@ -1386,277 +1034,11 @@ next
     by simp
 qed
 
-(*
-  case (1 v op1 x s)
-  then have "u v = a v"
-    by (metis insertI1 match_use_affect use_vars.simps(1))
-  then show ?case
-    using 1(1) unfolding eval_match.simps
-    by (smt (verit) IRExpr.case_eq_if domIff map_upd_Some_unfold option.case_eq_if option.distinct(1) option.sel)
-next
-  case (2 v op1 x y s)
-  then show ?case sorry
-next
-  case (3 v c tb fb s)
-  then show ?case sorry
-next
-  case (4 v c1 s)
-  then show ?case sorry
-next
-  case (5 v1 v2 s)
-  then show ?case sorry
-next
-  case (6 m1 m2 s)
-  (*have "\<forall>v. v \<in> use_vars m1 \<longrightarrow> s v = a v"
-    by (simp add: "6.prems"(1))
-  have "\<forall>v. v \<in> use_vars m2 \<longrightarrow> s v = a v"
-    by (simp add: "6.prems"(1))*)
-  obtain a' where m1eval: "eval_match m1 u = Some a'"
-    using "6.prems"(1)
-    by fastforce
-  have "valid_match m1"
-    using "6.prems"(2) by auto
-  then have "\<forall>v \<in> use_vars m1. u v = a' v"
-    using m1eval match_use_affect by blast
-  then have m1idem: "eval_match m1 a' = Some a'"
-    using "6.IH"(1) \<open>valid_match m1\<close> m1eval by blast
-  have drops: "\<forall>u a x2. (\<exists>s. (eval_match m1 s = Some x2 \<longrightarrow>
-    eval_match m2 u = Some a \<longrightarrow>
-    valid_match m2 \<longrightarrow> eval_match m2 a = Some a))"
-    using "6"(2)
-    by blast
-  have m2eval: "eval_match m2 a' = Some a"
-    using "6.prems"(1) m1eval by auto
-  have validm2: "valid_match m2"
-    using "6.prems"(2) by auto
-  then have m1use: "\<forall>v \<in> use_vars m2. a' v = a v"
-    using m2eval
-    by (simp add: match_use_affect)
-  have existm1: "(\<exists>s x2. eval_match m1 s = Some x2)"
-    using \<open>eval_match m1 a' = Some a'\<close> by auto
-  have m2idem: "eval_match m2 a = Some a"
-    using 6(2) m2eval validm2 sorry
-    (*by blast
-    by (simp add: "6.IH"(2) \<open>valid_match m2\<close> m1eval m2eval)*)
-  have "a = a''"
-    using "6.prems"(1) m1eval m2eval by auto
-  (*have "eval_match m1 a'' = Some a''"
-    using 6(4) unfolding valid_match.simps using use_unchange sledgehammer*)
-  have "eval_match (m1 && m2) a'' = Some a''"
-    unfolding eval_match.simps using m1eval m1idem m2eval m2idem using use_unchange sorry
-    (*by (simp add: \<open>eval_match m1 a'' = Some a''\<close>)*)
-  then show ?case using 6(3) m1eval m1idem m2idem
-    unfolding eval_match.simps valid_match.simps sorry
-next
-  case (7 s)
-  then show ?case sorry
-next
-  case (8 sc s)
-  then show ?case sorry
-next
-  case ("9_1" v vb s)
-  then show ?case sorry
-next
-  case ("9_2" v vb s)
-  then show ?case sorry
-qed
-*)
-
-(*lemma disjoint_match_use:
-  assumes "valid_match m"
-  shows "use_vars m \<inter> def_vars m = {}"
-  using assms apply (induction m)
-  unfolding use_vars.simps def_vars.simps
-  subgoal for x1 x2
-    apply (cases x2) by simp+
-     apply simp+
-  sorry*)
-
 lemma match_eq:
   assumes "valid_match m"
   shows "eval_match (m && m) u = eval_match m u"
   using assms
   by (simp add: idempotent_match option.case_eq_if)
-
-
-(*
-proof (cases "eval_match m u")
-  case None
-  then show ?thesis by simp
-next
-  case (Some a)
-  then have "eval_match m a = eval_match m u"
-    using assms proof (induction m a arbitrary: a rule: eval_match.induct)
-    case (1 v op1 x s)
-      then show ?case
-      proof (cases "\<exists>e. u v = Some (UnaryExpr op1 e)")
-        case True
-        obtain e where "a x = Some e"
-          using "1" True by fastforce
-        then have "x \<noteq> v"
-          using assms
-          using "1.prems"(2) by force
-        then have "a = u(x:=Some e)"
-          using "1.prems"(1) True \<open>a x = Some e\<close> by force
-        then show ?thesis unfolding eval_match.simps
-          using True \<open>x \<noteq> v\<close> by force
-      next
-        case False
-        then have "eval_match (MATCH.match v (UnaryPattern op1 x)) u = None"
-          unfolding eval_match.simps
-          by (smt (verit, best) IRExpr.case_eq_if IRExpr.sel(1) is_UnaryExpr_def option.case_eq_if option.exhaust_sel)
-        then show ?thesis
-          using "1.prems"(1) by auto
-      qed
-    next
-      case (2 v op1 x y s)
-      then show ?case
-      proof (cases "\<exists>e1 e2. u v = Some (BinaryExpr op1 e1 e2)")
-        case True
-        then obtain e1 e2 where e: "u v = Some (BinaryExpr op1 e1 e2)"
-          by blast
-        then have e2: "a y = Some e2"
-          using "2"(1) unfolding eval_match.simps
-          by auto
-        have e1: "a x = Some e1"
-          using "2.prems"(1) "2.prems"(2) e by auto
-        then have "x \<noteq> v \<and> y \<noteq> v"
-          using assms
-          using "2.prems"(2) by auto
-        then have "a = (u(y:=Some e2))(x:=Some e1)"
-          using e1 e2 "2"(1) unfolding eval_match.simps using True
-          by (smt (verit, ccfv_threshold) IRExpr.simps(66) e fun_upd_idem fun_upd_other fun_upd_twist map_add_subsumed1 map_add_upd map_le_refl option.inject option.simps(5))
-        then show ?thesis unfolding eval_match.simps
-          by (smt (z3) "2.prems"(1) IRExpr.simps(66) \<open>x \<noteq> v \<and> y \<noteq> v\<close> e e2 eval_match.simps(2) fun_upd_apply fun_upd_triv map_add_subsumed2 map_le_refl option.case_eq_if option.sel)
-      next
-        case False
-        then have "eval_match (MATCH.match v (BinaryPattern op1 x y)) u = None"
-          unfolding eval_match.simps
-          using IRExpr.case_eq_if IRExpr.sel(2) is_BinaryExpr_def option.case_eq_if option.exhaust_sel
-          by (smt (verit) IRExpr.simps(66))
-        then show ?thesis
-          using "2.prems"(1) by force
-      qed
-    next
-      case (3 v c tb fb s)
-      then show ?case
-      proof (cases "\<exists>cv t f. u v = Some (ConditionalExpr cv t f)")
-        case True
-        then obtain cv t f where e: "u v = Some (ConditionalExpr cv t f)"
-          by blast
-        then have f: "a fb = Some f"
-          using "3.prems"(1) unfolding eval_match.simps
-          by force
-        then have t: "a tb = Some t"
-          using "3.prems"(1,2) unfolding eval_match.simps
-          using e by auto
-        then have c: "a c = Some cv"
-          using "3.prems"(1,2) unfolding eval_match.simps
-          using e by auto
-        then have "c \<noteq> v \<and> tb \<noteq> v \<and> tb \<noteq> v"
-          using assms
-          using "3.prems"(2) by auto
-        then have "a = ((u(c:=Some cv))(tb:=Some t))(fb:=Some f)"
-          using c t f "3"(1) unfolding eval_match.simps using True
-          using e by auto
-        then show ?thesis unfolding eval_match.simps
-          using "3.prems"(2) e by auto
-      next
-        case False
-        then have "eval_match (MATCH.match v (ConditionalPattern c tb fb)) u = None"
-          unfolding eval_match.simps
-          using IRExpr.split_sels(2) is_none_code(2) is_none_simps(1) option.case_eq_if option.exhaust_sel
-          by (smt (verit, del_insts))
-        then show ?thesis
-          using "3.prems"(1) by force
-      qed
-    next
-      case (4 v c1 s)
-      then show ?case unfolding eval_match.simps
-        using IRExpr.case_eq_if option.case_eq_if option.sel
-        by (smt (verit))
-    next
-      case (5 v1 v2 s)
-      then show ?case
-        by (metis eval_match.simps(5) option.sel)
-    next
-      case (6 m1 m2 s)
-      then show ?case
-      proof (cases "eval_match m1 u")
-        case None
-        then show ?thesis
-          using "6.prems"(1) by force
-      next
-        case (Some a')
-        then show ?thesis sorry
-      qed
-        (*
-      proof (cases "eval_match (m1 && m2) u")
-        case None
-        then show ?thesis
-          using "6.prems"(1) by auto
-      next
-        case (Some a)
-        have "eval_match m1 u = Some s" sorry
-        then show ?thesis sorry
-      qed*)
-    next
-      case (7 s)
-      then show ?case sorry
-    next
-      case (8 sc s)
-      then show ?case sorry
-    next
-      case ("9_1" v vb s)
-      then show ?case sorry
-    next
-      case ("9_2" v vb s)
-      then show ?case sorry
-    qed
-  then show ?thesis
-    by (simp add: Some)
-qed*)
-end
-(*
-      case (match x1 x2)
-      then show ?case sorry
-    next
-      case (equality x1 x2)
-      then have "a = u"
-        using Some unfolding eval_match.simps
-        by (metis option.distinct(1) option.inject)
-      then show ?case by simp
-    next
-      case (andthen m1 m2)
-      then show ?case 
-      proof (cases "eval_match m1 u = None")
-        case True
-        then show ?thesis
-          using andthen.prems by auto
-      next
-        case False
-        then obtain u' where "eval_match m1 u = Some u'"
-          by force
-        then have "eval_match m2 u' = Some a"
-          using andthen unfolding eval_match.simps
-          by simp
-        then show ?thesis sorry
-      qed
-        unfolding eval_match.simps
-    next
-      case (condition x)
-      then have "a = u"
-        using Some unfolding eval_match.simps
-        by (metis option.distinct(1) option.inject)
-      then show ?case by simp
-    next
-      case noop
-      then show ?case by simp
-    qed
-  then show ?thesis
-    by (simp add: Some)
-qed
-*)
 
 lemma monotonic_cond:
   assumes "\<forall>e u. eval_rules r u e = eval_rules (f r) u e"
@@ -1682,37 +1064,6 @@ lemma monotonic_choice:
   shows "\<forall>e. eval_rules (choice rules) u e = eval_rules (choice (map f rules)) u e"
   using assms apply (induction rules) apply simp
   by (metis choice_join list.set_intros(1) list.set_intros(2))
-
-experiment begin
-lemma redundant_conditions:
-  assumes "valid_match m"
-  shows "eval_rules (m ? (m ? r1)) u e = eval_rules (m ? r1) u e" (is "?lhs = ?rhs")
-proof -
-  have "?lhs = eval_rules ((m && m) ? r1) u e"
-    using chain_equiv
-    by simp
-  moreover have "eval_rules ((m && m) ? r1) u e = ?rhs"
-    sorry
-    (*using match_eq
-    by (smt (verit) Rules.distinct(1) Rules.distinct(11) Rules.distinct(13) Rules.distinct(9) Rules.inject(2) assms eval_rules.simps)
-    *)
-  ultimately show ?thesis by simp
-qed
-
-(*lemma join_conditions_valid:
-  assumes "valid_rules r"
-  shows "join_conditions r = Some r' \<Longrightarrow> eval_rules r u e = eval_rules r' u e"
-  using assms apply (induction r rule: join_conditions.induct)
-  apply (smt (verit, ccfv_threshold) condE elseE eval_rules.intros(2) eval_rules.intros(3) eval_rules.intros(4) eval_rules.intros(5) join_conditions.simps(1) option.distinct(1) option.sel)
-  subgoal premises p for m1 m2 r
-  proof -
-    have v1:"valid_match m1" using p(2) by simp
-    moreover have v2:"valid_match m2" using p(2) by simp
-    ultimately show ?thesis
-      by (metis join_conditions.simps(2) option.discI option.sel p(1) redundant_conditions)
-  qed
-  by simp+*)
-end
 
 lemma join_conditions_valid:
   "join_conditions r = Some r' \<Longrightarrow> eval_rules r u e = eval_rules r' u e"
@@ -1772,22 +1123,6 @@ next
   then show ?case by (simp add: monotonic_seq)
 qed
 
-  (*subgoal for r1 r2 apply (cases "join_conditions (r1 else r2)")
-    apply (smt (verit, del_insts) elseE eval_rules.intros(4) eval_rules.intros(5) lift_common.simps(1) option.case_eq_if valid_rules.simps(2))
-    unfolding lift_common.simps valid_rules.simps 
-    using join_conditions_valid sledgehammer
-    using join_conditions.elims join_conditions_valid lift_common.simps(1) option.distinct(1) option.simps(5) valid_rules.simps(1) valid_rules.simps(2)
-    *)
-(*
-    subgoal for m r u apply (cases "join_conditions (m ? r)")
-       apply simp apply (metis condE eval_rules.intros(2) eval_rules.intros(3))
-      by (simp add: join_conditions_valid)
-    subgoal for rules u apply (induction rules)
-      apply simp
-      by (metis choice_join lift_common.simps(3) list.set_intros(1) list.set_intros(2))
-     apply simp
-    by (smt (verit) Rules.distinct(11) Rules.distinct(15) Rules.distinct(19) Rules.distinct(5) Rules.inject(4) eval_rules.simps lift_common.simps(5))
-*)
 
 fun common_size :: "Rules \<Rightarrow> nat" where
   "common_size (m ? r) = 1 + common_size r" |
@@ -1881,105 +1216,11 @@ function (sequential) combine_conditions :: "Rules \<Rightarrow> Rules" where
   apply pat_completeness+
   by simp+
 
-experiment begin
-\<comment> \<open>Can we define a version of the optimization over a list?\<close>
-\<comment> \<open>Not like this, still requires recursing on the subparts in combine\_conditions\_list\<close>
-fun combine_conditions_list :: "Rules list \<Rightarrow> Rules list" where
-  "combine_conditions_list ((m ? r) # rules) =
-    ((m ? (choice (r # join_common m rules))) # (join_uncommon m rules))" |
-  "combine_conditions_list r = r"
-
-lemma "x \<in> set (combine_conditions_list rules) \<Longrightarrow> common_size x < common_size (choice rules)"
-  apply (induction rules rule: combine_conditions_list.induct) 
-  unfolding combine_conditions_list.simps
-  unfolding join_common_def join_uncommon_def List.map_filter_def
-  apply simp sorry
-
-function (sequential) combine_conditions2 :: "Rules \<Rightarrow> Rules" where
-  "combine_conditions2 (base e) = base e" |
-  "combine_conditions2 (r1 else r2) = (combine_conditions2 r1 else combine_conditions2 r2)" |
-  "combine_conditions2 (m ? r) = (m ? combine_conditions2 r)" |
-  "combine_conditions2 (choice rules) =
-    choice (map combine_conditions2 (combine_conditions_list rules))" |
-  "combine_conditions2 (r1 \<then> r2) = (combine_conditions2 r1 \<then> combine_conditions2 r2)"
-  apply pat_completeness+
-  by simp+
-
-termination combine_conditions2
-  apply (relation "measures [common_size, size]") apply auto[1] apply simp+ using join_common_shrinks
-  sorry
-end
-
-experiment begin
-\<comment> \<open>Can we define combine conditions in a two step process: 1) group matches 2) pull out matching m's\<close>
-
-fun find_common_unchanged :: "MATCH \<Rightarrow> Rules \<Rightarrow> Rules option" where
-  "find_common_unchanged m (m' ? r) = (if m = m' then Some (m' ? r) else None)" |
-  "find_common_unchanged m r = None"
-
-definition group_common :: "MATCH \<Rightarrow> Rules list \<Rightarrow> Rules list" where
-  "group_common m rules = List.map_filter (find_common_unchanged m) rules"
-
-function (sequential) group_conditions :: "Rules \<Rightarrow> Rules" where
-  "group_conditions (base e) = base e" |
-  "group_conditions (r1 else r2) = (group_conditions r1 else group_conditions r2)" |
-  "group_conditions (m ? r) = (m ? group_conditions r)" |
-  "group_conditions (choice ((m ? r) # rules)) = 
-    choice ((group_conditions (choice ((m ? r) # group_common m rules)))
-      # [group_conditions (choice (join_uncommon m rules))])" |
-  "group_conditions (choice rules) = 
-    choice (map group_conditions rules)" |
-  "group_conditions (r1 \<then> r2) = (group_conditions r1 \<then> group_conditions r2)"
-  apply pat_completeness+
-  by simp+
-
-termination group_conditions
-  apply (relation "measures [common_size, size]") apply auto[1] apply simp+ using join_common_shrinks
-  sorry
-
-function (sequential) merge_conditions :: "Rules \<Rightarrow> Rules" where
-  "merge_conditions (base e) = base e" |
-  "merge_conditions (r1 else r2) = (merge_conditions r1 else merge_conditions r2)" |
-  "merge_conditions (m ? r) = (m ? merge_conditions r)" |
-  "merge_conditions (choice ((m ? r) # (m' ? r') # rules)) = (if m = m' then
-    m ? choice (map merge_conditions (r # r' # join_common m rules)) else
-    choice (map merge_conditions ((m ? r) # (m' ? r') # rules)))" |
-  "merge_conditions (choice rules) = 
-    choice (map merge_conditions rules)" |
-  "merge_conditions (r1 \<then> r2) = (merge_conditions r1 \<then> merge_conditions r2)"
-  apply pat_completeness+
-  by simp+
-
-termination merge_conditions
-  apply (relation "measures [common_size, size]") apply auto[1] apply simp+ using join_common_shrinks
-  sorry
-
-definition collapse_conditions :: "Rules \<Rightarrow> Rules" where
-  "collapse_conditions = merge_conditions o group_conditions"
-
-end
-
 lemma find_common_size:
   assumes "(find_common m r) \<noteq> None"
   shows "size (the (find_common m r)) < size r"
   using assms apply (induction r rule: find_common.induct)
   apply simp+ apply fastforce by simp+
-
-(*
-lemma "size_list size (join_common m rules) \<le> (size_list size rules)"
-  unfolding join_common_def map_filter_def
-  (*apply (induction rules) apply auto[1]*)
-  apply (induction rule: find_common.induct)
-  apply (induction rules) 
-  apply simp using find_common_size sorry
-
-lemma
-  "combined_size (choice (join_common m rules))
-       < combined_size (m ? (choice rules)) \<or>
-       combined_size (choice (join_common m rules)) =
-       combined_size (m ? (choice rules)) \<and>
-       size_list size (join_common m rules) < Suc (size_list size rules)"
-*)
 
 lemma common_size_choice_gt:
   "x \<in> set va \<Longrightarrow> common_size x \<le> common_size (choice va)"
@@ -2002,11 +1243,6 @@ lemma join_common_empty: "join_common m [] = []"
 lemma join_uncommon_empty: "join_uncommon m [] = []"
   by (simp add: join_uncommon_def map_filter_simps(2))
 
-(*
-lemma eval_choice: "eval_rules (choice rules) u e \<longrightarrow> (\<exists> r \<in> set rules . eval_rules r u e)"
-  sorry
-*)
-
 lemma eval_choice: "{e. eval_rules (choice rules) u e \<and> e \<noteq> None} = {e | e r . r \<in> set rules \<and> eval_rules r u e \<and> e \<noteq> None}"
   using choiceE eval_rules.intros(6) by fastforce
 
@@ -2023,90 +1259,6 @@ lemma eval_always_result:
   using eval_rules.intros(4,5) apply (metis split_option_ex) 
   using eval_rules.intros(9,10) apply (metis split_option_ex) 
   using eval_rules.intros(6,7,8) by (metis split_option_ex) 
-
-experiment begin
-lemma eval_choice_none_always:
-  assumes "eval_rules (choice rules) u None"
-  assumes "rules \<noteq> []"
-  shows "(\<forall>r. eval_rules (choice rules) u r \<longrightarrow> r = None)"
-  sorry
-  (*using assms apply (subst (asm) eval_choice_none)
-  apply (rule allI)
-  subgoal for r
-    using assms evalRulesE
-  apply (induction rule: eval_rules.induct)
-  using baseE apply blast
-  apply (metis condE option.distinct(1) option.sel) 
-  apply (metis condE option.distinct(1))
-  apply (metis elseE option.distinct(1))
-  apply (metis elseE option.distinct(1)) using eval_choice_none *)
-
-lemma eval_choice_some_e:
-  assumes "eval_rules (choice rules) u e"
-  assumes "e \<noteq> None"
-  shows "(\<exists>r \<in> set rules. eval_rules r u e)"
-  by (metis assms(1) assms(2) choiceE)
-
-lemma eval_single_choice: "{e. eval_rules (choice [r]) u e} = {e. eval_rules r u e}" (is "?lhs = ?rhs")
-proof (cases "eval_rules r u None")
-  case True
-  then have "eval_rules (choice [r]) u None"
-    by (simp add: eval_rules.intros(7))
-  then show ?thesis
-    by (metis True eval_choice_none_always eval_rules.intros(6) list.distinct(1) list.set_intros(1) option.exhaust)
-next
-  case False
-  then have "\<forall>e. eval_rules r u (Some e) \<longrightarrow> eval_rules (choice [r]) u (Some e)"
-    by (simp add: eval_rules.intros(6))
-  also have "\<forall>e. eval_rules (choice [r]) u (Some e) \<longrightarrow> eval_rules r u (Some e)"
-    using eval_choice_some_e by force
-  then show ?thesis
-    by (metis False calculation eval_always_result eval_choice_none_always not_Cons_self2 not_None_eq)
-qed
-
-lemma monotonic_choice:
-  assumes "\<forall>r \<in> set rules. {e. eval_rules r u e} = {e. eval_rules (f r) u e}"
-  shows "{e. eval_rules (choice rules) u e} = {e. eval_rules (choice (map f rules)) u e}"
-proof (cases "eval_rules (choice rules) u None")
-  case True
-  then have "\<forall>r \<in> set rules. eval_rules r u None"
-    by (simp add: eval_choice_none)
-  then have "\<forall>r \<in> set rules. eval_rules (f r) u None"
-    using assms by blast
-  then have "eval_rules (choice (map f rules)) u None"
-    using eval_choice_none sorry
-  then show ?thesis
-    by (metis Nil_is_map_conv True eval_choice_none_always)
-next
-  case False
-  then have "\<forall>e. eval_rules (choice rules) u (Some e) \<longrightarrow> eval_rules (choice (map f rules)) u (Some e)"
-    sorry
-  also have "\<forall>e. eval_rules (choice (map f rules)) u (Some e) \<longrightarrow> eval_rules (choice rules) u (Some e)"
-    sorry
-  then show ?thesis
-    by (metis Nil_is_map_conv calculation choiceE eval_always_result eval_choice_none_always)
-qed
-  
-
-lemma combine_no_recurse:
-  "{e. eval_rules (choice ((m ? r) # rules)) u e} = {e. eval_rules 
-  (choice [(m ? (choice (r # join_common m rules))), choice (join_uncommon m rules)]) u e}"
-  (is "{e. eval_rules ?lhs u e} = {e. eval_rules ?rhs u e}")
-proof (induction rules)
-  case Nil
-  have "(choice ((m ? choice (r # join_common m [])) # join_uncommon m [])) = choice ([m ? choice [r]])"
-    using join_common_empty join_uncommon_empty
-    by simp
-  also have "{e. eval_rules (choice ([m ? choice [r]])) u e} = {e. eval_rules (m ? r) u e}"
-    using eval_single_choice
-    by (smt (z3) Collect_cong condE eval_always_result eval_rules.simps option.inject option.simps(3))
-  then show ?case sorry (*
-    by (simp add: eval_single_choice join_common_empty join_uncommon_empty)*)
-next
-  case (Cons a rules)
-  then show ?case sorry
-qed
-end
 
 
 lemmas monotonic =
@@ -2140,50 +1292,6 @@ lemma join_common_plus:
   using assms unfolding join_common_def join_uncommon_def List.map_filter_def
   by simp
 
-experiment begin
-lemma pull_out_uncommon:
-  assumes "join_common m rules = []"
-  shows "eval_rules (choice (join_uncommon m rules)) u e = eval_rules (choice (rules)) u e"
-proof -
-  have "\<forall>r \<in> (set rules). find_common m r = None"
-    using assms unfolding join_common_def List.map_filter_def
-    by (simp add: filter_empty_conv)
-  then have "\<forall>r \<in> set rules. \<exists>p. find_uncommon m r = Some p"
-    using assms unfolding join_common_def join_uncommon_def List.map_filter_def
-    using find_inverse_lhs by blast
-  then have "rules = join_uncommon m rules"
-    unfolding join_common_def join_uncommon_def List.map_filter_def
-    by (smt (verit, ccfv_threshold) comp_eq_dest_lhs filter_id_conv find_uncommon_preserve map_idI option.sel option.simps(3))
-  then show ?thesis
-    by simp
-qed
-
-lemma pull_out_common:
-  assumes "join_uncommon m rules = []"
-  shows "eval_rules (m ? choice (r # join_common m rules)) u e = eval_rules (choice ((m ? r) # rules)) u e"
-  using assms sorry
-
-lemma pull_out:
-  shows "
-    eval_rules (choice ((m ? r) # rules)) u e =
-    eval_rules (choice ((m ? (choice (r # join_common m rules))) # [(choice (join_uncommon m rules))])) u e"
-  using pull_out_uncommon pull_out_common sorry
-
-lemma combine_conditions:
-  "eval_rules r u e = eval_rules (combine_conditions r) u e"
-  apply (induction r arbitrary: u e rule: combine_conditions.induct) apply simp
-  apply (simp add: monotonic)+
-        defer
-  apply simp+
-  apply (metis choice_join combine_conditions.simps(1) list.simps(9) monotonic_choice)
-  using monotonic_choice
-  using combine_conditions.simps(7) monotonic_choice apply presburger
-  using combine_conditions.simps(8) monotonic_choice apply presburger
-  using combine_conditions.simps(9) monotonic_choice apply presburger
-   apply (simp add: monotonic)+
-  using pull_out sorry
-
-end
 
 lemma join_combines:
   "(set (map (\<lambda>r. m ? r) (join_common m rules)) \<union> set (join_uncommon m rules)) = set rules"
@@ -2212,65 +1320,6 @@ lemma join_combines:
   qed
   done
 
-experiment begin
-lemma abstract_combine_condition:
-  assumes "\<forall>u e. eval_rules (choice (r # ms)) u e \<longrightarrow> eval_rules (f (choice (r # ms))) u e"
-  assumes "\<forall>u e. eval_rules (choice n) u e \<longrightarrow> eval_rules (f (choice n)) u e"
-  assumes "(set (map (\<lambda>r. m ? r) ms) \<union> set n) = set rules"
-  shows "eval_rules (choice ((m ? r) # rules)) u e \<longrightarrow>
-       eval_rules
-        (choice
-          [m ? f (choice (r # ms)),
-           f (choice (n))]) u e"
-  using assms sorry
-
-lemma combine_conditions_lhs:
-  "eval_rules r u e = eval_rules (combine_conditions r) u e"
-  apply (induction r arbitrary: u e rule: combine_conditions.induct) apply simp
-  apply (simp add: monotonic)+
-        defer
-  apply simp+
-  apply (metis choice_join combine_conditions.simps(1) list.simps(9) monotonic_choice)
-  using monotonic_choice
-  using combine_conditions.simps(7) monotonic_choice apply presburger
-  using combine_conditions.simps(8) monotonic_choice apply presburger
-  using combine_conditions.simps(9) monotonic_choice apply presburger
-   apply (simp add: monotonic)+
-  sorry
-
-lemma
-  assumes "\<forall>u e. eval_rules (choice (r # join_common m rules)) u e \<longrightarrow>
-           eval_rules (combine_conditions (choice (r # join_common m rules))) u e"
-  assumes "\<forall>u e. eval_rules (choice (join_uncommon m rules)) u e \<longrightarrow>
-           eval_rules (combine_conditions (choice (join_uncommon m rules))) u e"
-  shows "eval_rules (choice ((m ? r) # rules)) u e \<longrightarrow>
-       eval_rules
-        (choice
-          [m ? combine_conditions (choice (r # join_common m rules)),
-           combine_conditions (choice (join_uncommon m rules))])
-        u e"
-  sorry
-
-lemma combine_nested:
-  assumes "set rules = {choice r} \<union> set r'"
-  assumes "set rules' = set r \<union> set r'"
-  shows "\<forall>e. eval_rules (choice rules) u e = eval_rules (choice rules') u e"
-  using assms
-proof -
-  obtain e' where "eval_rules (choice r) u e'"
-    using eval_always_result by auto
-  show ?thesis proof (cases e')
-    case None
-    have "\<forall>e. eval_rules (choice rules) u e = eval_rules (choice r') u e"
-      using choiceE assms sorry
-    then show ?thesis sorry
-  next
-    case (Some a)
-    then show ?thesis sorry
-  qed
-qed
-end
-
 lemma join_common_set_def:
   "set (join_common m rules) = {r. (m ? r) \<in> set rules}"
   unfolding join_common_def List.map_filter_def 
@@ -2287,15 +1336,6 @@ lemma join_uncommon_set_def:
   subgoal for a rules 
     apply (cases a) by auto
   done
-
-experiment begin
-lemma idempotent_match:
-  assumes "valid_match m"
-  assumes "eval_match m u = Some r"
-  shows "eval_match m r = Some r"
-  using assms sorry (*
-  by (metis eval_match.simps(6) match_eq option.simps(5))*)
-end
 
 lemma
   assumes "\<exists>r \<in> set rules. r \<in> set rules' \<and> eval_rules r u (Some e)"
@@ -2614,57 +1654,6 @@ lemma combine_conditions_valid:
   qed
   done
 
-(*
-  proof (cases e)
-    case None
-    then have "eval_rules (m ? (choice (r # join_common m rules))) u None \<and>
-  eval_rules ((choice (join_uncommon m rules))) u None"
-      sorry
-    then show ?thesis using p sorry
-  next
-    case (Some a)
-    then show ?thesis sorry
-  qed*)
-
-(*
-  proof (cases e)
-    case None
-    then show ?thesis 
-      apply simp apply (rule choiceE) using None cases_None
-      using eval_always_result apply auto
-  next
-    case (Some a)
-    then show ?thesis sorry
-  qed
-
-  using join_combines unordered_choice monotonic_choice combine_nested
-  
-  done
-*)
-
-(*
-lemma combine_conditions_valid:
-  "{e. eval_rules r u e} = {e. eval_rules (combine_conditions r) u e}"
-  apply (induction r arbitrary: u rule: combine_conditions.induct)
-  apply simp unfolding combine_conditions.simps
-  apply (smt (verit, del_insts) Collect_cong elseE eval_rules.intros(4) eval_rules.intros(5) mem_Collect_eq)
-  unfolding combine_conditions.simps 
-  apply (smt (z3) Collect_cong condE eval_rules.simps mem_Collect_eq)
-  unfolding combine_conditions.simps 
-  subgoal for m r rules u
-    using combine_no_recurse sorry
-  sorry*)
-    (*apply (smt (verit, del_insts) elseE eval_rules.intros(4) eval_rules.intros(5) lift_common.simps(1) option.simps(4))
-      by (simp add: join_conditions_valid)
-    subgoal for m r u apply (cases "join_conditions (m ? r)")
-       apply simp apply (metis condE eval_rules.intros(2) eval_rules.intros(3))
-      by (simp add: join_conditions_valid)
-    subgoal for rules u apply (induction rules)
-      apply simp
-      by (metis choice_join lift_common.simps(3) list.set_intros(1) list.set_intros(2))
-     apply simp
-    by (smt (verit) Rules.distinct(11) Rules.distinct(15) Rules.distinct(19) Rules.distinct(5) Rules.inject(4) eval_rules.simps lift_common.simps(5))
-*)
 
 fun eliminate_choice :: "Rules \<Rightarrow> Rules" where
   "eliminate_choice (base e) = base e" |
@@ -2932,22 +1921,6 @@ fun size_condition :: "(MATCH \<times> Statement) \<Rightarrow> nat" where
 termination export_match
   apply (relation "measures [size_condition]") apply simp apply simp sorry
 
-(*
-fun close :: "MATCH \<Rightarrow> string" where
-  "close (match v (ConstantPattern val)) = ''
-}
-}''" |
-  "close (match v p) = ''
-}''" |
-  "close (andthen m1 m2) = close m1 @ close m2" |
-  "close (equality v1 v2) = ''
-}''" |
-  "close (negate sc) = ''
-}''" |
-  "close (condition sc) = ''
-}''" |
-  "close noop = ''''"
-*)
 
 fun export_rules :: "Rules \<Rightarrow> Statement" where
   "export_rules (base e) = Return (export_result e)" |
