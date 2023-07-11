@@ -1778,7 +1778,10 @@ fun unary_op_class :: "IRUnaryOp \<Rightarrow> ClassName" where
   "unary_op_class UnaryLogicNegation = ''LogicNegationNode''" |
   "unary_op_class (UnaryNarrow _ _) = ''NarrowNode''" |
   "unary_op_class (UnarySignExtend _ _) = ''SignExtendNode''" |
-  "unary_op_class (UnaryZeroExtend _ _) = ''ZeroExtendNode''"
+  "unary_op_class (UnaryZeroExtend _ _) = ''ZeroExtendNode''" |
+  "unary_op_class UnaryIsNull = ''IsNullNode''" |
+  "unary_op_class UnaryReverseBytes = ''ReverseBytesNode''" |
+  "unary_op_class UnaryBitCount = ''BitCountNode''"
 
 fun binary_op_class :: "IRBinaryOp \<Rightarrow> ClassName" where
   "binary_op_class BinAdd = ''AddNode''" |
@@ -1793,7 +1796,10 @@ fun binary_op_class :: "IRBinaryOp \<Rightarrow> ClassName" where
   "binary_op_class BinURightShift = ''UnaryRightShiftNode''" |
   "binary_op_class BinIntegerEquals = ''IntegerEqualsNode''" |
   "binary_op_class BinIntegerLessThan = ''IntegerLessThanNode''" |
-  "binary_op_class BinIntegerBelow = ''IntegerBelowNode''"
+  "binary_op_class BinIntegerBelow = ''IntegerBelowNode''" |
+  "binary_op_class BinIntegerTest = ''IntegerTestNode''" |
+  "binary_op_class BinIntegerNormalizeCompare = ''IntegerNormalizeCompareNode''" |
+  "binary_op_class BinIntegerMulHigh = ''IntegerMulHighNode''"
 
 fun export_pattern :: "PatternExpr \<Rightarrow> ClassName" where
   "export_pattern (UnaryPattern op v) = unary_op_class op" |
