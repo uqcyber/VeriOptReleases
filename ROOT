@@ -1,3 +1,12 @@
+session Stratego in Stratego = "HOL-Library" +
+  options [document = pdf, document_output = "output",
+           show_question_marks = false]
+  theories
+    Stratego
+  document_files (in "../latex")
+    "root.tex"
+    "mathpartir.sty"
+
 chapter "veriopt"
 
 session Graph in Graph = "HOL-Library" +
