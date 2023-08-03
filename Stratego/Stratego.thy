@@ -25,9 +25,23 @@ class Rewritable =
   fixes varof :: "'a \<Rightarrow> string option"
   fixes var :: "string \<Rightarrow> 'a"
   fixes subexprs :: "'a \<Rightarrow> 'a list"
-  fixes map :: "('a \<Rightarrow> 'a) \<Rightarrow> 'a \<Rightarrow> 'a"
+  (*fixes map :: "('a \<Rightarrow> 'a) \<Rightarrow> 'a \<Rightarrow> 'a"*)
+  fixes chain :: "nat \<Rightarrow> ('a \<Rightarrow> nat \<Rightarrow> (nat \<times> 'a)) \<Rightarrow> 'a \<Rightarrow> (nat \<times> 'a)"
   (*assumes "varof (var a) = Some a"
   assumes "traverse f t = traverse f (traverse f t)"*)
+begin
+fun map :: "('a \<Rightarrow> 'a) \<Rightarrow> 'a \<Rightarrow> 'a" where
+  "map f xs = snd (chain (0::nat) (\<lambda>e a. (plus a 1, f e)) xs)"
+end
+
+
+fun chain_list :: "'b \<Rightarrow> ('a \<Rightarrow> 'b \<Rightarrow> ('b \<times> 'c)) \<Rightarrow> 'a list \<Rightarrow> ('b \<times> 'c list)" where
+  "chain_list a f [] = (a, [])" |
+  "chain_list a f (x # xs) =
+    (let (a', x') = f x a in
+    (let (a'', xs') = (chain_list a' f xs) in (a'', x' # xs')))"
+
+
 
 subsection "Rewrite Language"
 datatype ('a::Rewritable) Strategy =
@@ -164,12 +178,34 @@ fun subexprs_Arithmetic :: "Arithmetic \<Rightarrow> Arithmetic list" where
   "subexprs_Arithmetic (Number v) = []" |
   "subexprs_Arithmetic (Variable s) = []"
 
+(*fun chain :: "'b \<Rightarrow> ('a \<Rightarrow> 'b \<Rightarrow> ('b \<times> 'a)) \<Rightarrow> 'a list \<Rightarrow> ('b \<times> 'a list)" where
+  "chain a f [] = (a, [])" |
+  "chain a f (x # xs) =
+    (let (a', x') = f x a in
+    (let (a'', xs') = (chain a' f xs) in (a'', x' # xs')))"*)
+
+fun chain_Arithmetic :: "nat \<Rightarrow> (Arithmetic \<Rightarrow> nat \<Rightarrow> (nat \<times> Arithmetic)) \<Rightarrow> Arithmetic \<Rightarrow> (nat \<times> Arithmetic)" where
+  "chain_Arithmetic n f (Add x y) =
+    (let (n', x') = f x n in
+    (let (n'', y') = f y n' in
+      (n'', Add x' y')))" |
+  "chain_Arithmetic n f (Sub x y) =
+    (let (n', x') = f x n in
+    (let (n'', y') = f y n' in
+      (n'', Sub x' y')))" |
+  "chain_Arithmetic n f (UMinus x) =
+    (let (n', x') = f x n in
+      (n', UMinus x'))" |
+  "chain_Arithmetic n f (Number v) = (n, (Number v))" |
+  "chain_Arithmetic n f (Variable s) = (n, (Variable s))"
+
+(*
 fun map_Arithmetic where
   "map_Arithmetic f (Add x y) = (Add (f x) (f y))" |
   "map_Arithmetic f (Sub x y) = (Sub (f x) (f y))" |
   "map_Arithmetic f (UMinus x) = (UMinus (f x))" |
   "map_Arithmetic f (Number v) = (Number v)" |
-  "map_Arithmetic f (Variable s) = (Variable s)"
+  "map_Arithmetic f (Variable s) = (Variable s)"*)
 
 instance proof qed
 
@@ -323,6 +359,8 @@ lemma fresh [code]:
   sorry (* This will not be required when termination is proved *)
 
 
+value "(fresh ''a'' o fst o fresh ''a'' o fst o fresh ''a'') ({|''e''|}, Map.empty)"
+
 datatype 'a MATCH =
   match VarName "'a" |
   equality VarName VarName (infixl "==" 52) |
@@ -377,44 +415,81 @@ fun convert :: "('a::len, 'b) fixed_list \<Rightarrow> ('a, 'b) fixed_list" wher
   "convert (Abs_fixed_list [x, y]) = (Abs_fixed_list [y, x])"
 *)
 
-(*
-fun chain :: "'b \<Rightarrow> ('a \<Rightarrow> 'b \<Rightarrow> ('b \<times> 'a)) \<Rightarrow> 'a list \<Rightarrow> ('b \<times> 'a list)" where
-  "chain a f [] = (a, [])" |
-  "chain a f (x # xs) =
-    (let (a', x') = f x a in
-    (let (a'', xs') = (chain a' f xs) in (a'', x' # xs')))"
 
+(*
 fun replace_subexprs :: "Scope \<Rightarrow> ('a::Rewritable) list \<Rightarrow> Scope \<times> ('a::Rewritable) list" where
   "replace_subexprs s = chain s (\<lambda>e s'. (let (s'', v) = (fresh ''a'' s') in (s'', var v)))"
 *)
 
-fun replace_subexprs :: "Scope \<Rightarrow> ('a::Rewritable) \<Rightarrow> ('a::Rewritable)" where
-  "replace_subexprs s = map (\<lambda>_. var (snd (fresh ''a'' s)))"
+value "chain"
 
-abbreviation generate_subexprs where
-  "generate_subexprs f e s \<equiv> (List.map (\<lambda>e'. snd (f e' (snd (fresh ''a'' s)) s)) (subexprs e))"
+fun nth_fresh :: "VarName \<Rightarrow> Scope \<Rightarrow> nat \<Rightarrow> (Scope \<times> VarName)" where
+  "nth_fresh v s 0 = fresh v s" |
+  "nth_fresh v s (Suc n) = fresh v (fst (nth_fresh v s n))"
+
+(*lemma nth_fresh [code]:
+  "nth_fresh v s n = fresh v (fst (nth_fresh v s (n-1)))"
+  sorry*)
+
+(*termination nth_fresh sorry*)
+
+fun replace_subexprs :: "Scope \<Rightarrow> ('a::Rewritable) \<Rightarrow> (Scope \<times> ('a::Rewritable))" where
+  "replace_subexprs s e =
+    (let (n, e') = chain 0 (\<lambda>e n. (plus n 1, var (snd (nth_fresh ''a'' s n)))) e
+      in (fst (nth_fresh ''a'' s n), e'))"
+
+fun expression_vars :: "Scope \<Rightarrow> ('a::Rewritable) \<Rightarrow> (Scope \<times> string list)" where
+  "expression_vars s e = 
+    (chain_list s (\<lambda>e' s'. (fresh ''a'' s')) (subexprs e))"
+
+value "expression_vars ({|''e''|}, Map.empty) (Sub (Add (Variable ''x'') (Variable ''y'')) (Variable ''y''))"
+
+fun replace_subexpr :: "string list \<Rightarrow> ('a::Rewritable) \<Rightarrow> ('a::Rewritable)" where
+  "replace_subexpr vs e = snd (chain 0 (\<lambda>e n. (plus n 1, var (vs!n))) e)"
+
+(*fun replace_subexprs :: "Scope \<Rightarrow> ('a::Rewritable) \<Rightarrow> ('a::Rewritable)" where
+  "replace_subexprs s = map (\<lambda>_. var (snd (fresh ''a'' s)))"*)
+
+type_synonym 'a MatchGenerator = "'a \<Rightarrow> VarName \<Rightarrow> Scope \<Rightarrow> Scope \<times> 'a MATCH"
+
+abbreviation generate_subexprs :: "'a::Rewritable MatchGenerator \<Rightarrow> 'a \<Rightarrow> Scope \<Rightarrow> string list \<Rightarrow> ((Scope \<times> nat) \<times> 'a MATCH list)" where
+  "generate_subexprs f e s vs \<equiv> 
+     (chain_list (s, 0) (\<lambda>e' (s', n). 
+        (let (scope, m) = (f e' (vs!n) s') in ((scope, plus n 1), m))) (subexprs e))"
 
 fun join :: "('a MATCH) list \<Rightarrow> 'a MATCH" where
   "join [] = noop" |
   "join [x] = x" |
   "join (x # xs) = (x && join xs)"
 
-function match_pattern :: "('a::Rewritable) \<Rightarrow> VarName \<Rightarrow> Scope \<Rightarrow> Scope \<times> 'a MATCH" where
+function match_pattern :: "'a::Rewritable MatchGenerator" where
   "match_pattern e v =
     (case varof e of
       Some vn \<Rightarrow> (\<lambda>s. case (snd s) vn of 
         None \<Rightarrow> (register_name s vn v, noop) |
         Some v' \<Rightarrow> (register_name s vn v, equality v' v)) |
-      None \<Rightarrow> (\<lambda>s. (s, (match v (replace_subexprs s e) 
-                        && join (generate_subexprs match_pattern e s)))))"
+      None \<Rightarrow> (\<lambda>s.
+        (let (s', vs) = expression_vars s e in
+        (let e' = (replace_subexpr vs e) in
+        (let ((s'', _), e'') = (generate_subexprs match_pattern e s' vs) in
+                        (s'', (match v e' && join e'')))))))"
   using old.prod.exhaust apply blast
   by fastforce
 
 termination match_pattern sorry
 
-value "match_pattern 
+value "match_pattern
 (Sub (Add (Variable ''x'') (Variable ''y'')) (Variable ''y''))
 ''e'' ({|''e''|}, Map.empty)"
+
+value "match_pattern
+(Sub 
+    (Add 
+        (Sub (Variable ''x'') (Variable ''x''))
+        (Sub (Variable ''y'') (Variable ''x'')))
+    (Variable ''y''))
+''e'' ({|''e''|}, Map.empty)"
+
 
 (*"match v \<langle> ((\<lambda>y. e) \<langle> fresh ''a'') |> descend match_pattern e ''a'')"
 
