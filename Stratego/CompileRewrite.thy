@@ -97,36 +97,6 @@ value "match_pattern
     (Variable ''y''))
 ''e'' ({|''e''|}, Map.empty)"
 
-
-(*"match v \<langle> ((\<lambda>y. e) \<langle> fresh ''a'') |> descend match_pattern e ''a'')"
-
-fun match_pattern :: "('a::Rewritable) \<Rightarrow> VarName \<Rightarrow> Scope \<Rightarrow> Scope \<times> 'a MATCH" where
-  "match_pattern (UnaryExpr op e) v =
-    match v \<langle>
-      (UnaryPattern op \<langle> fresh ''a'')
-    |> descend match_pattern e ''a''" |
-  "match_pattern (BinaryExpr op e1 e2) v =
-    match v \<langle> 
-      (BinaryPattern op \<langle> fresh ''a'' \<rangle> fresh ''b'')
-    |> descend match_pattern e1 ''a''
-    |> descend match_pattern e2 ''b''" |
-  "match_pattern (ConditionalExpr b e1 e2) v =
-    match v \<langle>
-      (ConditionalPattern \<langle> fresh ''a'' \<rangle> fresh ''b'' \<rangle> fresh ''c'')
-    |> descend match_pattern b ''a''
-    |> descend match_pattern e1 ''b''
-    |> descend match_pattern e2 ''c''" |
-  \<comment> \<open>If a variable is reused, generate an equality check, else, generate a noop.\<close>
-  "match_pattern (VariableExpr vn st) v = 
-    (\<lambda>s. case (snd s) vn of 
-      None \<Rightarrow> (register_name s vn v, noop) |
-      Some v' \<Rightarrow> (register_name s vn v, equality v' v))" |
-  "match_pattern (ConstantExpr c) v =
-    (\<lambda>s. (s, match v (ConstantPattern c)))" |
-  "match_pattern (ConstantVar c) v =
-    (\<lambda>s. (s, match v (ConstantVarPattern c)))" |
-  "match_pattern _ v = (\<lambda>s. (s, noop))"*)
-
 definition gen_pattern :: "('a::Rewritable) \<Rightarrow> VarName \<Rightarrow> 'a MATCH" where
   "gen_pattern p v = snd (match_pattern p v ({|v|}, Map.empty))"
 
@@ -136,12 +106,20 @@ type_synonym 'a Subst = "VarName \<rightharpoonup> 'a"
 fun equal_ignore_vars :: "'a::Rewritable \<Rightarrow> 'a \<Rightarrow> bool" where
   "equal_ignore_vars e1 e2 = ((map_tree (\<lambda>_. var ''a'') e1) = (map_tree (\<lambda>_. var ''a'') e2))"
 
+fun unify :: "string list \<Rightarrow> 'a list \<Rightarrow> 'a Subst \<Rightarrow> 'a Subst option" where
+  "unify [] [] s = Some s" |
+  "unify (v # vs) (e # es) s = 
+    (if s v = Some e then unify vs es s
+     else (if v \<in> dom s \<and> s v \<noteq> Some e then None
+           else unify vs es (s(v \<mapsto> e))))" |
+  "unify _ _ s = None"
+
 fun eval_match :: "('a::Rewritable) MATCH \<Rightarrow> 'a Subst \<Rightarrow> ('a Subst) option" where
   "eval_match (match v e) s =
     (case s v of
       Some e' \<Rightarrow>
         (if equal_ignore_vars e e' then
-          Some (s((List.map (the o varof) (subexprs e)) [\<mapsto>] subexprs e')) else None) |
+          (unify (pattern_variables e) (subexprs e') s) else None) |
       None \<Rightarrow> None)" |
   "eval_match (equality v1 v2) s =
     (if v1 \<in> dom s \<and> v2 \<in> dom s \<and> s v1 = s v2 then Some s else None)" |
@@ -152,64 +130,306 @@ fun eval_match :: "('a::Rewritable) MATCH \<Rightarrow> 'a Subst \<Rightarrow> (
   "eval_match noop s = Some s" |
   "eval_match (condition sc) s = None"
 
-(*
-fun eval_match :: "'a MATCH \<Rightarrow> 'a Subst \<Rightarrow> ('a Subst) option" where
-  "eval_match (match v (UnaryPattern op1 x)) s =
-    (case s v of 
-      Some (UnaryExpr op2 xe) \<Rightarrow>
-        (if op1 = op2 then
-          (if x \<in> dom s then
-            (if s x = Some xe then Some s else None)
-          else Some (s(x\<mapsto>xe)))
-         else None) |
-      Some _ \<Rightarrow> None |
-      None \<Rightarrow> None)" |
-  "eval_match (match v (BinaryPattern op1 x y)) s =
-    (case s v of
-      Some (BinaryExpr op2 xe ye) \<Rightarrow>
-        (if op1 = op2 
-          then 
-          (if x \<in> dom s \<and> s x \<noteq> Some xe then None else 
-          (if y \<in> dom s \<and> s y \<noteq> Some ye then None else 
-          (if x \<in> dom s \<and> y \<in> dom s then Some s else
-          (if x \<in> dom s then Some (s(y\<mapsto>ye)) else
-          (if y \<in> dom s then Some (s(x\<mapsto>xe)) else
-          Some (s(x\<mapsto>xe, y\<mapsto>ye)))))))
-          else None) |
-      Some _ \<Rightarrow> None |
-      None \<Rightarrow> None)" |
-  "eval_match (match v (ConditionalPattern c tb fb)) s =
-    (case s v of
-      Some (ConditionalExpr ce te fe) \<Rightarrow>
-        (if c \<in> dom s \<and> s c \<noteq> Some ce then None else 
-          (if tb \<in> dom s \<and> s tb \<noteq> Some te then None else
-          (if fb \<in> dom s \<and> s fb \<noteq> Some fe then None else 
-          (if c \<in> dom s \<and> tb \<in> dom s \<and> fb \<in> dom s then Some s else
-          (if c \<in> dom s \<and> tb \<in> dom s then Some (s(fb\<mapsto>fe)) else
-          (if c \<in> dom s \<and> fb \<in> dom s then Some (s(tb\<mapsto>te)) else
-          (if tb \<in> dom s \<and> fb \<in> dom s then Some (s(c\<mapsto>ce)) else
-          (if c \<in> dom s then Some (s(tb\<mapsto>te, fb\<mapsto>fe)) else
-          (if tb \<in> dom s then Some (s(c\<mapsto>ce, fb\<mapsto>fe)) else
-          (if fb \<in> dom s then Some (s(c\<mapsto>ce, tb\<mapsto>te)) else
-          Some (s(c\<mapsto>ce, tb\<mapsto>te, fb\<mapsto>fe)))))))))))) |
-      Some _ \<Rightarrow> None |
-      None \<Rightarrow> None)" |
-  "eval_match (match v (ConstantPattern c1)) s =
-    (case s v of 
-      Some (ConstantExpr c2) \<Rightarrow>
-        (if c1 = c2 then Some s else None) |
-      Some _ \<Rightarrow> None |
-      None \<Rightarrow> None)" |
-  "eval_match (equality v1 v2) s =
-    (if v1 \<in> dom s \<and> v2 \<in> dom s \<and> s v1 = s v2 then Some s else None)" |
-  "eval_match (andthen m1 m2) s =
-      (case eval_match m1 s of 
-        None \<Rightarrow> None |
-        Some s' \<Rightarrow> eval_match m2 s')" |
-  "eval_match noop s = Some s" |
-  "eval_match (condition sc) s = (if eval_condition sc then Some s else None)" |
-  "eval_match _ s = None"
-*)
+lemma noop_semantics_rhs:
+  "eval_match (lhs && noop) s = eval_match lhs s"
+  by (simp add: option.case_eq_if)
+
+lemma noop_semantics_lhs:
+  "eval_match (noop && rhs) s = eval_match rhs s"
+  by simp
+
+lemma seq_det_lhs:
+  assumes "\<forall>s. eval_match lhs1 s = eval_match lhs2 s"
+  shows "eval_match (lhs1 && rhs) s = eval_match (lhs2 && rhs) s"
+  using assms by simp
+
+lemma seq_det_rhs:
+  assumes "\<forall>s. eval_match rhs1 s = eval_match rhs2 s"
+  shows "eval_match (lhs && rhs1) s = eval_match (lhs && rhs2) s"
+proof (cases "eval_match lhs s")
+  case None
+  then show ?thesis by simp
+next
+  case (Some a)
+  then obtain s' where s': "eval_match lhs s = Some s'"
+    by simp
+  then have lhs: "eval_match (lhs && rhs1) s = eval_match rhs1 s'"
+    by simp
+  from s' have rhs: "eval_match (lhs && rhs2) s = eval_match rhs2 s'"
+    by simp
+  from lhs rhs show ?thesis using assms
+    by simp
+qed
+
+fun def_vars :: "'a::Rewritable MATCH \<Rightarrow> string set" where
+  "def_vars (match v p) = set (pattern_variables p)" |
+  "def_vars (equality e1 e2) = {e1, e2}" |
+  "def_vars (m1 && m2) = def_vars m1 \<union> def_vars m2" |
+  "def_vars (condition c) = {}" |
+  "def_vars noop = {}"
+
+fun use_vars :: "'a::Rewritable MATCH \<Rightarrow> string set" where
+  "use_vars (match v p) = {v}" |
+  "use_vars (equality e1 e2) = {}" |
+  "use_vars (m1 && m2) = use_vars m1 \<union> (use_vars m2 - def_vars m1)" |
+  "use_vars (condition c) = {}" |
+  "use_vars noop = {}"
+
+fun valid_match :: "'a::Rewritable MATCH \<Rightarrow> bool" where
+  "valid_match (match v e) = (v \<notin> set (pattern_variables e) \<and> distinct (pattern_variables e))" |
+  "valid_match (m1 && m2) = (valid_match m1 \<and> valid_match m2 \<and> use_vars m1 \<inter> def_vars m2 = {})" |
+  "valid_match _ = True"
+
+lemma unify_effect:
+  assumes "unify vs es s = Some a"
+  shows "a = s(vs [\<mapsto>] es)"
+  using assms proof (induction vs es s rule: unify.induct)
+  case (1 s)
+  then show ?case by simp
+next
+  case (2 v vs e es s)
+  then show ?case proof (cases "s v = Some e")
+    case True
+    then show ?thesis
+      by (metis "2.IH"(1) "2.prems" map_upd_triv map_upds_Cons unify.simps(2))
+  next
+    case False
+    then show ?thesis
+      by (metis "2.IH"(2) "2.prems" map_upds_Cons option.distinct(1) unify.simps(2))
+  qed
+next
+  case ("3_1" v va s)
+  then show ?case by simp
+next
+  case ("3_2" v va s)
+  then show ?case by simp
+qed
+
+lemma match_def_affect:
+  assumes "eval_match m u = Some a"
+  shows "\<forall>v. v \<notin> def_vars m \<longrightarrow> u v = a v"
+using assms proof (induction m u arbitrary: a rule: eval_match.induct)
+  case (1 v e s)
+  then show ?case unfolding def_vars.simps pattern_variables.simps eval_match.simps
+    by (smt (verit, best) map_upds_apply_nontin option.case_eq_if option.distinct(1) unify_effect)
+next
+  case (2 v1 v2 s)
+  then show ?case
+    by (metis eval_match.simps(2) option.discI option.inject)
+next
+  case (3 m1 m2 s)
+  then show ?case
+    by (metis (mono_tags, lifting) UnCI def_vars.simps(3) eval_match.simps(3) option.case_eq_if option.collapse)
+next
+  case (4 s)
+  then show ?case
+    by simp
+next
+  case (5 sc s)
+  then show ?case
+    by simp
+qed
+
+lemma use_def:
+  assumes "valid_match m"
+  shows "def_vars m \<inter> use_vars m = {}"
+  using assms apply (induction m)
+  apply simp+
+  apply blast
+  by simp+
+
+lemma match_use_affect:
+  assumes "eval_match m u = Some a"
+  assumes "valid_match m"
+  shows "\<forall>v \<in> use_vars m. u v = a v"
+  using assms apply (induction m u arbitrary: u a rule: eval_match.induct)
+  by (meson disjoint_iff_not_equal match_def_affect use_def)+
+
+
+lemma unify_subset:
+  assumes "unify vs es s = Some a"
+  shows "s \<subseteq>\<^sub>m a"
+using assms proof (induction vs es s rule: unify.induct)
+  case (1 s)
+  then show ?case by simp
+next
+  case (2 v vs e es s)
+  then show ?case proof (cases "s v = Some e")
+    case True
+    then show ?thesis
+      by (metis "2.IH"(1) "2.prems" unify.simps(2))
+  next
+    case False
+    then show ?thesis
+      by (metis "2.IH"(2) "2.prems" fun_upd_None_if_notin_dom map_le_imp_upd_le map_le_refl map_le_trans option.discI unify.simps(2))
+  qed
+next
+  case ("3_1" v va s)
+  then show ?case by simp
+next
+  case ("3_2" v va s)
+  then show ?case by simp
+qed
+
+lemma eval_match_subset:
+  assumes "eval_match m u = Some a"
+  assumes "valid_match m"
+  shows "u \<subseteq>\<^sub>m a"
+  using assms proof (induction m arbitrary: u a)
+  case (match x1 x2)
+  then show ?case using match apply simp
+    using unify.simps(1) unify_subset
+    by (smt (verit, del_insts) option.case_eq_if option.distinct(1))
+next
+  case (equality x1 x2)
+  then show ?case
+    by (metis eval_match.simps(2) map_le_refl option.distinct(1) option.sel)
+next
+  case (andthen m1 m2)
+  then show ?case
+    using valid_match.simps(2)
+    by (metis eval_match.simps(3) map_le_trans option.case_eq_if option.collapse)
+next
+  case (condition x)
+  then show ?case
+    using match_def_affect by fastforce
+next
+  case noop
+  then show ?case by simp
+qed
+
+lemma unify_idempotence:
+  assumes "unify vs es a' = Some a'"
+  assumes "a' \<subseteq>\<^sub>m a"
+  shows "unify vs es a = Some a"
+  using assms proof (induction vs es a' rule: unify.induct)
+  case (1 s)
+  then show ?case by simp
+next
+  case (2 v vs e es s)
+  then show ?case proof (cases "s v = Some e")
+    case True
+    then show ?thesis
+      by (metis "2.IH"(1) "2.prems"(1) "2.prems"(2) domI map_le_def unify.simps(2))
+  next
+    case False
+    then show ?thesis
+      by (metis "2.prems"(1) domIff fun_upd_idem_iff map_le_antisym map_le_imp_upd_le option.discI unify.simps(2) unify_subset)
+  qed
+next
+  case ("3_1" v va s)
+  then show ?case by simp
+next
+  case ("3_2" v va s)
+  then show ?case by simp
+qed
+
+lemma lift_idempotence:
+  assumes "eval_match m a' = Some a'"
+  assumes "a' \<subseteq>\<^sub>m a"
+  assumes "valid_match m"
+  shows "eval_match m a = Some a"
+  using assms proof (induction m arbitrary: a a')
+  case (match x1 x2)
+  then show ?case unfolding eval_match.simps using unify_idempotence
+    by (smt (verit, ccfv_SIG) domIff map_le_def option.case_eq_if option.distinct(1))
+next
+  case (equality x1 x2)
+  from equality show ?case apply simp
+    by (metis domIff map_le_def option.distinct(1))
+next
+  case (andthen m1 m2)
+  obtain a'' where m1eval: "eval_match m1 a' = Some a''"
+    using andthen.prems(1) by fastforce
+  then have m2eval: "eval_match m2 a'' = Some a'"
+    using andthen.prems(1) by auto
+  then have "a'' \<subseteq>\<^sub>m a'"
+    using andthen.prems(3) eval_match_subset valid_match.simps(2) by blast
+  then show ?case
+    by (metis andthen.IH(1) andthen.IH(2) andthen.prems(2) andthen.prems(3) eval_match.simps(3) eval_match_subset m1eval m2eval map_le_antisym option.simps(5) valid_match.simps(2))
+next
+  case (condition x)
+  then show ?case
+    by (metis eval_match.simps(5) option.distinct(1))
+next
+  case noop
+  then show ?case by simp
+qed
+
+lemma idempotent_unify2:
+  assumes "unify vs es u = Some a"
+  shows "unify vs es a = Some a"
+using assms proof (induction vs es u rule: unify.induct)
+  case (1 s)
+  then show ?case by simp
+next
+  case (2 v vs e es s)
+  then show ?case proof (cases "s v = Some e")
+    case True
+    then show ?thesis
+      by (metis "2.IH"(1) "2.prems" domI map_le_def unify.simps(2) unify_subset)
+  next
+    case False
+    then show ?thesis
+      by (metis (no_types, lifting) "2.IH"(2) "2.prems" domI fun_upd_same map_le_def option.distinct(1) unify.simps(2) unify_subset)
+  qed
+next
+  case ("3_1" v va s)
+  then show ?case by simp
+next
+  case ("3_2" v va s)
+  then show ?case by simp
+qed
+
+lemma idempotent_match:
+  assumes "eval_match m u = Some a"
+  assumes "valid_match m"
+  shows "eval_match m a = Some a"
+  using assms 
+proof (induction m arbitrary: u a)
+  case (match x1 x2)
+  then show ?case using idempotent_unify2
+    by (smt (verit) def_vars.simps(1) eval_match.simps(1) match_def_affect option.case_eq_if valid_match.simps(1))
+next
+  case (equality x1 x2)
+  then show ?case
+    by (metis (no_types, lifting) eval_match.simps(2) eval_match_subset lift_idempotence)
+next
+  case (andthen m1 m2)
+  obtain a' where m1eval: "eval_match m1 u = Some a'"
+    using andthen.prems(1) by fastforce
+  have m1idem: "eval_match m1 a' = Some a'"
+    using andthen.IH(1) andthen.prems(2) m1eval valid_match.simps(2) by blast
+  have validm1: "valid_match m1"
+    using andthen.prems(2) by auto
+  have m2eval: "eval_match m2 a' = Some a"
+    using andthen.prems(1) m1eval by auto
+  have validm2: "valid_match m2"
+    using andthen.prems(2) by auto
+  have m2idem: "eval_match m2 a = Some a"
+    using m2eval validm2
+    using andthen.IH(2) by blast
+  have "a' \<subseteq>\<^sub>m a"
+    using eval_match_subset m2eval validm2 by blast
+  then have "eval_match m1 a = Some a"
+    using m1idem lift_idempotence validm1 by blast
+  then show ?case
+    by (simp add: m2idem)
+next
+  case (condition x)
+  then show ?case
+    by (metis eval_match.simps(5))
+next
+  case noop
+  then show ?case
+    by simp
+qed     
+
+lemma match_eq:
+  assumes "valid_match m"
+  shows "eval_match (m && m) u = eval_match m u"
+  using assms
+  by (simp add: idempotent_match option.case_eq_if)
 
 
 subsection \<open>Combining Rules\<close>
@@ -221,6 +441,13 @@ datatype 'a Rules =
   seq "'a Rules" "'a Rules" (infixl "\<then>" 49) |
   choice "('a Rules) list"
 
+fun valid_rules :: "'a::Rewritable Rules \<Rightarrow> bool" where
+  "valid_rules (m ? r) = (valid_match m \<and> valid_rules r)" |
+  "valid_rules (r1 else r2) = (valid_rules r1 \<and> valid_rules r2)" |
+  "valid_rules (r1 \<then> r2) = (valid_rules r1 \<and> valid_rules r2)" |
+  "valid_rules (choice rules) = (\<forall>r \<in> set rules. valid_rules r)" |
+  "valid_rules _ = True"
+
 function ground_expr :: "'a::Rewritable \<Rightarrow> Scope \<Rightarrow> 'a" where
   "ground_expr e (s, m) =
     (case varof e of
@@ -230,40 +457,8 @@ function ground_expr :: "'a::Rewritable \<Rightarrow> Scope \<Rightarrow> 'a" wh
   apply auto[1]
   by fastforce
 
+(* Requires a proof that all the arguments to the map tree anonymous function are less than the original input *)
 termination ground_expr sorry
-(*
-    UnaryExpr op (ground_expr e s)" |
-  "ground_expr (BinaryExpr op e1 e2) s = 
-    BinaryExpr op (ground_expr e1 s) (ground_expr e2 s)" |
-  "ground_expr (ConditionalExpr b e1 e2) s = 
-    ConditionalExpr (ground_expr b s) (ground_expr e1 s) (ground_expr e2 s)" |
-  "ground_expr (VariableExpr vn st) (s, m) = 
-    (case m vn of None \<Rightarrow> VariableExpr vn st 
-                | Some v' \<Rightarrow> VariableExpr v' st)" |
-  "ground_expr e s = e"*)
-
-(*fun ground_result :: "Result \<Rightarrow> Scope \<Rightarrow> Result" where
-  "ground_result (ExpressionResult e) s = ExpressionResult (ground_expr e s)" |
-  "ground_result (forZero e) s = forZero (ground_expr e s)"
-
-fun ground_condition :: "SideCondition \<Rightarrow> Scope \<Rightarrow> SideCondition" where
-  "ground_condition (IsConstantExpr p) s = (IsConstantExpr (ground_expr p s))" |
-  "ground_condition (IsIntegerStamp p) s = (IsIntegerStamp (ground_expr p s))" |
-  "ground_condition (IsBoolStamp p) s = (IsBoolStamp (ground_expr p s))" |
-  "ground_condition (WellFormed st) s = (WellFormed st)" |
-  "ground_condition (IsStamp e st) s = (IsStamp (ground_expr e s) st)" |
-  "ground_condition (IsConstantValue e s' v) s = (IsConstantValue (ground_expr e s) (ground_expr s' s) v)" |
-  "ground_condition (AlwaysDistinct e1 e2) s = (AlwaysDistinct (ground_expr e1 s) (ground_expr e2 s))" |
-  "ground_condition (NeverDistinct e1 e2) s = (NeverDistinct (ground_expr e1 s) (ground_expr e2 s))" |  
-  "ground_condition (StampUnder e1 e2) s = (StampUnder (ground_expr e1 s) (ground_expr e2 s))" |
-  "ground_condition (UpMaskEquals e m) s = (UpMaskEquals (ground_expr e s) m)" |
-  "ground_condition (DownMaskEquals e m) s = (DownMaskEquals (ground_expr e s) m)" |
-  "ground_condition (UpMaskCancels e1 e2) s = (UpMaskCancels (ground_expr e1 s) (ground_expr e2 s))" |
-  "ground_condition (PowerOf2 e) s = (PowerOf2 (ground_expr e s))" |
-  "ground_condition (IsBool e) s = (IsBool (ground_expr e s))" |
-  "ground_condition (And sc1 sc2) s = And (ground_condition sc1 s) (ground_condition sc2 s)" |
-  "ground_condition (Not sc) s = Not (ground_condition sc s)" |
-  "ground_condition (Empty) s = Empty"*)
 
 fun generate :: "'a::Rewritable \<Rightarrow> 'a \<Rightarrow> 'a \<Rightarrow> 'a Rules" where
   "generate p r sc = 
@@ -271,12 +466,10 @@ fun generate :: "'a::Rewritable \<Rightarrow> 'a \<Rightarrow> 'a \<Rightarrow> 
      in ((m && condition (ground_expr sc s)) ? (base (ground_expr r s))))"
 
 subsubsection \<open>Rules Semantics\<close>
-definition start_unification where
-  "start_unification e = ((\<lambda>x. None)(STR ''e'' := Some e))"
 
 text \<open>Replace any variable expressions with value in a substitution.\<close>
 fun evaluated_terms where
-  "evaluated_terms f es s = (List.map (\<lambda>e. f e s) es)"
+  "evaluated_terms f es s = map (\<lambda>e. f e s) es"
 
 fun has_none :: "('a option) list \<Rightarrow> bool" where
   "has_none [] = False" |
@@ -293,33 +486,6 @@ function eval_expr :: "'a::Rewritable \<Rightarrow> 'a Subst \<Rightarrow> 'a op
   by fastforce+
 
 termination eval_expr sorry
-
-(*
-  "eval_expr (UnaryExpr op e) u = (case (eval_expr e u)
-    of None \<Rightarrow> None | Some e' \<Rightarrow> Some (UnaryExpr op e'))" |
-  "eval_expr (BinaryExpr op e1 e2) u = (case (eval_expr e1 u)
-    of None \<Rightarrow> None | Some e1' \<Rightarrow> 
-    (case (eval_expr e2 u)
-      of None \<Rightarrow> None | Some e2' \<Rightarrow> Some (BinaryExpr op e1' e2')))" |
-  "eval_expr (ConditionalExpr e1 e2 e3) u = (case (eval_expr e1 u)
-    of None \<Rightarrow> None | Some e1' \<Rightarrow>
-    (case (eval_expr e2 u)
-      of None \<Rightarrow> None | Some e2' \<Rightarrow>
-        (case (eval_expr e2 u)
-          of None \<Rightarrow> None | Some e3' \<Rightarrow> Some (ConditionalExpr e1' e2' e3'))))" |
-  "eval_expr e u = Some e"
-
-
-fun eval_result :: "Result \<Rightarrow> Subst \<Rightarrow> IRExpr option" where
-  "eval_result (ExpressionResult e) s = (eval_expr e s)" |
-  "eval_result (forZero e) s = (case eval_expr e s of
-    None \<Rightarrow> None |
-    Some r \<Rightarrow> Some (ConstantExpr (IntVal (stp_bits (stamp_expr r)) 0)))"
-
-lemma remove1_size:
-  "x \<in> set xs \<Longrightarrow> size (remove1 x xs) < size xs"
-  by (metis diff_less length_pos_if_in_set length_remove1 zero_less_one)
-*)
 
 inductive eval_rules :: "('a::Rewritable) Rules \<Rightarrow> 'a Subst \<Rightarrow> 'a option \<Rightarrow> bool" where
   \<comment> \<open>Evaluate the result\<close>
@@ -356,15 +522,201 @@ inductive eval_rules :: "('a::Rewritable) Rules \<Rightarrow> 'a Subst \<Rightar
     eval_rules r2 u r\<rbrakk>
    \<Longrightarrow> eval_rules (r1 \<then> r2) u r"
 
+inductive_cases baseE: "eval_rules (base e') u e"
+inductive_cases condE: "eval_rules (cond m r) u e"
+inductive_cases elseE: "eval_rules (r1 else r2) u e"
+inductive_cases choiceE: "eval_rules (choice r) u e"
+inductive_cases seqE: "eval_rules (r1 \<then> r2) u e"
 
+code_pred [show_modes] eval_rules .
 
+lemma choice_join:
+  assumes "eval_rules (a) u e = eval_rules (f a) u e"
+  assumes "eval_rules (choice rules) u e = eval_rules (choice (map f rules)) u e"
+  shows "eval_rules (choice (a # rules)) u e = eval_rules (choice (map f (a # rules))) u e"
+  using assms
+  by (smt (verit, ccfv_threshold) choiceE eval_rules.intros(6) eval_rules.intros(7) list.map_disc_iff list.set_intros(1) list.set_intros(2) list.simps(9) option.distinct(1) set_ConsD)
 
+lemma chain_equiv:
+  "eval_rules (m1 ? (m2 ? r)) u e = eval_rules ((m1 && m2) ? r) u e"
+  using condE apply auto[1]
+   apply (smt (verit, best) condE eval_match.simps(3) eval_rules.intros(2) eval_rules.intros(3) option.simps(4) option.simps(5))
+  by (metis (no_types, lifting) condE eval_match.simps(3) eval_rules.intros(2) eval_rules.intros(3) is_none_code(2) is_none_simps(1) option.case_eq_if option.collapse)
 
+lemma eval_choice: "{e. eval_rules (choice rules) u e \<and> e \<noteq> None} = {e | e r . r \<in> set rules \<and> eval_rules r u e \<and> e \<noteq> None}"
+  using choiceE eval_rules.intros(6) by fastforce
 
+lemma eval_choice_none: "eval_rules (choice rules) u None = (\<forall> r \<in> set rules . eval_rules r u None)"
+  by (metis choiceE eval_rules.intros(7) length_pos_if_in_set list.size(3) nless_le option.distinct(1))
 
+inductive_cases evalRulesE: "eval_rules r u e"
 
+lemma eval_always_result:
+  "\<exists> e. eval_rules r u e"
+  apply (induction r arbitrary: u)
+  using eval_rules.intros(1) apply auto[1]
+  using eval_rules.intros(2,3) apply (metis option.exhaust)
+  using eval_rules.intros(4,5) apply (metis split_option_ex) 
+  using eval_rules.intros(9,10) apply (metis split_option_ex) 
+  using eval_rules.intros(6,7) by (metis split_option_ex) 
 
+lemma unordered_choice:
+  assumes "set rules = set rules'"
+  shows "\<forall>e. eval_rules (choice rules) u e = eval_rules (choice rules') u e"
+  using assms by (metis choiceE eval_choice_none eval_rules.intros(6))
 
+lemma monotonic_cond:
+  assumes "\<forall>e u. eval_rules r u e = eval_rules (f r) u e"
+  shows "\<forall>e u. eval_rules (m ? r) u e = eval_rules (m ? f r) u e"
+  using assms by (metis condE eval_rules.intros(2) eval_rules.intros(3))
+
+lemma monotonic_else:
+  assumes "\<forall>e u. eval_rules r1 u e = eval_rules (f r1) u e"
+  assumes "\<forall>e u. eval_rules r2 u e = eval_rules (f r2) u e"
+  shows "\<forall>e. eval_rules (r1 else r2) u e = eval_rules (f r1 else f r2) u e"
+  using assms
+  by (smt (verit, best) elseE eval_rules.intros(4) eval_rules.intros(5))
+
+lemma monotonic_seq:
+  assumes "\<forall>e u. eval_rules r1 u e = eval_rules (f r1) u e"
+  assumes "\<forall>e u. eval_rules r2 u e = eval_rules (f r2) u e"
+  shows "\<forall>e. eval_rules (r1 \<then> r2) u e = eval_rules (f r1 \<then> f r2) u e"
+  using assms
+  by (smt (verit) eval_rules.simps seqE)
+
+lemma monotonic_choice:
+  assumes "\<forall>r e u. r \<in> set rules \<longrightarrow> eval_rules r u e = eval_rules (f r) u e"
+  shows "\<forall>e. eval_rules (choice rules) u e = eval_rules (choice (map f rules)) u e"
+  using assms apply (induction rules) apply simp
+  by (metis choice_join list.set_intros(1) list.set_intros(2))
+
+lemmas monotonic =
+  monotonic_cond
+  monotonic_else
+  monotonic_choice
+  monotonic_seq
+
+lemma map_None:
+  "(\<forall>r\<in>set rules. eval_rules (m ? r) u None) = eval_rules (choice (map ((?) m) rules)) u None"
+  (is "?lhs = eval_rules ?rhs u None")
+proof -
+  have setequiv: "set (map ((?) m) rules) = {m ? r | r . r\<in>set rules}"
+    by (simp add: Setcompr_eq_image)
+  then show ?thesis
+    using eval_choice_none
+    by fastforce
+qed
+
+lemma setequiv: "set (map ((?) m) rules) = {m ? r | r . r\<in>set rules}"
+  by (simp add: Setcompr_eq_image)
+
+lemma pull_cond_out_rhs:
+  assumes "eval_rules (choice (map ((?) m) rules)) u e" (is "eval_rules ?lhs u e")
+  shows "eval_rules (m ? choice rules) u e" (is "eval_rules ?rhs u e")
+  proof (cases "eval_match m u")
+    case None \<comment> \<open>If m doesn't match then both the lhs and rhs should evaluate to e = None\<close>
+    have lhs: "\<forall>e. eval_rules ?lhs u e \<longrightarrow> e = None"
+      using None eval_rules.intros(3) eval_rules.intros(7)
+      by (smt (verit, del_insts) choiceE condE ex_map_conv option.distinct(1))
+    have rhs: "\<forall>e. eval_rules ?rhs u e \<longrightarrow> e = None"
+      by (metis None condE option.distinct(1))
+    then show ?thesis using lhs rhs
+      using eval_always_result
+      using assms by blast
+  next
+    case match: (Some a) \<comment> \<open>Drop down into evaluation post matching m\<close>
+      have allEval: "\<forall>r \<in> set rules. eval_rules r a e = eval_rules (m ? r) u e"
+        by (metis match condE eval_rules.intros(2) option.distinct(1) option.sel)
+        then show ?thesis
+        proof (cases e)
+          case evalsNone: None
+          have "\<forall>r \<in> set rules. eval_rules r a None"
+            using evalsNone allEval assms map_None by blast
+          then have "\<forall>r \<in> set rules. eval_rules (m ? r) u None"
+            using evalsNone allEval by blast
+          then have "eval_rules ?lhs u None"
+            by (simp add: map_None)
+          then show ?thesis
+            using evalsNone
+            using \<open>\<forall>r\<in>set rules. eval_rules r a None\<close> eval_choice_none eval_rules.intros(2) match by blast
+        next
+          case evalsSome: (Some a')
+            then have "\<exists>r \<in> set rules. eval_rules (m ? r) u (Some a')"
+              using condE assms match
+              using choiceE by fastforce
+            then have "\<exists>r \<in> set rules. eval_rules (m ? r) u e"
+              by (simp add: evalsSome)
+            then have "eval_rules ?rhs u e"
+              using allEval eval_rules.intros(2) eval_rules.intros(6) evalsSome match by blast
+            then show ?thesis
+              by simp
+          qed
+        qed
+
+lemma pull_cond_out_lhs:
+  assumes "eval_rules (m ? choice rules) u e" (is "eval_rules ?lhs u e")
+  shows "eval_rules (choice (map ((?) m) rules)) u e" (is "eval_rules ?rhs u e")
+  proof (cases "eval_match m u")
+    case None \<comment> \<open>If m doesn't match then both the lhs and rhs should evaluate to e = None\<close>
+    have lhs: "\<forall>e. eval_rules ?lhs u e \<longrightarrow> e = None"
+      using None eval_rules.intros(3) eval_rules.intros(7)
+      by (smt (verit, del_insts) choiceE condE ex_map_conv option.distinct(1))
+    have rhs: "\<forall>e. eval_rules ?rhs u e \<longrightarrow> e = None"
+      by (simp add: lhs pull_cond_out_rhs)
+    then show ?thesis using lhs rhs
+      using eval_always_result
+      using assms by blast
+  next
+    case match: (Some a) \<comment> \<open>Drop down into evaluation post matching m\<close>
+      have allEval: "\<forall>r \<in> set rules. eval_rules r a e = eval_rules (m ? r) u e"
+        by (metis match condE eval_rules.intros(2) option.distinct(1) option.sel)
+        then show ?thesis
+        proof (cases e)
+          case evalsNone: None
+          have "\<forall>r \<in> set rules. eval_rules r a None"
+            by (metis assms condE eval_choice_none evalsNone match option.discI option.inject)
+          then have "\<forall>r \<in> set rules. eval_rules (m ? r) u None"
+            using evalsNone allEval by blast
+          then show ?thesis
+            using evalsNone map_None by blast
+        next
+          case evalsSome: (Some a')
+            then have "\<exists>r \<in> set rules. eval_rules (m ? r) u (Some a')"
+              using condE assms match
+              using choiceE
+              by (metis allEval option.distinct(1) option.sel)
+            then have "\<exists>r \<in> set rules. eval_rules (m ? r) u e"
+              by (simp add: evalsSome)
+            then have "eval_rules ?rhs u e"
+              by (metis eval_rules.intros(6) evalsSome image_eqI image_set)
+            then show ?thesis
+              by simp
+          qed
+        qed
+
+lemma pull_cond_out:
+  "eval_rules (choice (map ((?) m) rules)) u e = eval_rules (m ? choice rules) u e"
+  using pull_cond_out_lhs pull_cond_out_rhs by blast
+
+lemma choice_Single:
+  "eval_rules (choice [r]) u e = eval_rules r u e"
+  apply (cases e)
+  using eval_choice_none apply auto[1]
+  using choiceE eval_rules.intros(6) apply fastforce apply fastforce
+  by (smt (verit, best) choiceE eval_rules.intros(6) list.set_cases list.set_intros(1) neq_Nil_conv set_ConsD)
+
+lemma redundant_conditions:
+  assumes "valid_match m"
+  shows "eval_rules (m ? (m ? r1)) u e = eval_rules (m ? r1) u e" (is "?lhs = ?rhs")
+proof -
+  have "?lhs = eval_rules ((m && m) ? r1) u e"
+    using chain_equiv
+    by blast
+  moreover have "eval_rules ((m && m) ? r1) u e = ?rhs"
+    using match_eq sledgehammer
+    by (smt (verit) Rules.distinct(1) Rules.distinct(11) Rules.distinct(13) Rules.distinct(9) Rules.inject(2) assms eval_rules.simps)
+  ultimately show ?thesis by simp
+qed
 
 subsection \<open>Rule Optimization\<close>
 
@@ -374,6 +726,15 @@ fun elim_noop :: "'a MATCH \<Rightarrow> 'a MATCH" where
   "elim_noop (lhs && rhs) = ((elim_noop lhs) && (elim_noop rhs))" |
   "elim_noop m = m"
 
+lemma sound_optimize_noop:
+  "eval_match m s = eval_match (elim_noop m) s"
+  apply (induction m arbitrary: s rule: elim_noop.induct)
+  using noop_semantics_rhs apply force+
+  using seq_det_rhs
+  apply (metis elim_noop.simps(14) elim_noop.simps(22)) apply force
+  apply (metis elim_noop.simps(16) seq_det_lhs seq_det_rhs)
+  by simp+
+
 fun eliminate_noop :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
   "eliminate_noop (base e) = base e" |
   "eliminate_noop (m ? r) = elim_noop m ? eliminate_noop r" |
@@ -381,6 +742,33 @@ fun eliminate_noop :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
   "eliminate_noop (choice rules) = choice (List.map eliminate_noop rules)" |
   "eliminate_noop (r1 \<then> r2) = (eliminate_noop r1 \<then> eliminate_noop r2)"
 
+lemma eliminate_noop_valid:
+  "eval_rules r u e = eval_rules (eliminate_noop r) u e"
+  apply (induction r arbitrary: u e rule: eliminate_noop.induct)
+  apply simp
+  using eliminate_noop.simps(2) condE sound_optimize_noop
+    apply (smt (verit) eval_rules.simps) 
+  using eliminate_noop.simps(3) elseE
+   apply (smt (verit, del_insts) eval_rules.intros(4) eval_rules.intros(5))
+  unfolding eliminate_noop.simps(4)
+  subgoal premises ind for rules u e 
+    using ind apply (induction rules) apply simp
+    subgoal premises ind' for a rules'
+    proof -
+      have a: "eval_rules (a) u e = eval_rules (eliminate_noop a) u e"
+        using ind' by simp
+      have rules: "eval_rules (choice rules') u e = eval_rules (choice (map eliminate_noop rules')) u e"
+        using ind' by auto
+      have "eval_rules (choice (a # rules')) u e = eval_rules (choice (map eliminate_noop (a # rules'))) u e"
+        using a rules using choice_join
+        by blast
+      then show ?thesis by simp
+    qed
+    done
+  by (smt (verit) Rules.distinct(11) Rules.distinct(15) Rules.distinct(19) Rules.distinct(5) Rules.inject(4) eliminate_noop.simps(5) eval_rules.simps)
+
+
+(*
 fun elim_empty :: "'a MATCH \<Rightarrow> 'a MATCH" where
   "elim_empty (condition Empty) = noop" |
   "elim_empty (m1 && m2) = (elim_empty m1 && elim_empty m2)" |
@@ -391,10 +779,8 @@ fun eliminate_empty :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
   "eliminate_empty (m ? r) = elim_empty m ? eliminate_empty r" |
   "eliminate_empty (r1 else r2) = (eliminate_empty r1 else eliminate_empty r2)" |
   "eliminate_empty (choice rules) = choice (List.map eliminate_empty rules)" |
-  "eliminate_empty (r1 \<then> r2) = (eliminate_empty r1 \<then> eliminate_empty r2)"
+  "eliminate_empty (r1 \<then> r2) = (eliminate_empty r1 \<then> eliminate_empty r2)"*)
 
-
-notation plus (infixl "+" 65)
 fun combined_size :: "'a::Rewritable Rules \<Rightarrow> nat" where
   "combined_size (m ? r) = (2 * size m) + combined_size r" |
   "combined_size (base e) = 0" |
@@ -402,11 +788,10 @@ fun combined_size :: "'a::Rewritable Rules \<Rightarrow> nat" where
   "combined_size (choice (rule # rules)) = 1 + combined_size rule + combined_size (choice rules)" |
   "combined_size (choice []) = 1" |
   "combined_size (r1 \<then> r2) = combined_size r1 + combined_size r2"
-no_notation plus (infixl "+" 65)
 
 function (sequential) lift_match :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
   "lift_match (r1 else r2) = ((lift_match r1) else (lift_match r2))" |
-  "lift_match (choice rules) = choice (List.map lift_match rules)" |
+  "lift_match (choice rules) = choice (map lift_match rules)" |
   "lift_match ((m1 && m2) ? r) = (lift_match (m1 ? (m2 ? r)))" |
   "lift_match (m ? r) = m ? (lift_match r)" |
   "lift_match (base e) = (base e)" |
@@ -416,10 +801,30 @@ termination lift_match
   apply (relation "measures [combined_size, size]") apply auto[1]
   apply auto[1] apply auto[1] apply simp
   subgoal for rules x apply (induction rules) apply simp by fastforce
-  apply simp subgoal for m2 r apply (cases m2) sorry
-        apply simp+
-  apply blast
-  by auto
+  apply simp subgoal for m2 r apply (cases m2)
+    apply auto[1]
+    by simp+
+  by fastforce+
+
+lemma lift_match_valid:
+  "eval_rules r u e = eval_rules (lift_match r) u e"
+  apply (induction r arbitrary: u e rule: lift_match.induct) 
+           apply simp 
+  using lift_match.simps(1) elseE
+  apply (smt (verit, ccfv_threshold) eval_rules.intros(4) eval_rules.intros(5))
+  unfolding lift_match.simps(2)
+  subgoal premises ind for rules u e 
+    using ind apply (induction rules) apply simp
+    using choice_join
+    by (metis list.set_intros(1) list.set_intros(2))
+        apply (simp add: chain_equiv)
+       apply (metis condE eval_rules.intros(2) eval_rules.intros(3) lift_match.simps(4))
+        apply (metis condE eval_rules.intros(2) eval_rules.intros(3) lift_match.simps(5))
+       apply (metis condE eval_rules.intros(2) eval_rules.intros(3) lift_match.simps(6))
+      apply (metis condE eval_rules.intros(2) eval_rules.intros(3) lift_match.simps(7))
+    apply simp
+  by (smt (verit) Rules.distinct(11) Rules.distinct(15) Rules.distinct(19) Rules.distinct(5) Rules.inject(4) eval_rules.simps lift_match.simps(9))
+
 
 fun join_conditions :: "'a::Rewritable Rules \<Rightarrow> 'a Rules option" where
   "join_conditions (m1 ? r1 else m2 ? r2) = 
@@ -429,6 +834,29 @@ fun join_conditions :: "'a::Rewritable Rules \<Rightarrow> 'a Rules option" wher
     (if m1 = m2
       then Some ((m1 ? r1)) else None)" |
   "join_conditions r = None"
+
+lemma join_conditions_shrinks:
+  "join_conditions r = Some r' \<Longrightarrow> (<) (size r') (size r)"
+  apply (induction r rule: join_conditions.induct)
+  using Rules.size(7) Rules.size(8) Suc_le_eq add.left_commute add.right_neutral antisym_conv1 join_conditions.simps(1) le_simps(1) option.distinct(1) option.sel plus_nat.simps(2)
+   add_Suc_right le_add2
+  apply (smt (z3))
+  apply (metis Rules.size(7) add.right_neutral add_Suc_right join_conditions.simps(2) less_add_Suc2 option.distinct(1) option.sel)
+  by simp+
+
+lemma join_conditions_valid:
+  assumes "valid_rules r"
+  shows "join_conditions r = Some r' \<Longrightarrow> eval_rules r u e = eval_rules r' u e"
+  using assms apply (induction r rule: join_conditions.induct)
+  apply (smt (verit, ccfv_threshold) condE elseE eval_rules.intros(2) eval_rules.intros(3) eval_rules.intros(4) eval_rules.intros(5) join_conditions.simps(1) option.distinct(1) option.sel)
+  subgoal premises p for m1 m2 r
+  proof -
+    have v1:"valid_match m1" using p(2) by simp
+    moreover have v2:"valid_match m2" using p(2) by simp
+    ultimately show ?thesis
+      by (metis join_conditions.simps(2) option.discI option.sel p(1) redundant_conditions)
+  qed
+  by simp+
 
 function lift_common :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
   "lift_common (r1 else r2) = (
@@ -448,9 +876,61 @@ function lift_common :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
 termination
   apply (relation "measures [size]") apply auto[1]
     apply simp subgoal for r1 r2 apply (induction r1 rule: join_conditions.induct) by simp+
-   apply auto[1] sorry
+   apply auto[1]
+  using join_conditions_shrinks apply fastforce+
+  by (simp add: le_imp_less_Suc size_list_estimation')+
 
-notation plus (infixl "+" 65)
+lemma lift_common_valid:
+  assumes "valid_rules r"
+  shows "eval_rules r u e = eval_rules (lift_common r) u e"
+  using assms proof (induction r arbitrary: u e rule: lift_common.induct)
+  case (1 r1 r2)
+  then show ?case
+  proof (cases "join_conditions (r1 else r2)")
+    case None
+    then have "(lift_common (r1 else r2)) = (lift_common r1 else lift_common r2)"
+      by simp
+    then show ?thesis using 1
+      by (simp add: None monotonic_else)
+  next
+    case (Some a)
+    then obtain m1 m2 r1' r2' where ex: "(r1 else r2) = (m1 ? r1' else m2 ? r2')"
+      by (smt (z3) Rules.distinct(9) join_conditions.elims option.distinct(1))
+    then have "m1 = m2"
+      by (metis Some join_conditions.simps(1) option.distinct(1))
+    then show ?thesis using 1
+      using ex join_conditions_valid
+      by (metis (no_types, lifting) join_conditions.simps(1) lift_common.simps(1) option.case_eq_if option.distinct(1) option.sel valid_rules.simps(1) valid_rules.simps(2))
+  qed
+next
+  case (2 m r)
+  then show ?case
+  proof (cases "join_conditions (m ? r)")
+    case None
+    then have "(lift_common (m ? r)) = (m ? lift_common r)"
+      by simp
+    then show ?thesis using 2
+      by (simp add: None monotonic_cond)
+  next
+    case (Some a)
+    then obtain m1 m2 r' where ex: "(m ? r) = (m1 ? (m2 ? r'))"
+      by (smt (z3) Rules.distinct(9) join_conditions.elims option.distinct(1))
+    then have "m1 = m2"
+      by (metis Some join_conditions.simps(2) option.distinct(1))
+    then show ?thesis using 2
+      by (simp add: ex join_conditions_valid)
+  qed
+next
+  case (3 rules)
+  then show ?case by (simp add: monotonic_choice)
+next
+  case (4 e)
+  then show ?case by simp
+next
+  case (5 r1 r2)
+  then show ?case by (simp add: monotonic_seq)
+qed
+
 fun common_size :: "'a::Rewritable Rules \<Rightarrow> nat" where
   "common_size (m ? r) = 1 + common_size r" |
   "common_size (base e) = 0" |
@@ -458,7 +938,6 @@ fun common_size :: "'a::Rewritable Rules \<Rightarrow> nat" where
   "common_size (choice (rule # rules)) = 1 + common_size rule + common_size (choice rules)" |
   "common_size (choice []) = 0" |
   "common_size (r1 \<then> r2) = 1 + common_size r1 + common_size r2"
-no_notation plus (infixl "+" 65)
 
 fun find_common :: "'a::Rewritable MATCH \<Rightarrow> 'a Rules \<Rightarrow> 'a Rules option" where
   "find_common m (m' ? r) = (if m = m' then Some r else None)" |
@@ -471,8 +950,135 @@ fun find_uncommon :: "'a::Rewritable MATCH \<Rightarrow> 'a Rules \<Rightarrow> 
 definition join_common :: "'a::Rewritable MATCH \<Rightarrow> 'a Rules list \<Rightarrow> 'a Rules list" where
   "join_common m rules = List.map_filter (find_common m) rules"
 
+lemma find_common_defn:
+  assumes "find_common m x = v"
+  shows "v \<noteq> None \<longleftrightarrow> (\<exists>r. x = (m ? r) \<and> v = Some r)"
+  using assms apply (induction m x rule: find_common.induct) unfolding find_common.simps apply force
+  by simp+
+
+lemma find_common_shrinks:
+  "find_common m x = Some z \<Longrightarrow> common_size z \<le> common_size x"
+  unfolding find_common.simps using find_common_defn
+  by (metis common_size.simps(1) le_add2 option.distinct(1) option.inject)
+
+lemma join_common_shrinks:
+  "common_size (choice (join_common m x)) \<le> common_size (choice x)"
+  unfolding join_common_def
+  apply (induction x)
+   apply (simp add: map_filter_simps(2))
+  subgoal for a x
+    apply (cases "find_common m a") unfolding List.map_filter_def apply simp
+    using find_common_shrinks apply simp
+    using add_le_mono by blast
+  done
+
 definition join_uncommon :: "'a::Rewritable MATCH \<Rightarrow> 'a Rules list \<Rightarrow> 'a Rules list" where
   "join_uncommon m rules = List.map_filter (find_uncommon m) rules"
+
+lemma find_uncommon_preserve:
+  "find_uncommon m r = Some r \<or> find_uncommon m r = None"
+  by (metis find_uncommon.elims)
+
+lemma join_uncommon_subset:
+  "set (join_uncommon m x) \<subseteq> set x"
+  unfolding join_uncommon_def List.map_filter_def using find_uncommon_preserve
+  by (smt (verit, best) comp_def filter_is_subset list.map_ident_strong mem_Collect_eq option.sel set_filter)
+
+lemma size_join_uncommon:
+  "\<forall>r \<in> set (join_uncommon m rules) . find_uncommon m r = Some r' \<longrightarrow> common_size r' \<le> common_size r"
+  unfolding join_uncommon_def map_filter_def
+  apply (induction rule: find_uncommon.induct; auto) 
+  apply (metis common_size.simps(1) dual_order.eq_iff find_uncommon_preserve option.distinct(1) option.sel plus_1_eq_Suc)
+    apply (metis Suc_eq_plus1_left add_Suc_right add_Suc_shift common_size.simps(3) find_uncommon_preserve option.distinct(1) option.inject order_refl)
+  apply (metis Suc_eq_plus1_left add_Suc_right add_Suc_shift common_size.simps(6) find_uncommon_preserve le_refl option.distinct(1) option.inject)
+  by (metis find_uncommon_preserve option.distinct(1) option.inject verit_comp_simplify1(2))
+
+lemma find_uncommon_shrinks:
+  "find_uncommon m x = Some z \<Longrightarrow> common_size z \<le> common_size x"
+  unfolding find_uncommon.simps
+  by (metis dual_order.refl find_uncommon_preserve option.distinct(1) option.inject)
+
+lemma join_uncommon_shrinks:
+  "common_size (choice (join_uncommon m rules))
+       \<le> (common_size (choice rules))"
+  unfolding join_uncommon_def
+  apply (induction rules)
+   apply (simp add: map_filter_simps(2))
+  subgoal for a x
+    apply (cases "find_uncommon m a") unfolding List.map_filter_def apply simp
+    using find_uncommon_shrinks
+    by fastforce
+  done
+
+lemma join_common_empty: "join_common m [] = []"
+  by (simp add: join_common_def map_filter_simps(2))
+lemma join_uncommon_empty: "join_uncommon m [] = []"
+  by (simp add: join_uncommon_def map_filter_simps(2))
+
+lemma find_inverse_lhs:
+  "\<exists>e. find_common m rules = None \<longleftrightarrow> find_uncommon m rules = Some e"
+  by (smt (verit, best) find_common.elims find_uncommon.simps(1) find_uncommon.simps(2) find_uncommon.simps(3) find_uncommon.simps(4) find_uncommon.simps(5))
+
+lemma find_inverse_rhs:
+  "\<exists>e. find_common m rules = Some e \<longleftrightarrow> find_uncommon m rules = None"
+  by (smt (verit, best) find_common.elims find_uncommon.simps(1) find_uncommon.simps(2) find_uncommon.simps(3) find_uncommon.simps(4) find_uncommon.simps(5))
+
+lemma join_common_equal:
+  assumes "find_common m a = None"
+  shows "(map ((?) m) (join_common m rules')) = (map ((?) m) (join_common m (a # rules')))"
+  apply (simp add: join_common_def join_uncommon_def List.map_filter_def)
+  by (simp add: assms)
+
+lemma join_common_plus:
+  assumes "find_common m a = Some a'"
+  shows "(m ? a') # (map ((?) m) (join_common m rules')) = (map ((?) m) (join_common m (a # rules')))"
+  using assms unfolding join_common_def join_uncommon_def List.map_filter_def
+  by simp
+
+
+lemma join_combines:
+  "(set (map (\<lambda>r. m ? r) (join_common m rules)) \<union> set (join_uncommon m rules)) = set rules"
+  apply (induction rules) 
+    apply (simp add: join_common_def join_uncommon_def List.map_filter_def)
+  subgoal premises induct for a rules'
+  proof (cases "find_common m a")
+    case None
+    have "find_uncommon m a = Some a" 
+      using None find_inverse_lhs
+      by (metis find_uncommon_preserve option.distinct(1))
+    then have "join_uncommon m (a # rules') = a # (join_uncommon m rules')"
+      unfolding join_common_def join_uncommon_def List.map_filter_def
+      by simp
+    then show ?thesis using induct join_common_equal
+      by (metis None Un_insert_right list.simps(15))
+  next
+    case (Some a')
+    have "find_uncommon m a = None" 
+      by (metis Some find_common_defn find_uncommon.simps(1) option.distinct(1))
+    then have "join_uncommon m (a # rules') = (join_uncommon m rules')"
+      unfolding join_common_def join_uncommon_def List.map_filter_def
+      by simp
+    then show ?thesis
+      by (metis Some Un_insert_left find_common.elims induct join_common_plus list.simps(15) option.distinct(1))
+  qed
+  done
+
+lemma join_common_set_def:
+  "set (join_common m rules) = {r. (m ? r) \<in> set rules}"
+  unfolding join_common_def List.map_filter_def 
+  apply (induction rules)
+   apply simp 
+  subgoal for a rules 
+    apply (cases a) by auto
+  done
+
+lemma join_uncommon_set_def:
+  "set (join_uncommon m rules) = {r. r \<in> set rules \<and> (\<forall>r'. r \<noteq> (m ? r'))}"
+  unfolding join_uncommon_def List.map_filter_def 
+  apply (induction rules) apply simp
+  subgoal for a rules 
+    apply (cases a) by auto
+  done
 
 function (sequential) combine_conditions :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
   "combine_conditions (base e) = base e" |
@@ -487,7 +1093,239 @@ function (sequential) combine_conditions :: "'a::Rewritable Rules \<Rightarrow> 
   apply pat_completeness+
   by simp+
 
-termination combine_conditions sorry
+lemma find_common_size:
+  assumes "(find_common m r) \<noteq> None"
+  shows "size (the (find_common m r)) < size r"
+  using assms apply (induction r rule: find_common.induct)
+  apply simp+ apply fastforce by simp+
+
+lemma common_size_choice_gt:
+  "x \<in> set va \<Longrightarrow> common_size x \<le> common_size (choice va)"
+  apply (induction va) apply simp
+  by fastforce
+
+termination combine_conditions
+  apply (relation "measures [common_size]") apply auto[1] apply simp+ using join_common_shrinks
+  using le_imp_less_Suc apply blast
+          apply (simp add: le_imp_less_Suc) defer
+         apply simp apply auto[1]
+        apply (simp add: common_size_choice_gt le_imp_less_Suc)
+       apply auto[1] using common_size_choice_gt apply fastforce
+      apply auto[1] using common_size_choice_gt apply fastforce
+     apply auto[1] using common_size_choice_gt apply fastforce
+    apply simp+ using join_uncommon_shrinks
+  by (metis le_imp_less_Suc plus_1_eq_Suc trans_le_add2)
+
+lemma cases_None:
+  assumes "eval_rules (choice ((m ? r) # rules)) u None"
+  shows "
+  eval_rules (m ? (choice (r # join_common m rules))) u None \<and>
+  eval_rules ((choice (join_uncommon m rules))) u None"
+  apply (rule conjI)
+  using assms
+  unfolding join_common_def List.map_filter_def
+   apply (induction rules) apply simp using pull_cond_out
+    apply fastforce apply auto[1] using pull_cond_out defer defer
+    apply (meson assms eval_choice_none join_uncommon_subset list.set_intros(2) subsetD)
+  subgoal for a rules y
+    apply (cases a)
+        apply force
+    subgoal premises pre for m' r' 
+    proof -
+      have "m = m'"
+        using pre(3,4)
+        by (metis find_common.simps(1) option.distinct(1))
+      then show ?thesis using pre apply auto[1]
+        by (smt (verit, del_insts) eval_choice_none list.set_intros(1) list.set_intros(2) list.simps(9) pull_cond_out set_ConsD)
+    qed
+      by simp+
+  subgoal for a rules
+    apply (cases a)
+    by (simp add: eval_choice_none)+
+  done
+
+lemma cases_None1:
+  assumes "
+  eval_rules (m ? (choice (r # join_common m rules))) u None \<and>
+  eval_rules ((choice (join_uncommon m rules))) u None"
+  shows "eval_rules (choice ((m ? r) # rules)) u None"
+proof -
+  have head: "eval_rules (m ? r) u None"
+    using assms
+    by (meson list.set_intros(1) map_None pull_cond_out_lhs)
+  have common_None: "\<forall>r' \<in> set (join_common m rules). eval_rules (m ? r') u None"
+    by (meson assms list.set_intros(2) map_None pull_cond_out_lhs)
+  have uncommon_None: "\<forall>r' \<in> set (join_uncommon m rules). eval_rules r' u None"
+    using assms eval_choice_none by blast
+  have "\<forall>r' \<in> set rules. eval_rules r' u None"
+    using join_combines common_None uncommon_None pull_cond_out
+    by (metis (no_types, lifting) UnE assms eval_choice_none list.set_intros(2) list.simps(9))
+  then show ?thesis using head
+    by (simp add: eval_choice_none)
+qed
+
+  
+lemma cases_Some:
+  assumes "eval_rules (choice rules) u (Some e)"
+  shows "
+  eval_rules (m ? (choice (join_common m rules))) u (Some e) \<or>
+  eval_rules ((choice (join_uncommon m rules))) u (Some e)"
+proof -
+  obtain r where r: "r \<in> set rules \<and> eval_rules r u (Some e)"
+    by (metis assms choiceE option.discI)
+  then show ?thesis
+  proof (cases r)
+    case (base x1)
+    have "r \<in> set (join_uncommon m rules)"
+      using join_uncommon_set_def base r by blast
+    then show ?thesis
+      using eval_rules.intros(6) r by blast
+  next
+    case (cond m' r')
+    then show ?thesis
+    proof (cases "m = m'")
+      case True
+      then have "r' \<in> set (join_common m rules)"
+        using cond r join_common_set_def
+        by blast
+      then show ?thesis
+        by (metis True cond eval_rules.intros(6) image_eqI image_set pull_cond_out_rhs r)
+    next
+      case False
+      have "r \<in> set (join_uncommon m rules)"
+        using join_uncommon_set_def False r
+        using cond by blast
+      then show ?thesis
+        using eval_rules.intros(6) r by blast
+    qed
+  next
+    case (else x31 x32)
+    have "r \<in> set (join_uncommon m rules)"
+      using join_uncommon_set_def else r by blast
+    then show ?thesis
+      using eval_rules.intros(6) r by blast
+  next
+    case (seq x41 x42)
+    have "r \<in> set (join_uncommon m rules)"
+      using join_uncommon_set_def seq r by blast
+    then show ?thesis
+      using eval_rules.intros(6) r by blast
+  next
+    case (choice x5)
+    have "r \<in> set (join_uncommon m rules)"
+      using join_uncommon_set_def choice r by blast
+    then show ?thesis
+      using eval_rules.intros(6) r by blast
+  qed
+qed
+
+lemma cases_Some1:
+  assumes "eval_rules (choice ((m ? r) # rules)) u (Some e)"
+  shows "
+  eval_rules (m ? (choice (r # join_common m rules))) u (Some e) \<or>
+  eval_rules ((choice (join_uncommon m rules))) u (Some e)"
+  using cases_Some assms
+  by (smt (verit, ccfv_threshold) choiceE eval_rules.intros(6) list.set_intros(1) list.set_intros(2) list.simps(9) option.distinct(1) pull_cond_out set_ConsD)
+
+lemma cases_Some2:
+  assumes "eval_rules (m ? (choice (r # join_common m rules))) u (Some e) \<or>
+  eval_rules ((choice (join_uncommon m rules))) u (Some e)" (is "?c1 \<or> ?c2")
+  shows "eval_rules (choice ((m ? r) # rules)) u (Some e)"
+using assms proof (rule disjE)
+  assume c1: "?c1"
+  then show ?thesis
+  proof (cases "eval_rules (m ? r) u (Some e)")
+    case True
+    then show ?thesis
+      by (meson eval_rules.intros(6) list.set_intros(1))
+  next
+    case False
+    then have "\<exists>r \<in>set (join_common m rules). eval_rules (m ? r) u (Some e)"
+      using c1
+      by (smt (verit, del_insts) choiceE condE eval_rules.intros(2) option.distinct(1) set_ConsD)
+    then show ?thesis 
+      by (metis eval_rules.intros(6) join_common_set_def list.set_intros(2) mem_Collect_eq)
+  qed
+next
+  assume "?c2"
+  then have "\<exists>r \<in>set (join_uncommon m rules). eval_rules r u (Some e)"
+    by (metis choiceE option.discI)
+  then show ?thesis
+    by (meson eval_rules.intros(6) join_uncommon_subset list.set_intros(2) subsetD)
+qed
+
+lemma evalchoice_twoelement:
+  assumes "eval_rules (choice [x1, x2]) u (Some e)"
+  shows "eval_rules x1 u (Some e) \<or> eval_rules x2 u (Some e)"
+  using assms choiceE by fastforce
+
+lemma combine_conditions_valid:
+  "eval_rules r u e = eval_rules (combine_conditions r) u e"
+  apply (induction r arbitrary: u e rule: combine_conditions.induct) apply simp
+  apply (simp add: monotonic)+
+        defer
+  apply simp+
+  apply (metis (mono_tags, lifting) choice_join combine_conditions.simps(1) list.simps(9) monotonic_choice)
+  using monotonic_choice
+  using combine_conditions.simps(7) monotonic_choice apply metis
+  using combine_conditions.simps(8) monotonic_choice apply metis
+  using combine_conditions.simps(9) monotonic_choice apply metis
+   apply (simp add: monotonic)+
+  subgoal premises p for m r rules u e
+  proof (rule iffI)
+    assume eval: "eval_rules (choice ((m ? r) # rules)) u e"
+    show "eval_rules
+     (choice
+       [m ? combine_conditions (choice (r # join_common m rules)),
+        combine_conditions (choice (join_uncommon m rules))])
+     u e"
+    proof (cases e)
+      case None
+      have "eval_rules (m ? (choice (r # join_common m rules))) u None \<and>
+  eval_rules ((choice (join_uncommon m rules))) u None"
+        using None cases_None eval by blast
+      then have "eval_rules (m ? combine_conditions (choice (r # join_common m rules))) u None \<and>
+  eval_rules (combine_conditions (choice (join_uncommon m rules))) u None" 
+        using p monotonic_cond by blast
+      then show ?thesis using None eval_choice_none by fastforce
+    next
+      case (Some a)
+      have "eval_rules (m ? (choice (r # join_common m rules))) u (Some a) \<or>
+  eval_rules ((choice (join_uncommon m rules))) u (Some a)"
+        using Some cases_Some1 eval by simp
+      then have "eval_rules (m ? combine_conditions (choice (r # join_common m rules))) u (Some a) \<or>
+  eval_rules (combine_conditions (choice (join_uncommon m rules))) u (Some a)"
+        using p monotonic_cond by blast
+      then show ?thesis
+        by (metis Some eval_rules.intros(6) list.set_intros(1) list.set_intros(2))
+    qed
+  next
+    assume eval: "eval_rules
+     (choice
+       [m ? combine_conditions (choice (r # join_common m rules)),
+        combine_conditions (choice (join_uncommon m rules))])
+     u e"
+    show "eval_rules (choice ((m ? r) # rules)) u e"
+    proof (cases e)
+      case None
+      then have "eval_rules (m ? (choice (r # join_common m rules))) u None \<and>
+  eval_rules ((choice (join_uncommon m rules))) u None"
+        by (smt (verit) eval eval_choice_none list.set_intros(1) list.set_intros(2) monotonic_cond p(1) p(2))
+      then show ?thesis using cases_None1 None by blast
+    next
+      case (Some a)
+      then have "eval_rules (m ? combine_conditions (choice (r # join_common m rules))) u (Some a) \<or>
+  eval_rules (combine_conditions (choice (join_uncommon m rules))) u (Some a)"
+        using eval evalchoice_twoelement by simp
+      then have "eval_rules (m ? (choice (r # join_common m rules))) u (Some a) \<or>
+  eval_rules ((choice (join_uncommon m rules))) u (Some a)"
+        using p monotonic_cond by blast
+      then show ?thesis using cases_Some2 Some
+        by simp
+    qed
+  qed
+  done
+
 
 fun eliminate_choice :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
   "eliminate_choice (base e) = base e" |
@@ -498,9 +1336,97 @@ fun eliminate_choice :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
     choice (List.map eliminate_choice rules)" |
   "eliminate_choice (r1 \<then> r2) = (eliminate_choice r1 \<then> eliminate_choice r2)"
 
-definition optimized_export where
-  "optimized_export = eliminate_choice \<circ> combine_conditions o lift_common o lift_match o eliminate_noop o eliminate_empty"
+lemma eliminate_choice_valid_1:
+  "{e. eval_rules r u e} = {e. eval_rules (eliminate_choice r) u e}"
+  apply (induction r arbitrary: u rule: eliminate_choice.induct)
+  apply simp unfolding eliminate_choice.simps
+  apply (smt (verit) Collect_cong elseE eval_rules.intros(4) eval_rules.intros(5) mem_Collect_eq)
+  unfolding eliminate_choice.simps
+  apply (metis (mono_tags) Collect_cong mem_Collect_eq monotonic_cond)
+  unfolding eliminate_choice.simps
+  using choice_Single apply blast
+  using monotonic_choice apply blast
+  apply (metis Collect_cong mem_Collect_eq monotonic_choice)
+  by (smt (verit) Collect_cong eval_rules.intros(10) eval_rules.intros(9) mem_Collect_eq seqE)
 
+lemma eliminate_choice_valid:
+  "eval_rules r u e = eval_rules (eliminate_choice r) u e"
+  using eliminate_choice_valid_1 by blast
+
+definition optimized_export where
+  "optimized_export = eliminate_choice \<circ> combine_conditions o lift_common o lift_match o eliminate_noop"
+
+
+(*lemma elim_empty_preserve_def_vars:
+  "def_vars m = def_vars (elim_empty m)"
+  apply (induction m rule: elim_empty.induct) by simp+
+
+lemma elim_empty_preserve_use_vars:
+  "use_vars m = use_vars (elim_empty m)"
+  apply (induction m rule: elim_empty.induct) apply simp
+  using elim_empty_preserve_def_vars apply auto[1] by simp+
+
+lemma elim_empty_preserve_valid:
+  assumes "valid_match m"
+  shows "valid_match (elim_empty m)"
+    using assms apply (induction m rule: elim_empty.induct) apply simp
+    using elim_empty_preserve_def_vars elim_empty_preserve_use_vars apply auto[1] 
+    by simp+
+
+lemma eliminate_empty_preserve_valid:
+  assumes "valid_rules r"
+  shows "valid_rules (eliminate_empty r)"
+  using assms apply (induction r rule: eliminate_empty.induct) apply simp
+  apply (simp add: elim_empty_preserve_valid) by simp+*)
+
+lemma elim_noop_preserve_def_vars:
+  "def_vars m = def_vars (elim_noop m)"
+  apply (induction m rule: elim_noop.induct) by simp+
+
+lemma elim_noop_preserve_use_vars:
+  "use_vars m = use_vars (elim_noop m)"
+  apply (induction m rule: elim_noop.induct) apply simp+
+  using def_vars.simps(3) elim_noop_preserve_def_vars apply blast
+  apply simp+
+  using def_vars.simps(3) elim_noop_preserve_def_vars apply blast
+  by simp+
+
+lemma elim_noop_preserve_valid:
+  assumes "valid_match m"
+  shows "valid_match (elim_noop m)"
+  using assms apply (induction m rule: elim_noop.induct) apply simp+
+  using elim_noop_preserve_use_vars
+  apply (metis use_vars.simps(3))
+  apply simp+
+  apply (metis DiffE UnE elim_noop_preserve_use_vars use_vars.simps(3))
+  apply simp
+  apply (metis elim_noop.simps(14) elim_noop.simps(22) elim_noop_preserve_def_vars valid_match.simps(2))
+  apply simp
+  apply (metis (no_types, lifting) elim_noop.simps(16) elim_noop_preserve_def_vars elim_noop_preserve_use_vars valid_match.simps(2))
+  by simp+
+
+lemma eliminate_noop_preserve_valid:
+  assumes "valid_rules r"
+  shows "valid_rules (eliminate_noop r)"
+  using assms apply (induction r rule: eliminate_noop.induct) apply simp
+  apply (simp add: elim_noop_preserve_valid) by simp+
+
+
+lemma lift_match_preserve_valid:
+  assumes "valid_rules r"
+  shows "valid_rules (lift_match r)"
+  using assms apply (induction r rule: lift_match.induct) apply simp
+  by simp+
+
+lemma optimized_export_valid:
+  assumes "valid_rules r"
+  shows "eval_rules r u e = eval_rules (optimized_export r) u e"
+  unfolding optimized_export_def comp_def
+  using lift_match_valid eliminate_noop_valid 
+  using combine_conditions_valid eliminate_choice_valid
+  by (metis assms eliminate_noop_preserve_valid lift_common_valid lift_match_preserve_valid)
+
+thm_oracles optimized_export_valid
 
 value "optimized_export
 (generate

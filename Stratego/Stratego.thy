@@ -19,6 +19,11 @@ using the @{term Rewritable} class.
   \item[var] Construct an AST to represent the variable given.
 \end{description}
 \<close>
+(*function n where "n x = x"
+  by simp+
+
+termination n*)
+
 class Rewritable = size +
   fixes rewrite :: "('a \<Rightarrow> 'a) \<Rightarrow> 'a \<Rightarrow> 'a"
   fixes match :: "'a \<Rightarrow> 'a \<Rightarrow> ((string, 'a) fmap) option"
@@ -30,9 +35,19 @@ class Rewritable = size +
   (*assumes "varof (var a) = Some a"
   assumes "traverse f t = traverse f (traverse f t)"*)
   assumes shrinks: "\<forall>e' \<in> set (subexprs e). size e > size e'"
+  assumes "map f (subexprs e) = subexprs (snd (chain 0 (\<lambda>e a. (plus a 1, f e)) e))"
+  assumes "length (subexprs e) = fst (chain 0 (\<lambda>e a. (plus a 1, f e)) e)"
+  (*assumes chain_term: "All chain_dom"*)
 begin
 fun map_tree :: "('a \<Rightarrow> 'a) \<Rightarrow> 'a \<Rightarrow> 'a" where
   "map_tree f xs = snd (chain (0::nat) (\<lambda>e a. (plus a 1, f e)) xs)"
+
+fun pattern_variables :: "'a \<Rightarrow> string list" where
+  "pattern_variables e = List.map_filter varof (subexprs e)"
+
+(*
+lemma map_tree_term:
+  "\<forall>e'. map_tree (\<lambda>e'. x) e = v \<longrightarrow> e' \<in> subexprs e"*)
 end
 
 
@@ -207,6 +222,16 @@ instance proof
   fix e :: Arithmetic
   show "\<forall>e' \<in> set (subexprs e). size e > size e'"
     by (cases e; simp)
+next
+  fix f :: "Arithmetic \<Rightarrow> Arithmetic"
+  fix e :: Arithmetic
+  show "map f (subexprs e) = subexprs (snd (chain 0 (\<lambda>e a. (plus a 1, f e)) e))"
+    by (cases e; simp)
+next
+  fix f :: "Arithmetic \<Rightarrow> Arithmetic"
+  fix e :: Arithmetic
+  show "length (subexprs e) = fst (chain 0 (\<lambda>e a. (plus a 1, f e)) e)"
+    by (cases e; simp)
 qed
 end
 
@@ -286,5 +311,8 @@ text \<open>@{value "eval EvalMinus ((UMinus (Number 10)), fmempty)"}\<close>
 value "eval EvalAdd ((UMinus (Number 10)), fmempty)"
 value "eval EvalAdd ((Add (Number 10) (Number 10)), fmempty)"
 text \<open>@{value "eval EvalAdd ((Add (Number 10) (Number 10)), fmempty)"}\<close>
+
+notation plus (infixl "+" 65)
+notation less ("(_/ < _)"  [51, 51] 50)
 
 end
