@@ -1,8 +1,10 @@
+section \<open>Match Patterns\<close>
+
 theory CompileRewrite
   imports Stratego
 begin
 
-section \<open>Match Patterns\<close>
+subsection \<open>Variable Scope\<close>
 
 type_synonym VarName = "string"
 type_synonym Vars = "VarName fset"
@@ -29,11 +31,14 @@ termination fresh_var
 fun fresh :: "VarName \<Rightarrow> Scope \<Rightarrow> Scope \<times> VarName" where
   "fresh v s = (let v = fresh_var v s in (add_var v s, v))"
 
+
+subsection \<open>Match Primitive\<close>
+
 datatype 'a MATCH =
   match VarName "'a" |
   equality VarName VarName (infixl "==" 52) |
   andthen "'a MATCH" "'a MATCH" (infixl "&&" 50) |
-  condition "'a" |
+  condition "('a \<times> ('a \<times> bool))" | \<comment> \<open>This was 'a => bool as the second argument but it disagrees with code generation. Requires work regardless.\<close>
   noop
 
 fun register_name where
@@ -45,7 +50,7 @@ fun nth_fresh :: "VarName \<Rightarrow> Scope \<Rightarrow> nat \<Rightarrow> (S
 
 fun replace_subexprs :: "Scope \<Rightarrow> ('a::Rewritable) \<Rightarrow> (Scope \<times> ('a::Rewritable))" where
   "replace_subexprs s e =
-    (let (n, e') = chain 0 (\<lambda>e n. (plus n 1, var (snd (nth_fresh ''a'' s n)))) e
+    (let (n, e') = chain (\<lambda>e n. (plus n 1, var (snd (nth_fresh ''a'' s n)))) e 0
       in (fst (nth_fresh ''a'' s n), e'))"
 
 fun expression_vars :: "Scope \<Rightarrow> ('a::Rewritable) \<Rightarrow> (Scope \<times> string list)" where
@@ -53,7 +58,7 @@ fun expression_vars :: "Scope \<Rightarrow> ('a::Rewritable) \<Rightarrow> (Scop
     (chain_list s (\<lambda>e' s'. (fresh ''a'' s')) (subexprs e))"
 
 fun replace_subexpr :: "string list \<Rightarrow> ('a::Rewritable) \<Rightarrow> ('a::Rewritable)" where
-  "replace_subexpr vs e = snd (chain 0 (\<lambda>e n. (plus n 1, var (vs!n))) e)"
+  "replace_subexpr vs e = snd (chain (\<lambda>e n. (plus n 1, var (vs!n))) e 0)"
 
 fun join :: "('a MATCH) list \<Rightarrow> 'a MATCH" where
   "join [] = noop" |
@@ -88,6 +93,9 @@ termination match_pattern
 value "match_pattern
 (Sub (Add (Variable ''x'') (Variable ''y'')) (Variable ''y''))
 ''e'' ({|''e''|}, Map.empty)"
+text \<open>@{value "match_pattern
+(Sub (Add (Variable ''x'') (Variable ''y'')) (Variable ''y''))
+''e'' ({|''e''|}, Map.empty)"}\<close>
 
 value "match_pattern
 (Sub 
@@ -96,11 +104,18 @@ value "match_pattern
         (Sub (Variable ''y'') (Variable ''x'')))
     (Variable ''y''))
 ''e'' ({|''e''|}, Map.empty)"
+text \<open>@{value "match_pattern
+(Sub 
+    (Add 
+        (Sub (Variable ''x'') (Variable ''x''))
+        (Sub (Variable ''y'') (Variable ''x'')))
+    (Variable ''y''))
+''e'' ({|''e''|}, Map.empty)"}\<close>
 
 definition gen_pattern :: "('a::Rewritable) \<Rightarrow> VarName \<Rightarrow> 'a MATCH" where
   "gen_pattern p v = snd (match_pattern p v ({|v|}, Map.empty))"
 
-subsubsection \<open>Match Primitive Semantics\<close>
+subsubsection \<open>Semantics\<close>
 type_synonym 'a Subst = "VarName \<rightharpoonup> 'a"
 
 fun equal_ignore_vars :: "'a::Rewritable \<Rightarrow> 'a \<Rightarrow> bool" where
@@ -113,6 +128,25 @@ fun unify :: "string list \<Rightarrow> 'a list \<Rightarrow> 'a Subst \<Rightar
      else (if v \<in> dom s \<and> s v \<noteq> Some e then None
            else unify vs es (s(v \<mapsto> e))))" |
   "unify _ _ s = None"
+
+function ground_expr :: "'a::Rewritable \<Rightarrow> 'a Subst \<Rightarrow> 'a option" where
+  "ground_expr e s =
+    (case varof e of
+      Some v \<Rightarrow>(case s v of None \<Rightarrow> None
+                | Some v' \<Rightarrow> Some v') |
+      None \<Rightarrow> maybe_map_tree (\<lambda>e'. ground_expr e' s) e)"
+  apply auto[1]
+  by fastforce
+
+\<comment> \<open>Requires a proof that all the arguments to the map tree anonymous function are less than the original input\<close>
+termination  sorry
+
+lemma ground_expr_idempotent:
+  assumes "a' \<subseteq>\<^sub>m a"
+  assumes "ground_expr e a' = Some e'"
+  shows "ground_expr e a' = ground_expr e a"
+  using assms apply (induction e a' arbitrary: a a' rule: ground_expr.induct)
+  by (smt (verit, ccfv_threshold) domIff ground_expr.simps map_le_def option.case_eq_if option.distinct(1))
 
 fun eval_match :: "('a::Rewritable) MATCH \<Rightarrow> 'a Subst \<Rightarrow> ('a Subst) option" where
   "eval_match (match v e) s =
@@ -128,7 +162,33 @@ fun eval_match :: "('a::Rewritable) MATCH \<Rightarrow> 'a Subst \<Rightarrow> (
         None \<Rightarrow> None |
         Some s' \<Rightarrow> eval_match m2 s')" |
   "eval_match noop s = Some s" |
-  "eval_match (condition sc) s = None"
+  "eval_match (condition (v, f)) s =
+      (case ground_expr v s of
+        None \<Rightarrow> None |
+        Some e \<Rightarrow> (if (snd f) then Some s else None))"
+
+subsubsection \<open>Validity\<close>
+
+fun def_vars :: "'a::Rewritable MATCH \<Rightarrow> string set" where
+  "def_vars (match v p) = set (pattern_variables p)" |
+  "def_vars (equality e1 e2) = {e1, e2}" |
+  "def_vars (m1 && m2) = def_vars m1 \<union> def_vars m2" |
+  "def_vars (condition c) = {}" |
+  "def_vars noop = {}"
+
+fun use_vars :: "'a::Rewritable MATCH \<Rightarrow> string set" where
+  "use_vars (match v p) = {v}" |
+  "use_vars (equality e1 e2) = {}" |
+  "use_vars (m1 && m2) = use_vars m1 \<union> (use_vars m2 - def_vars m1)" |
+  "use_vars (condition c) = {}" |
+  "use_vars noop = {}"
+
+fun valid_match :: "'a::Rewritable MATCH \<Rightarrow> bool" where
+  "valid_match (match v e) = (v \<notin> set (pattern_variables e) \<and> distinct (pattern_variables e))" |
+  "valid_match (m1 && m2) = (valid_match m1 \<and> valid_match m2 \<and> use_vars m1 \<inter> def_vars m2 = {})" |
+  "valid_match _ = True"
+
+subsubsection \<open>Lemmata\<close>
 
 lemma noop_semantics_rhs:
   "eval_match (lhs && noop) s = eval_match lhs s"
@@ -160,25 +220,6 @@ next
   from lhs rhs show ?thesis using assms
     by simp
 qed
-
-fun def_vars :: "'a::Rewritable MATCH \<Rightarrow> string set" where
-  "def_vars (match v p) = set (pattern_variables p)" |
-  "def_vars (equality e1 e2) = {e1, e2}" |
-  "def_vars (m1 && m2) = def_vars m1 \<union> def_vars m2" |
-  "def_vars (condition c) = {}" |
-  "def_vars noop = {}"
-
-fun use_vars :: "'a::Rewritable MATCH \<Rightarrow> string set" where
-  "use_vars (match v p) = {v}" |
-  "use_vars (equality e1 e2) = {}" |
-  "use_vars (m1 && m2) = use_vars m1 \<union> (use_vars m2 - def_vars m1)" |
-  "use_vars (condition c) = {}" |
-  "use_vars noop = {}"
-
-fun valid_match :: "'a::Rewritable MATCH \<Rightarrow> bool" where
-  "valid_match (match v e) = (v \<notin> set (pattern_variables e) \<and> distinct (pattern_variables e))" |
-  "valid_match (m1 && m2) = (valid_match m1 \<and> valid_match m2 \<and> use_vars m1 \<inter> def_vars m2 = {})" |
-  "valid_match _ = True"
 
 lemma unify_effect:
   assumes "unify vs es s = Some a"
@@ -227,7 +268,7 @@ next
 next
   case (5 sc s)
   then show ?case
-    by simp
+    by (smt (verit, del_insts) eval_match.simps(5) option.case_eq_if option.distinct(1) option.sel)
 qed
 
 lemma use_def:
@@ -348,9 +389,12 @@ next
   then show ?case
     by (metis andthen.IH(1) andthen.IH(2) andthen.prems(2) andthen.prems(3) eval_match.simps(3) eval_match_subset m1eval m2eval map_le_antisym option.simps(5) valid_match.simps(2))
 next
-  case (condition x)
+  case (condition c)
+  then have "(ground_expr (fst c) a') = (ground_expr (fst c) a)"
+    using ground_expr_idempotent
+    by (smt (z3) eval_match.simps(5) option.distinct(1) option.exhaust option.simps(4) prod.exhaust_sel)
   then show ?case
-    by (metis eval_match.simps(5) option.distinct(1))
+    by (smt (verit, ccfv_SIG) condition.prems(1) eval_match.simps(5) option.case_eq_if option.distinct(1) prod.exhaust_sel)
 next
   case noop
   then show ?case by simp
@@ -418,7 +462,7 @@ next
 next
   case (condition x)
   then show ?case
-    by (metis eval_match.simps(5))
+    using match_def_affect by force
 next
   case noop
   then show ?case
@@ -441,31 +485,29 @@ datatype 'a Rules =
   seq "'a Rules" "'a Rules" (infixl "\<then>" 49) |
   choice "('a Rules) list"
 
-fun valid_rules :: "'a::Rewritable Rules \<Rightarrow> bool" where
-  "valid_rules (m ? r) = (valid_match m \<and> valid_rules r)" |
-  "valid_rules (r1 else r2) = (valid_rules r1 \<and> valid_rules r2)" |
-  "valid_rules (r1 \<then> r2) = (valid_rules r1 \<and> valid_rules r2)" |
-  "valid_rules (choice rules) = (\<forall>r \<in> set rules. valid_rules r)" |
-  "valid_rules _ = True"
-
-function ground_expr :: "'a::Rewritable \<Rightarrow> Scope \<Rightarrow> 'a" where
-  "ground_expr e (s, m) =
+function var_expr :: "'a::Rewritable \<Rightarrow> Scope \<Rightarrow> 'a" where
+  "var_expr e (s, m) =
     (case varof e of
-      Some v \<Rightarrow>(case m v of None \<Rightarrow> var v 
+      Some v \<Rightarrow>(case m v of None \<Rightarrow> var v
                 | Some v' \<Rightarrow> var v') |
-      None \<Rightarrow> map_tree (\<lambda>e'. ground_expr e' (s, m)) e)"
+      None \<Rightarrow> map_tree (\<lambda>e'. var_expr e' (s, m)) e)"
   apply auto[1]
   by fastforce
 
-(* Requires a proof that all the arguments to the map tree anonymous function are less than the original input *)
-termination ground_expr sorry
+text \<open>Requires a proof that all the arguments to the map tree anonymous function are less than the original input\<close>
+termination var_expr sorry
 
-fun generate :: "'a::Rewritable \<Rightarrow> 'a \<Rightarrow> 'a \<Rightarrow> 'a Rules" where
-  "generate p r sc = 
+fun generate :: "'a::Rewritable \<Rightarrow> 'a \<Rightarrow> 'a Rules" where
+  "generate p r = 
     (let (s, m) = match_pattern p ''e'' ({||}, (\<lambda>x. None))
-     in ((m && condition (ground_expr sc s)) ? (base (ground_expr r s))))"
+     in (m ? (base (var_expr r s))))"
 
-subsubsection \<open>Rules Semantics\<close>
+fun generate_with_condition :: "'a::Rewritable \<Rightarrow> 'a \<Rightarrow> ('a \<times> ('a \<times> bool)) \<Rightarrow> 'a Rules" where
+  "generate_with_condition p r (v, f) = 
+    (let (s, m) = match_pattern p ''e'' ({||}, (\<lambda>x. None))
+     in ((m && condition (var_expr v s, f)) ? (base (var_expr r s))))"
+
+subsubsection \<open>Semantics\<close>
 
 text \<open>Replace any variable expressions with value in a substitution.\<close>
 fun evaluated_terms where
@@ -529,6 +571,17 @@ inductive_cases choiceE: "eval_rules (choice r) u e"
 inductive_cases seqE: "eval_rules (r1 \<then> r2) u e"
 
 code_pred [show_modes] eval_rules .
+
+subsubsection \<open>Validity\<close>
+
+fun valid_rules :: "'a::Rewritable Rules \<Rightarrow> bool" where
+  "valid_rules (m ? r) = (valid_match m \<and> valid_rules r)" |
+  "valid_rules (r1 else r2) = (valid_rules r1 \<and> valid_rules r2)" |
+  "valid_rules (r1 \<then> r2) = (valid_rules r1 \<and> valid_rules r2)" |
+  "valid_rules (choice rules) = (\<forall>r \<in> set rules. valid_rules r)" |
+  "valid_rules _ = True"
+
+subsubsection \<open>Lemmata\<close>
 
 lemma choice_join:
   assumes "eval_rules (a) u e = eval_rules (f a) u e"
@@ -713,12 +766,14 @@ proof -
     using chain_equiv
     by blast
   moreover have "eval_rules ((m && m) ? r1) u e = ?rhs"
-    using match_eq sledgehammer
+    using match_eq
     by (smt (verit) Rules.distinct(1) Rules.distinct(11) Rules.distinct(13) Rules.distinct(9) Rules.inject(2) assms eval_rules.simps)
   ultimately show ?thesis by simp
 qed
 
-subsection \<open>Rule Optimization\<close>
+subsection \<open>Rule Optimizations\<close>
+
+subsubsection \<open>Eliminate \texttt{noop} Operations\<close>
 
 fun elim_noop :: "'a MATCH \<Rightarrow> 'a MATCH" where
   "elim_noop (lhs && noop) = elim_noop lhs" |
@@ -732,11 +787,13 @@ lemma sound_optimize_noop:
   using noop_semantics_rhs apply force+
   using seq_det_rhs
   apply (metis elim_noop.simps(14) elim_noop.simps(22)) apply force
-  apply (metis elim_noop.simps(16) seq_det_lhs seq_det_rhs)
+           apply (metis elim_noop.simps(16) seq_det_lhs seq_det_rhs)
+  apply (metis elim_noop.simps(17) elim_noop.simps(24) seq_det_rhs)
   by simp+
 
 fun eliminate_noop :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
   "eliminate_noop (base e) = base e" |
+  "eliminate_noop (noop ? r) = eliminate_noop r" |
   "eliminate_noop (m ? r) = elim_noop m ? eliminate_noop r" |
   "eliminate_noop (r1 else r2) = (eliminate_noop r1 else eliminate_noop r2)" |
   "eliminate_noop (choice rules) = choice (List.map eliminate_noop rules)" |
@@ -745,28 +802,16 @@ fun eliminate_noop :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
 lemma eliminate_noop_valid:
   "eval_rules r u e = eval_rules (eliminate_noop r) u e"
   apply (induction r arbitrary: u e rule: eliminate_noop.induct)
-  apply simp
+          apply simp
+  apply (metis condE eliminate_noop.simps(2) eval_match.simps(4) eval_rules.intros(2) option.distinct(1) option.inject)
+  using sound_optimize_noop apply (simp add: monotonic_cond)
+  using sound_optimize_noop apply (simp add: monotonic_cond)
   using eliminate_noop.simps(2) condE sound_optimize_noop
-    apply (smt (verit) eval_rules.simps) 
-  using eliminate_noop.simps(3) elseE
-   apply (smt (verit, del_insts) eval_rules.intros(4) eval_rules.intros(5))
-  unfolding eliminate_noop.simps(4)
-  subgoal premises ind for rules u e 
-    using ind apply (induction rules) apply simp
-    subgoal premises ind' for a rules'
-    proof -
-      have a: "eval_rules (a) u e = eval_rules (eliminate_noop a) u e"
-        using ind' by simp
-      have rules: "eval_rules (choice rules') u e = eval_rules (choice (map eliminate_noop rules')) u e"
-        using ind' by auto
-      have "eval_rules (choice (a # rules')) u e = eval_rules (choice (map eliminate_noop (a # rules'))) u e"
-        using a rules using choice_join
-        by blast
-      then show ?thesis by simp
-    qed
-    done
-  by (smt (verit) Rules.distinct(11) Rules.distinct(15) Rules.distinct(19) Rules.distinct(5) Rules.inject(4) eliminate_noop.simps(5) eval_rules.simps)
-
+      apply (smt (verit) eliminate_noop.simps(5) eval_rules.simps)
+  using sound_optimize_noop apply (simp add: monotonic_cond)
+  using sound_optimize_noop apply (simp add: monotonic_else)
+  apply (simp add: monotonic_choice)
+  by (simp add: monotonic_seq)
 
 (*
 fun elim_empty :: "'a MATCH \<Rightarrow> 'a MATCH" where
@@ -780,6 +825,8 @@ fun eliminate_empty :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
   "eliminate_empty (r1 else r2) = (eliminate_empty r1 else eliminate_empty r2)" |
   "eliminate_empty (choice rules) = choice (List.map eliminate_empty rules)" |
   "eliminate_empty (r1 \<then> r2) = (eliminate_empty r1 \<then> eliminate_empty r2)"*)
+
+subsubsection \<open>Lift primitive sequential (\texttt{\&\&}) to rule sequential (\texttt{?})\<close>
 
 fun combined_size :: "'a::Rewritable Rules \<Rightarrow> nat" where
   "combined_size (m ? r) = (2 * size m) + combined_size r" |
@@ -825,6 +872,8 @@ lemma lift_match_valid:
     apply simp
   by (smt (verit) Rules.distinct(11) Rules.distinct(15) Rules.distinct(19) Rules.distinct(5) Rules.inject(4) eval_rules.simps lift_match.simps(9))
 
+
+subsubsection \<open>Merge Common Conditions in \texttt{else} and sequential (\texttt{?}) Operations\<close>
 
 fun join_conditions :: "'a::Rewritable Rules \<Rightarrow> 'a Rules option" where
   "join_conditions (m1 ? r1 else m2 ? r2) = 
@@ -931,13 +980,7 @@ next
   then show ?case by (simp add: monotonic_seq)
 qed
 
-fun common_size :: "'a::Rewritable Rules \<Rightarrow> nat" where
-  "common_size (m ? r) = 1 + common_size r" |
-  "common_size (base e) = 0" |
-  "common_size (r1 else r2) = 1 + common_size r1 + common_size r2" |
-  "common_size (choice (rule # rules)) = 1 + common_size rule + common_size (choice rules)" |
-  "common_size (choice []) = 0" |
-  "common_size (r1 \<then> r2) = 1 + common_size r1 + common_size r2"
+subsubsection \<open>Merge Common Conditions in Non-deterministic Choice\<close>
 
 fun find_common :: "'a::Rewritable MATCH \<Rightarrow> 'a Rules \<Rightarrow> 'a Rules option" where
   "find_common m (m' ? r) = (if m = m' then Some r else None)" |
@@ -949,6 +992,41 @@ fun find_uncommon :: "'a::Rewritable MATCH \<Rightarrow> 'a Rules \<Rightarrow> 
 
 definition join_common :: "'a::Rewritable MATCH \<Rightarrow> 'a Rules list \<Rightarrow> 'a Rules list" where
   "join_common m rules = List.map_filter (find_common m) rules"
+
+definition join_uncommon :: "'a::Rewritable MATCH \<Rightarrow> 'a Rules list \<Rightarrow> 'a Rules list" where
+  "join_uncommon m rules = List.map_filter (find_uncommon m) rules"
+
+function (sequential) combine_conditions :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
+  "combine_conditions (base e) = base e" |
+  "combine_conditions (r1 else r2) = (combine_conditions r1 else combine_conditions r2)" |
+  "combine_conditions (m ? r) = (m ? combine_conditions r)" |
+  "combine_conditions (choice ((m ? r) # rules)) = 
+    choice ((m ? combine_conditions (choice (r # join_common m rules)))
+      # [combine_conditions (choice (join_uncommon m rules))])" |
+  "combine_conditions (choice rules) = 
+    choice (List.map combine_conditions rules)" |
+  "combine_conditions (r1 \<then> r2) = (combine_conditions r1 \<then> combine_conditions r2)"
+  apply pat_completeness+
+  by simp+
+
+fun common_size :: "'a::Rewritable Rules \<Rightarrow> nat" where
+  "common_size (m ? r) = 1 + common_size r" |
+  "common_size (base e) = 0" |
+  "common_size (r1 else r2) = 1 + common_size r1 + common_size r2" |
+  "common_size (choice (rule # rules)) = 1 + common_size rule + common_size (choice rules)" |
+  "common_size (choice []) = 0" |
+  "common_size (r1 \<then> r2) = 1 + common_size r1 + common_size r2"
+
+lemma find_common_size:
+  assumes "(find_common m r) \<noteq> None"
+  shows "size (the (find_common m r)) < size r"
+  using assms apply (induction r rule: find_common.induct)
+  apply simp+ apply fastforce by simp+
+
+lemma common_size_choice_gt:
+  "x \<in> set va \<Longrightarrow> common_size x \<le> common_size (choice va)"
+  apply (induction va) apply simp
+  by fastforce
 
 lemma find_common_defn:
   assumes "find_common m x = v"
@@ -971,9 +1049,6 @@ lemma join_common_shrinks:
     using find_common_shrinks apply simp
     using add_le_mono by blast
   done
-
-definition join_uncommon :: "'a::Rewritable MATCH \<Rightarrow> 'a Rules list \<Rightarrow> 'a Rules list" where
-  "join_uncommon m rules = List.map_filter (find_uncommon m) rules"
 
 lemma find_uncommon_preserve:
   "find_uncommon m r = Some r \<or> find_uncommon m r = None"
@@ -1010,6 +1085,18 @@ lemma join_uncommon_shrinks:
     by fastforce
   done
 
+termination combine_conditions
+  apply (relation "measures [common_size]") apply auto[1] apply simp+ using join_common_shrinks
+  using le_imp_less_Suc apply blast
+          apply (simp add: le_imp_less_Suc) defer
+         apply simp apply auto[1]
+        apply (simp add: common_size_choice_gt le_imp_less_Suc)
+       apply auto[1] using common_size_choice_gt apply fastforce
+      apply auto[1] using common_size_choice_gt apply fastforce
+     apply auto[1] using common_size_choice_gt apply fastforce
+    apply simp+ using join_uncommon_shrinks
+  by (metis le_imp_less_Suc plus_1_eq_Suc trans_le_add2)
+
 lemma join_common_empty: "join_common m [] = []"
   by (simp add: join_common_def map_filter_simps(2))
 lemma join_uncommon_empty: "join_uncommon m [] = []"
@@ -1034,7 +1121,6 @@ lemma join_common_plus:
   shows "(m ? a') # (map ((?) m) (join_common m rules')) = (map ((?) m) (join_common m (a # rules')))"
   using assms unfolding join_common_def join_uncommon_def List.map_filter_def
   by simp
-
 
 lemma join_combines:
   "(set (map (\<lambda>r. m ? r) (join_common m rules)) \<union> set (join_uncommon m rules)) = set rules"
@@ -1080,41 +1166,6 @@ lemma join_uncommon_set_def:
     apply (cases a) by auto
   done
 
-function (sequential) combine_conditions :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
-  "combine_conditions (base e) = base e" |
-  "combine_conditions (r1 else r2) = (combine_conditions r1 else combine_conditions r2)" |
-  "combine_conditions (m ? r) = (m ? combine_conditions r)" |
-  "combine_conditions (choice ((m ? r) # rules)) = 
-    choice ((m ? combine_conditions (choice (r # join_common m rules)))
-      # [combine_conditions (choice (join_uncommon m rules))])" |
-  "combine_conditions (choice rules) = 
-    choice (List.map combine_conditions rules)" |
-  "combine_conditions (r1 \<then> r2) = (combine_conditions r1 \<then> combine_conditions r2)"
-  apply pat_completeness+
-  by simp+
-
-lemma find_common_size:
-  assumes "(find_common m r) \<noteq> None"
-  shows "size (the (find_common m r)) < size r"
-  using assms apply (induction r rule: find_common.induct)
-  apply simp+ apply fastforce by simp+
-
-lemma common_size_choice_gt:
-  "x \<in> set va \<Longrightarrow> common_size x \<le> common_size (choice va)"
-  apply (induction va) apply simp
-  by fastforce
-
-termination combine_conditions
-  apply (relation "measures [common_size]") apply auto[1] apply simp+ using join_common_shrinks
-  using le_imp_less_Suc apply blast
-          apply (simp add: le_imp_less_Suc) defer
-         apply simp apply auto[1]
-        apply (simp add: common_size_choice_gt le_imp_less_Suc)
-       apply auto[1] using common_size_choice_gt apply fastforce
-      apply auto[1] using common_size_choice_gt apply fastforce
-     apply auto[1] using common_size_choice_gt apply fastforce
-    apply simp+ using join_uncommon_shrinks
-  by (metis le_imp_less_Suc plus_1_eq_Suc trans_le_add2)
 
 lemma cases_None:
   assumes "eval_rules (choice ((m ? r) # rules)) u None"
@@ -1326,11 +1377,13 @@ lemma combine_conditions_valid:
   qed
   done
 
+subsubsection \<open>Eliminate Non-deterministic Choice Operations\<close>
 
 fun eliminate_choice :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
   "eliminate_choice (base e) = base e" |
   "eliminate_choice (r1 else r2) = (eliminate_choice r1 else eliminate_choice r2)" |
   "eliminate_choice (m ? r) = (m ? eliminate_choice r)" |
+  "eliminate_choice (choice (r1 # choice [] # r2)) = eliminate_choice (choice (r1 # r2))" |
   "eliminate_choice (choice (r # [])) = eliminate_choice r" |
   "eliminate_choice (choice rules) = 
     choice (List.map eliminate_choice rules)" |
@@ -1342,19 +1395,33 @@ lemma eliminate_choice_valid_1:
   apply simp unfolding eliminate_choice.simps
   apply (smt (verit) Collect_cong elseE eval_rules.intros(4) eval_rules.intros(5) mem_Collect_eq)
   unfolding eliminate_choice.simps
-  apply (metis (mono_tags) Collect_cong mem_Collect_eq monotonic_cond)
+               apply (metis (mono_tags) Collect_cong mem_Collect_eq monotonic_cond)
   unfolding eliminate_choice.simps
+  apply auto[1] 
+  apply (smt (verit, del_insts) choiceE eval_choice_none eval_rules.intros(6) list.distinct(1) list.set_cases list.set_intros(1) list.set_intros(2) mem_Collect_eq set_ConsD)
+  apply (smt (verit, ccfv_SIG) choiceE eval_choice_none eval_rules.intros(6) list.distinct(1) list.set_cases list.set_intros(1) list.set_intros(2) mem_Collect_eq set_ConsD)
   using choice_Single apply blast
-  using monotonic_choice apply blast
-  apply (metis Collect_cong mem_Collect_eq monotonic_choice)
-  by (smt (verit) Collect_cong eval_rules.intros(10) eval_rules.intros(9) mem_Collect_eq seqE)
+  apply force
+  apply (metis Collect_cong mem_Collect_eq monotonic_choice) 
+      apply (metis (no_types, lifting) Collect_cong mem_Collect_eq monotonic_choice)
+     apply (metis (no_types, lifting) Collect_cong mem_Collect_eq monotonic_choice)
+      apply (metis Collect_cong mem_Collect_eq monotonic_choice)
+  apply (metis (no_types, lifting) Collect_cong mem_Collect_eq monotonic_choice)
+  by (smt (verit) Collect_cong mem_Collect_eq monotonic_seq)
 
 lemma eliminate_choice_valid:
   "eval_rules r u e = eval_rules (eliminate_choice r) u e"
   using eliminate_choice_valid_1 by blast
 
+subsection \<open>Combine Rule Optimizations\<close>
+
 definition optimized_export where
-  "optimized_export = eliminate_choice \<circ> combine_conditions o lift_common o lift_match o eliminate_noop"
+  "optimized_export =
+    eliminate_choice
+    o combine_conditions
+    o lift_common
+    o lift_match
+    o eliminate_noop"
 
 
 (*lemma elim_empty_preserve_def_vars:
@@ -1408,14 +1475,13 @@ lemma elim_noop_preserve_valid:
 lemma eliminate_noop_preserve_valid:
   assumes "valid_rules r"
   shows "valid_rules (eliminate_noop r)"
-  using assms apply (induction r rule: eliminate_noop.induct) apply simp
-  apply (simp add: elim_noop_preserve_valid) by simp+
-
+  using assms apply (induction r rule: eliminate_noop.induct)
+  by (simp add: elim_noop_preserve_valid)+
 
 lemma lift_match_preserve_valid:
   assumes "valid_rules r"
   shows "valid_rules (lift_match r)"
-  using assms apply (induction r rule: lift_match.induct) apply simp
+  using assms apply (induction r rule: lift_match.induct)
   by simp+
 
 lemma optimized_export_valid:

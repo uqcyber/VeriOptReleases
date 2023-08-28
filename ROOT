@@ -1,8 +1,10 @@
 session Stratego in Stratego = "HOL-Library" +
   options [document = pdf, document_output = "output",
-           show_question_marks = false]
+           document_variants="document:outline=/proof",
+           show_question_marks = false, quick_and_dirty]
   theories
     Stratego
+    CompileRewrite
   document_files (in "../latex")
     "root.tex"
     "mathpartir.sty"
