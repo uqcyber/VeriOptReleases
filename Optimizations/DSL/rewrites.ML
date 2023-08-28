@@ -35,9 +35,13 @@ fun of_term name term source =
 
 
 fun result rhs ctxt =
-  case type_of (hd (Syntax.check_terms ctxt [rhs])) of
+  let
+    val _ = @{print} (Context_Position.reports_enabled (Context.proof_of (Context_Position.set_visible_generic false (Context.Proof ctxt))));
+  in
+  case type_of (Syntax.check_term (Context.proof_of (Context_Position.set_visible_generic false (Context.Proof ctxt))) rhs) of
     @{typ Result} => rhs |
     _ => @{term "ExpressionResult"} $rhs
+  end
 
 fun to_term rewrite ctxt = 
   case (#rewrite rewrite) of
