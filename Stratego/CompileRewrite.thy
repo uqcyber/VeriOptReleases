@@ -1,7 +1,9 @@
 section \<open>Match Patterns\<close>
 
 theory CompileRewrite
-  imports Stratego
+  imports
+    Stratego
+    VeriComp.Compiler
 begin
 
 subsection \<open>Variable Scope\<close>
@@ -1494,21 +1496,242 @@ lemma optimized_export_valid:
 
 thm_oracles optimized_export_valid
 
-value "optimized_export
+
+subsection \<open>Compiling Match Patterns\<close>
+
+(*value "optimized_export
 (generate
 (Add (Sub (Variable ''x'') (Variable ''y'')) (Variable ''y''))
 (Variable ''x'')
-(Variable ''y''))"
+((Variable ''y''), \<lambda>x. True))"*)
 
+definition gen_rewrite :: "('a::Rewritable) \<Rightarrow> 'a \<Rightarrow> VarName \<Rightarrow> 'a Rules" where
+  "gen_rewrite p r v = (
+    let (s, lhs) = (match_pattern p v ({|v|}, Map.empty)) in lhs? base (var_expr r s))"
 
-fun compile :: "'a::Rewritable Strategy \<Rightarrow> 'a Rules" where
-  "compile (s1 \<rightarrow> s2) = gen_pattern s1 ''e'' ? base s2"(* |
-  "compile (s1 \<rightarrow> s2 where c) = ((gen_pattern s1 ''e'') ? base s2)"*)
+fun compile' :: "('a::Rewritable) Strategy \<Rightarrow> 'a Rules option" where
+  "compile' (s1 \<rightarrow> s2) = Some (gen_rewrite s1 s2 ''e'')" |
+  "compile' _ = None"(* |
+  "compile (s1?; (v1?; s3; v2!); s2!) = ((gen_pattern s1 ''e'') ? base s2)"*)
 
-value "compile RedundantAdd"
-value "compile RedundantSub"
-value "compile ShiftConstRight"
-value "compile EvalMinus1"
-value "compile EvalAdd"
+fun compile :: "(('a::Rewritable) Strategy \<times> 'a) \<Rightarrow> ('a Rules \<times> 'a) option" where
+  "compile ((s1 \<rightarrow> s2), t) = Some ((gen_rewrite s1 s2 ''e''), t)" |
+  "compile _ = None"
+
+(*fun compile :: "'a::Rewritable Strategy \<Rightarrow> Scope \<Rightarrow> 'a Rules" where
+  "compile (id; r) s = noop? compile r s" |
+  (*"compile (fail; s) = match ''x'' (var ''x'')? compile s"*)
+  "compile (m?; r) s = 
+    (let (s, lhs) = (match_pattern m ''e'' s) in
+     lhs? compile r s)" |
+  "compile (r!) s = base (ground_expr r s)" |
+  "compile ((v1?; x; v2!); r) s = (if v1 = v2 then (condition x)? compile r s else noop)"*)
+
+subsection \<open>Example: Arithmetic\<close>
+
+value "compile' RedundantAdd"
+text \<open>@{value[display] "compile' RedundantAdd"}\<close>
+value "compile' RedundantSub"
+text \<open>@{value[display] "compile' RedundantSub"}\<close>
+(*value "compile' ShiftConstRight"
+value "compile' EvalMinus1"
+value "compile' EvalAdd"*)
+
+definition Identity where
+  "Identity = generate 
+    (Add
+      (var ''x'')
+      (Number 0))
+    (var ''x'')"
+
+value "Identity"
+text "@{value[display] \<open>Identity\<close>}"
+value "optimized_export Identity"
+text "@{value[display] \<open>optimized_export Identity\<close>}"
+
+text \<open>@{text "const x + const y \<longrightarrow> const (x + y)"}\<close>
+definition Evaluate where
+  "Evaluate = generate 
+    (Add
+      (var ''x'')
+      (var ''y''))
+    ((var ''x''))"
+(* doesn't support constant evaluation *)
+value "Evaluate"
+value "(optimized_export (Evaluate))"
+
+(*
+text \<open>@{text "x * const y \<longrightarrow> x << const (log2 y)"}\<close>
+definition Shift where
+  "Shift = generate 
+    (BinaryExpr BinMul
+      (var ''x'')
+      (ConstantVar STR ''y''))
+    ((BinaryExpr BinLeftShift (var ''x'') (ConstantVar STR ''y'')))
+    (PowerOf2 (ConstantVar STR ''y''))"
+(* doesn't support constant evaluation *)
+value "Shift"
+*)
+
+text \<open>@{text "const x + y \<longrightarrow> y + const x when NotConst y"}\<close>
+definition LeftConst where
+  "LeftConst = generate 
+    (Add
+      (var ''x'')
+      (var ''y''))
+    ((Add (var ''y'') (var ''x'')))"
+(* doesn't support constant evaluation *)
+value "LeftConst"
+
+value "(choice [LeftConst, Evaluate, Identity])"
+text "@{value[display] \<open>choice [LeftConst, Evaluate, Identity]\<close>}"
+value "(optimized_export (choice [LeftConst, Evaluate, Identity]))"
+text "@{value[display] \<open>(optimized_export (choice [LeftConst, Evaluate, Identity]))\<close>}"
+value "(optimized_export (optimized_export (choice [LeftConst, Evaluate, Identity])))"
+text "@{value[display] \<open>(optimized_export (optimized_export (choice [LeftConst, Evaluate, Identity])))\<close>}"
+
+value "eval (RedundantAdd <+ RedundantSub) ((Add (Number 10) (Number 0)), fmempty)"
+
+inductive loadStrategy :: "('a::Rewritable Strategy \<times> 'a) \<Rightarrow> ('a Strategy \<times> 'a State \<times> bool) \<Rightarrow> bool" where
+  "loadStrategy (s, t) (s, (t, fmempty), False)"
+inductive stepStrategy :: "('a::Rewritable Strategy \<times> 'a State \<times> bool) => ('a Strategy \<times> 'a State \<times> bool) \<Rightarrow> bool" where
+  "\<lbrakk>eval s state = (state', b');
+    snd state = fmempty\<rbrakk> \<Longrightarrow>
+   stepStrategy (s, state, b) (s, state', b')"
+fun isStrategyTerm :: "('a Strategy \<times> 'a State \<times> bool) \<Rightarrow> bool" where
+  "isStrategyTerm (s, state, m) = (snd state \<noteq> fmempty)"
+
+inductive loadRules :: "('a::Rewritable Rules \<times> 'a) \<Rightarrow> ('a::Rewritable Rules \<times> 'a Subst \<times> 'a option \<times> bool) \<Rightarrow> bool" where
+  "loadRules (r, t) (r, Map.empty(''e'' \<mapsto> t), None, False)"
+inductive stepRules :: "('a::Rewritable Rules \<times> 'a Subst \<times> 'a option \<times> bool) => ('a::Rewritable Rules \<times> 'a Subst \<times> 'a option \<times> bool) \<Rightarrow> bool" where
+  "\<lbrakk>eval_rules r u e'\<rbrakk> \<Longrightarrow>
+   stepRules (r, u, e, False) (r, u, e', True)"
+fun isRulesTerm :: "('a::Rewritable Rules \<times> 'a Subst \<times> 'a option \<times> bool) \<Rightarrow> bool" where
+  "isRulesTerm (r, u, e, f) = f"
+
+fun compatible :: "'a::Rewritable Strategy \<Rightarrow> 'a Rules \<Rightarrow> bool" where
+  "compatible (s1 \<rightarrow> s2) r = (r = (gen_rewrite s1 s2 ''e''))" |
+  "compatible _ _ = False"
+
+inductive match :: "('a::Rewritable Strategy \<times> 'a State \<times> bool) => ('a::Rewritable Rules \<times> 'a Subst \<times> 'a option \<times> bool) \<Rightarrow> bool" where
+  NotRun:  
+  "\<lbrakk>snd state = fmempty \<and> Some (fst state) = subst ''e'' \<and> compatible s r\<rbrakk>
+    \<Longrightarrow> match (s, state, m) (r, subst, None, False)" |
+  Succeed:
+  "\<lbrakk>snd state \<noteq> fmempty \<and> fst state = out \<and> compatible s r\<rbrakk>
+    \<Longrightarrow> match (s, state, True) (r, subst, Some out, True)" |
+  Fail:
+  "\<lbrakk>snd state \<noteq> fmempty \<and> compatible s r\<rbrakk>
+    \<Longrightarrow> match (s, state, False) (r, subst, None, True)"
+(*fun compile :: "(IRGraph \<times> Params) \<Rightarrow> (IRGraph \<times> Params) option" where
+  "compile (g, p) = Some (g, p)"*)
+
+(*theorem stepDet:
+   "(g, p \<turnstile> (nid,m,h) \<rightarrow> next) \<Longrightarrow>
+   (\<forall> next'. ((g, p \<turnstile> (nid,m,h) \<rightarrow> next') \<longrightarrow> next = next'))"
+proof (induction rule: "step.induct")*)
+
+(* FALSE: eval_rules is nondet
+lemma stepRulesDet:
+  "stepRules x y \<Longrightarrow> \<forall>z. stepRules x z \<longrightarrow> y = z"
+  apply (induction rule: "stepRules.induct")
+  using stepRules.simps
+*)
+
+lemma compile_correct:
+  assumes "eval (s1 \<rightarrow> s2) (e, fmempty) = ((e', b), True)"
+  shows "eval_rules (gen_rewrite s1 s2 ''e'') [''e'' \<mapsto> e] (Some e')"
+proof -
+  obtain u' suc where s1: "eval (s1?) (e, fmempty) = (u', suc)"
+    by fastforce
+  then have "suc = True"
+    using assms prod.inject by fastforce
+  have "eval (s1 \<rightarrow> s2) (e, fmempty) = (let (u', suc) = eval (s1?) (e, fmempty) in
+        if suc then eval (s2!) u' else eval fail u')"
+    by simp
+  then have "eval (s1 \<rightarrow> s2) (e, fmempty) = eval (s2!) u'"
+    using assms
+    by (smt (verit, best) Pair_inject s1 eval.simps(5) old.prod.case)
+  have "Stratego.match s1 e = Some b"
+    using s1 sorry
+  then show ?thesis sorry
+qed
+
+lemma preserves_step:
+  assumes "compatible s r"
+  assumes "snd state = fmempty"
+  assumes "Some (fst state) = subst ''e''"
+  assumes "stepRules (r, subst, None, False) s2'"
+  shows "(\<exists>s1'. stepStrategy\<^sup>+\<^sup>+ (s, state, m) s1' \<and> CompileRewrite.match s1' s2')"
+proof -
+  obtain e' where eRule: "s2' = (r, subst, e', True)"
+    using eval_always_result stepRules.intros
+    by (smt (verit, ccfv_threshold) assms(4) fst_conv snd_conv stepRules.simps)
+  then have "eval_rules r subst e'"
+    using assms(4) stepRules.cases by fastforce
+  obtain state' b' where eStrat: "stepStrategy (s, state, m) (s, state', b')"
+    by (metis assms(2) prod.collapse stepStrategy.intros)
+  then have "eval s state = (state', b')"
+    by (simp add: stepStrategy.simps)
+  then have compat: "compatible s r"
+    using assms(1) by simp
+  then obtain s1 s2 where stype: "s = (s1 \<rightarrow> s2)"
+    by (meson CompileRewrite.compatible.elims(2))
+  then have "r = (gen_rewrite s1 s2 ''e'')"
+    using compat by auto
+  then have "match (s, state', b') (r, subst, e', True)"
+    using stype apply (induction s) apply simp+
+    using compile_correct sorry
+  also have "stepStrategy\<^sup>+\<^sup>+ (s, state, m) (s, state', b')"
+    by (simp add: eStrat tranclp.r_into_trancl)
+  then show ?thesis using calculation eRule assms(3)
+    by blast
+  qed
+
+(*"\<lbrakk>eval s state = (state', b');
+    snd state = fmempty\<rbrakk> \<Longrightarrow>
+   stepStrategy (s, state, b) (s, state', b')"*)
+
+interpretation compile_valid:
+  compiler stepStrategy stepRules isStrategyTerm isRulesTerm
+    loadStrategy loadRules
+    "\<lambda>_ _. False" "\<lambda>_. match" compile
+  apply standard
+  using finished_def stepStrategy.cases apply fastforce
+  using finished_def stepRules.cases apply fastforce
+     apply simp
+  using isRulesTerm.simps match.cases apply fastforce
+  subgoal for _ s2 s1 s2'
+    apply (induction rule: match.induct)
+      defer
+      apply (simp add: stepRules.simps)
+     apply (simp add: stepRules.simps)
+    using preserves_step by blast
+  subgoal premises p for p1 p2 s1
+  proof -
+    obtain lhs rhs t where "p1 = (lhs \<rightarrow> rhs, t)"
+      using p(1) apply (cases "compile p1")
+       apply simp sorry
+    then have "p2 = ((gen_rewrite lhs rhs ''e''), t)"
+      using p(1) by simp
+    have loadS: "loadStrategy p1 (lhs \<rightarrow> rhs, (t, fmempty), False)"
+      by (simp add: \<open>p1 = (lhs \<rightarrow> rhs, t)\<close> loadStrategy.intros)
+    have loadR: "loadRules p2 ((gen_rewrite lhs rhs ''e''), Map.empty(''e'' \<mapsto> t), None, False)"
+      using \<open>p2 = (gen_rewrite lhs rhs ''e'', t)\<close> loadRules.intros by blast
+    then have "match (lhs \<rightarrow> rhs, (t, fmempty), False) ((gen_rewrite lhs rhs ''e''), [''e'' \<mapsto> t], None, False)"
+    proof -
+      have "snd (t, fmempty) = fmempty"
+        by simp
+      also have "Some (fst (t, fmempty)) = [''e'' \<mapsto> t] ''e''"
+        by simp
+      then show ?thesis
+        using match.NotRun
+        using calculation
+        using CompileRewrite.compatible.simps(1) by blast
+    qed
+    then show ?thesis using p
+      by (metis \<open>p2 = (gen_rewrite lhs rhs ''e'', t)\<close> loadRules.simps loadS prod.inject)
+  qed
+  done
 
 end

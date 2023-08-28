@@ -1,3 +1,11 @@
+session VeriComp in VeriComp = "HOL-Library" +
+  theories
+    Compiler
+    Fixpoint
+  document_files
+    "root.bib"
+    "root.tex"
+
 session Stratego in Stratego = "HOL-Library" +
   options [document = pdf, document_output = "output",
            document_variants="document:outline=/proof",
@@ -11,7 +19,7 @@ session Stratego in Stratego = "HOL-Library" +
 
 chapter "veriopt"
 
-session Graph in Graph = "HOL-Library" +
+session Graph in Graph = VeriComp +
   description
     "GraalVM Intermediate Representation encoding"
   options [document = pdf, document_output = "output",
