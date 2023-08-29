@@ -1,6 +1,6 @@
 section "Stratego"
 theory Stratego
-  imports Main "HOL-Library.Finite_Map" "HOL-Library.Word"
+  imports Main "HOL-Library.Finite_Map" "HOL-Library.Word" Locale_Code.Locale_Code
 begin
 
 no_notation plus (infixl "+" 65)
@@ -19,16 +19,20 @@ using the @{term Rewritable} class.
   \item[var] Construct an AST to represent the variable given.
 \end{description}
 \<close>
-(*function n where "n x = x"
-  by simp+
 
-termination n*)
-  
-class Rewritable = size +
+type_synonym 'e Binding = "(string, 'e) fmap"
+
+locale Rewritable = size +
   fixes rewrite :: "('a \<Rightarrow> 'a) \<Rightarrow> 'a \<Rightarrow> 'a"
   fixes match :: "'a \<Rightarrow> 'a \<Rightarrow> ((string, 'a) fmap) option"
   fixes varof :: "'a \<Rightarrow> string option"
   fixes var :: "string \<Rightarrow> 'a"
+
+  fixes eval_condition :: "'b \<Rightarrow> bool"
+  fixes ground_condition :: "'b \<Rightarrow> 'a Binding \<Rightarrow> 'b option"
+
+  fixes transform :: "'c \<Rightarrow> 'a \<Rightarrow> 'a option"
+
   fixes subexprs :: "'a \<Rightarrow> 'a list"
   (*fixes map :: "('a \<Rightarrow> 'a) \<Rightarrow> 'a \<Rightarrow> 'a"*)
   fixes chain :: "('a \<Rightarrow> nat \<Rightarrow> (nat \<times> 'a)) \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> (nat \<times> 'a)"
@@ -50,66 +54,52 @@ fun maybe_map_tree :: "('a \<Rightarrow> 'a option) \<Rightarrow> 'a \<Rightarro
 fun pattern_variables :: "'a \<Rightarrow> string list" where
   "pattern_variables e = List.map_filter varof (subexprs e)"
 
-(*
-lemma map_tree_term:
-  "\<forall>e'. map_tree (\<lambda>e'. x) e = v \<longrightarrow> e' \<in> subexprs e"*)
-end
 
-
-fun chain_list :: "'b \<Rightarrow> ('a \<Rightarrow> 'b \<Rightarrow> ('b \<times> 'c)) \<Rightarrow> 'a list \<Rightarrow> ('b \<times> 'c list)" where
-  "chain_list a f [] = (a, [])" |
-  "chain_list a f (x # xs) =
-    (let (a', x') = f x a in
-    (let (a'', xs') = (chain_list a' f xs) in (a'', x' # xs')))"
 
 
 subsection "Rewrite Language"
-datatype ('a::Rewritable) Strategy =
+datatype ('e, 'cond, 't) Strategy =
   id | \<comment> \<open>identity operator\<close>
   fail | \<comment> \<open>fail operator\<close>
-  func "'a \<Rightarrow> 'a" | \<comment> \<open>apply an arbitrary function transformation to the subject\<close>
-  ematch 'a ("_?" [121] 120) | \<comment> \<open>match the subject to the given Rewritable, updating the binding\<close>
-  promote 'a ("_!" [121] 120) | \<comment> \<open>ground and promote the given Rewritable to the subject\<close>
-  condition "('a) Strategy" "('a) Strategy" "('a) Strategy" ("_ < _ + _" 105) \<comment> \<open>if the first strategy succeeds, apply the second, else the third\<close>
+  condition "'cond" | \<comment> \<open>check a condition holds for the subject\<close>
+  func "'t" | \<comment> \<open>apply an arbitrary function transformation to the subject\<close>
+  ematch 'e ("_?" [121] 120) | \<comment> \<open>match the subject to the given Rewritable, updating the binding\<close>
+  promote 'e ("_!" [121] 120) | \<comment> \<open>ground and promote the given Rewritable to the subject\<close>
+  conditional "('e, 'cond, 't) Strategy" "('e, 'cond, 't) Strategy" "('e, 'cond, 't) Strategy" ("_ < _ + _" 105) \<comment> \<open>if the first strategy succeeds, apply the second, else the third\<close>
 
 subsubsection "Language Extensions"
 
-abbreviation seq :: "('a::Rewritable) Strategy \<Rightarrow> ('a) Strategy \<Rightarrow> ('a) Strategy"
+abbreviation seq :: "('a, 'b, 'c) Strategy \<Rightarrow> ('a, 'b, 'c) Strategy \<Rightarrow> ('a, 'b, 'c) Strategy"
   (infixl ";" 110) where
   "s1; s2 \<equiv> s1 < s2 + fail"
 
-abbreviation else :: "('a::Rewritable) Strategy \<Rightarrow> ('a) Strategy \<Rightarrow> ('a) Strategy"
+abbreviation else :: "('a, 'b, 'c) Strategy \<Rightarrow> ('a, 'b, 'c) Strategy \<Rightarrow> ('a, 'b, 'c) Strategy"
   ("_ <+ _" 111) where
   "s1 <+ s2 \<equiv> s1 < id + s2"
 
-abbreviation rewrite_to :: "'a::Rewritable \<Rightarrow> 'a \<Rightarrow> ('a) Strategy"
+abbreviation rewrite_to :: "'a \<Rightarrow> 'a \<Rightarrow> ('a, 'b, 'c) Strategy"
   ("_ \<rightarrow> _") where
   "(s1 \<rightarrow> s2) \<equiv> s1?; s2!"
 
-abbreviation "wheref" :: "('a::Rewritable) Strategy \<Rightarrow> ('a) Strategy" where
+abbreviation "wheref" :: "('a, 'b, 'c) Strategy \<Rightarrow> ('a, 'b, 'c) Strategy" where
   "wheref x \<equiv> var ''_''?; x; var ''_''!"
 
-abbreviation conditional_rewrite_to :: "'a::Rewritable \<Rightarrow> 'a \<Rightarrow> ('a) Strategy \<Rightarrow> ('a) Strategy"
+abbreviation conditional_rewrite_to :: "'a \<Rightarrow> 'a \<Rightarrow> ('a, 'b, 'c) Strategy \<Rightarrow> ('a, 'b, 'c) Strategy"
   ("_ \<rightarrow> _ where _") where 
   "s1 \<rightarrow> s2 where s3 \<equiv> s1?; wheref s3; s2!"
 
-definition not :: "('a::Rewritable) Strategy \<Rightarrow> ('a) Strategy" where 
-  "not s = (s < fail + id)"
+abbreviation not :: "('a, 'b, 'c) Strategy \<Rightarrow> ('a, 'b, 'c) Strategy" where 
+  "not s \<equiv> (s < fail + id)"
 
-abbreviation "apply" :: "('a \<Rightarrow> 'a) \<Rightarrow> 'a \<Rightarrow> ('a::Rewritable) Strategy" 
+abbreviation "apply" :: "('c) \<Rightarrow> 'a \<Rightarrow> ('a, 'b, 'c) Strategy" 
   ("<_>(_)") where
   "(<f>(vars)) \<equiv> vars!; func f"
 
-fun wrap_pred :: "(('a::Rewritable) \<Rightarrow> bool) \<Rightarrow> ('a \<Rightarrow> 'a)" where
-  "wrap_pred f = (\<lambda>t. if f t then var ''true'' else var ''false'')"
-
-(*
-abbreviation "pred" :: "(('a::Rewritable) \<Rightarrow> bool) \<Rightarrow> 'a \<Rightarrow> 'a Strategy" 
+abbreviation "pred" :: "('b) \<Rightarrow> 'a \<Rightarrow> ('a, 'b, 'c) Strategy" 
   ("<_>?(_)") where
-  "(<f>?(vars)) \<equiv> vars!; func (wrap_pred f); var ''true''?"
-*)
+  "(<f>?(vars)) \<equiv> vars!; condition f"
 
-abbreviation assign :: "'a::Rewritable \<Rightarrow> ('a) Strategy \<Rightarrow> ('a) Strategy" 
+abbreviation assign :: "'a \<Rightarrow> ('a, 'b, 'c) Strategy \<Rightarrow> ('a, 'b, 'c) Strategy" 
   ("_ := _") where 
   \<comment> \<open>This should be trm => vars but this doesn't work well in Isabelle so swapped argument order.\<close>
   "vars := trm \<equiv> trm; vars?"
@@ -117,18 +107,17 @@ abbreviation assign :: "'a::Rewritable \<Rightarrow> ('a) Strategy \<Rightarrow>
 
 subsection "Rewrite Semantics"
 
-type_synonym 'a Binding = "(string, 'a) fmap"
-type_synonym 'a State = "'a \<times> 'a Binding"
+type_synonym 'e State = "'e \<times> 'e Binding"
 
-fun ground :: "('a::Rewritable) Binding \<Rightarrow> 'a \<Rightarrow> 'a" where
+fun ground :: "('a) Binding \<Rightarrow> 'a \<Rightarrow> 'a" where
   "ground b trm = (case varof trm of
     Some v \<Rightarrow> (case fmlookup b v of Some v' \<Rightarrow> v' | None \<Rightarrow> trm) |
     None \<Rightarrow> trm)"
 
-fun substitute :: "('a::Rewritable) Binding \<Rightarrow> 'a \<Rightarrow> 'a" where
+fun substitute :: "('a) Binding \<Rightarrow> 'a \<Rightarrow> 'a" where
   "substitute b trm = rewrite (ground b) trm"
 
-fun eval :: "('a) Strategy \<Rightarrow> ('a::Rewritable) State \<Rightarrow> ('a State \<times> bool)" where
+fun eval :: "('a, 'b, 'c) Strategy \<Rightarrow> ('a) State \<Rightarrow> ('a State \<times> bool)" where
   "eval (s!) (sub, b) = ((substitute b s, b), True)" |
   "eval (s?) (sub, b) =
       (case match s sub of
@@ -139,8 +128,21 @@ fun eval :: "('a) Strategy \<Rightarrow> ('a::Rewritable) State \<Rightarrow> ('
         if suc then eval s2 u' else eval s3 u')" |
   "eval id u = (u, True)" |
   "eval fail u = (u, False)" |
-  "eval (func f) (sub, b) = ((f sub, b), True)"
+  "eval (condition e) (sub, b) = (case (ground_condition e b) of 
+                                    Some e' \<Rightarrow> ((sub, b), eval_condition e') |
+                                    None \<Rightarrow> ((sub, b), False))" |
+  "eval (func f) (sub, b) = (case transform f sub of
+                                Some sub' \<Rightarrow> ((sub', b), True) |
+                                None \<Rightarrow> ((sub, b), False))"
 
+end
+
+
+fun chain_list :: "'b \<Rightarrow> ('a \<Rightarrow> 'b \<Rightarrow> ('b \<times> 'c)) \<Rightarrow> 'a list \<Rightarrow> ('b \<times> 'c list)" where
+  "chain_list a f [] = (a, [])" |
+  "chain_list a f (x # xs) =
+    (let (a', x') = f x a in
+    (let (a'', xs') = (chain_list a' f xs) in (a'', x' # xs')))"
 
 subsection "Example: Simple Arithmetic Rewrites"
 
@@ -151,8 +153,6 @@ datatype (discs_sels) Arithmetic =
   Number int |
   Variable string
 
-
-instantiation Arithmetic :: Rewritable begin
 
 fun compatible :: "('a, 'b) fmap \<Rightarrow> ('a, 'b) fmap \<Rightarrow> bool" where
   "compatible s1 s2 = (\<forall>x \<in> fset (fmdom s1) . fmlookup s2 x \<noteq> None \<longrightarrow> fmlookup s1 x = fmlookup s2 x)"
@@ -216,98 +216,151 @@ fun chain_Arithmetic :: "(Arithmetic \<Rightarrow> nat \<Rightarrow> (nat \<time
   "chain_Arithmetic f (Variable s) n = (n, (Variable s))"
 
 (*
-fun map_Arithmetic where
-  "map_Arithmetic f (Add x y) = (Add (f x) (f y))" |
-  "map_Arithmetic f (Sub x y) = (Sub (f x) (f y))" |
-  "map_Arithmetic f (UMinus x) = (UMinus (f x))" |
-  "map_Arithmetic f (Number v) = (Number v)" |
-  "map_Arithmetic f (Variable s) = (Variable s)"*)
+locale ConditionalRewritable = Rewritable +
+  fixes condition :: "'b \<Rightarrow> 'a Strategy"
+  fixes eval_condition :: "'b \<Rightarrow> bool"
+  fixes ground :: "'b \<Rightarrow> 'a Binding \<Rightarrow> 'b option"
+begin
 
-(*instance proof qed*)
-instance proof
-  fix e :: Arithmetic
-  show "\<forall>e' \<in> set (subexprs e). size e > size e'"
-    by (cases e; simp)
-next
-  fix f :: "Arithmetic \<Rightarrow> Arithmetic"
-  fix e :: Arithmetic
-  show "map f (subexprs e) = subexprs (snd (chain (\<lambda>e a. (plus a 1, f e)) e 0))"
-    by (cases e; simp)
-next
-  fix f :: "Arithmetic \<Rightarrow> Arithmetic"
-  fix e :: Arithmetic
-  show "length (subexprs e) = fst (chain (\<lambda>e a. (plus a 1, f e)) e 0)"
-    by (cases e; simp)
-qed
+lemma eval_condition[code]:
+  "eval (condition e) (s, state) = (case (ground e state) of 
+                                    Some e' \<Rightarrow> ((s, state), eval_condition e') |
+                                    None \<Rightarrow> ((s, state), False))"
+  sorry
+
 end
+*)
 
-(*
 datatype ArithmeticCondition =
   IsSub Arithmetic |
   IsNumber Arithmetic
 
-instantiation ArithmeticCondition :: Condition begin
-fun eval_condition_ArithmeticCondition :: "ArithmeticCondition \<Rightarrow> bool" where
-  "eval_condition_ArithmeticCondition (IsSub (Sub x y)) = True" |
-  "eval_condition_ArithmeticCondition (IsNumber (Number v)) = True" |
-  "eval_condition_ArithmeticCondition _ = False"
+fun eval_condition :: "ArithmeticCondition \<Rightarrow> bool" where
+  "eval_condition (IsSub (Sub x y)) = True" |
+  "eval_condition (IsNumber (Number v)) = True" |
+  "eval_condition _ = False"
 
-fun ground_condition_ArithmeticCondition :: "ArithmeticCondition \<Rightarrow> (string \<Rightarrow> string) \<Rightarrow> ArithmeticCondition" where
-  "ground_condition_ArithmeticCondition (IsSub (Variable v)) f = (IsSub (var (f v)))" |
-  "ground_condition_ArithmeticCondition (IsNumber (Variable v)) f = (IsNumber (var (f v)))" |
-  "ground_condition_ArithmeticCondition e f = e"
+fun ground_condition :: "ArithmeticCondition \<Rightarrow> (string, Arithmetic) fmap \<Rightarrow> ArithmeticCondition option" where
+  "ground_condition (IsSub (Variable v)) f = (case fmlookup f v of 
+                                              Some v' \<Rightarrow> Some (IsSub v') |
+                                              None \<Rightarrow> None)" |
+  "ground_condition (IsNumber (Variable v)) f = (case fmlookup f v of 
+                                              Some v' \<Rightarrow> Some (IsNumber v') |
+                                              None \<Rightarrow> None)" |
+  "ground_condition e f = None"
 
-instance proof qed
-end
+
+datatype Transformer =
+  UnaryMinus |
+  Plus
+
+fun transform_eval :: "Transformer \<Rightarrow> Arithmetic \<Rightarrow> Arithmetic option" where
+  "transform_eval UnaryMinus (Number v) = Some (Number (-v))" |
+  "transform_eval Plus (Add (Number v1) (Number v2)) = Some (Number (plus v1 v2))" |
+  "transform_eval _ _ = None"
+
+setup \<open>Locale_Code.open_block\<close>
+interpretation Arithmetic: Rewritable 
+  size_Arithmetic
+  rewrite_Arithmetic
+  match_Arithmetic
+  varof_Arithmetic
+  var_Arithmetic
+  "eval_condition"
+  "ground_condition"
+  transform_eval
+  subexprs_Arithmetic
+  chain_Arithmetic
+proof
+  fix e :: Arithmetic
+  show "\<forall>e' \<in> set (subexprs_Arithmetic e). size_Arithmetic e > size_Arithmetic e'"
+    by (cases e; simp)
+next
+  fix f :: "Arithmetic \<Rightarrow> Arithmetic"
+  fix e :: Arithmetic
+  show "map f (subexprs_Arithmetic e) = subexprs_Arithmetic (snd (chain_Arithmetic (\<lambda>e a. (plus a 1, f e)) e 0))"
+    by (cases e; simp)
+next
+  fix f :: "Arithmetic \<Rightarrow> Arithmetic"
+  fix e :: Arithmetic
+  show "length (subexprs_Arithmetic e) = fst (chain_Arithmetic (\<lambda>e a. (plus a 1, f e)) e 0)"
+    by (cases e; simp)
+qed
+setup \<open>Locale_Code.close_block\<close>
+
+
+(*
+setup \<open>Locale_Code.open_block\<close>
+interpretation ArithmeticCondition : ConditionalRewritable
+  size_Arithmetic
+  rewrite_Arithmetic
+  match_Arithmetic
+  varof_Arithmetic
+  var_Arithmetic
+  subexprs_Arithmetic
+  chain_Arithmetic
+  condition
+  
+  by standard
+setup \<open>Locale_Code.close_block\<close>
 *)
+
 
 subsubsection "Rewrite Rules"
 
-definition RedundantAdd :: "(Arithmetic) Strategy" where
+definition "eval = Arithmetic.eval"
+definition "var = var_Arithmetic"
+
+notation Arithmetic.conditional_rewrite_to ("_ \<rightarrow> _ where _")
+notation Arithmetic.not ("not _")
+notation Arithmetic.condition ("condition _")
+notation Arithmetic.func ("func _")
+
+type_synonym StrategyRule = "(Arithmetic, ArithmeticCondition, Transformer) Arithmetic.Strategy"
+
+
+export_code "eval" checking SML
+
+definition RedundantAdd :: "StrategyRule" where
   "RedundantAdd = ((Add (var ''b'') (Number 0)) \<rightarrow> (var ''b''))"
 
-definition RedundantSub :: "(Arithmetic) Strategy" where
-  "RedundantSub = ((Sub (var ''a'') (Number 0)) \<rightarrow> (var ''a''))"
+value "eval (RedundantAdd) ((Add (Number 10) (Number 10)), fmempty)"
 
-definition ShiftConstRight :: "(Arithmetic) Strategy" where
+definition RedundantSub :: "StrategyRule" where
+  "RedundantSub = ((Sub (var ''a'') (Number 0)) \<rightarrow> (var ''a'') where condition (IsSub (var ''a'')))"
+
+value "eval (RedundantSub) ((Sub (Number 10) (Number 0)), fmempty)"
+value "eval (RedundantSub) ((Sub (Sub (Number 100) (Number 1000)) (Number 0)), fmempty)"
+
+
+definition ShiftConstRight :: "StrategyRule" where
   "ShiftConstRight = 
     ((Add (var ''a'') (var ''b'')) \<rightarrow> (Add (var ''b'') (var ''a''))
       where ((var ''a'')!; not (Number 0?)))"
 
-
-(*definition ShiftConstRight2 :: "(Arithmetic) Strategy" where
+definition ShiftConstRight2 :: "StrategyRule" where
   "ShiftConstRight2 = 
     ((Add (var ''a'') (var ''b'')) \<rightarrow> (Add (var ''b'') (var ''a''))
-      where ((var ''a'')!; func is_Number))"*)
+      where (condition (IsNumber (var ''a''))))"
 
-fun negate :: "Arithmetic \<Rightarrow> Arithmetic" where
-  "negate (Number v) = (Number (-v))" |
-  "negate x = x"
-
-(*
-definition EvalMinus :: "(Arithmetic) Strategy" where
+definition EvalMinus :: "StrategyRule" where
   "EvalMinus = 
     ((UMinus (Variable ''a'')) \<rightarrow> ((Variable ''b''))
-      where (<is_Number>?(Variable ''a''); ((Variable ''a'')!; func negate); (Variable ''b'')?))"
+      where (condition (IsNumber (Variable ''a'')); ((Variable ''a'')!; func UnaryMinus); (Variable ''b'')?))"
 
-definition EvalMinus1 :: "Arithmetic Strategy" where
+definition EvalMinus1 :: "StrategyRule" where
   "EvalMinus1 =
     (UMinus (Variable ''a'')) \<rightarrow> Variable ''b''
-      where (<is_Number>?(Variable ''a''); (Variable ''b'') := (<negate>(Variable ''a'')))"
+      where (condition (IsNumber (Variable ''a'')); (Variable ''b'') := (<UnaryMinus>(Variable ''a'')))"
 
-fun add :: "Arithmetic \<Rightarrow> Arithmetic" where
-  "add (Add (Number v1) (Number v2)) = (Number (plus v1 v2))" |
-  "add x = x"
-
-definition EvalAdd :: "Arithmetic Strategy" where
+definition EvalAdd :: "StrategyRule" where
   "EvalAdd =
-    (Add (Variable ''a'') (Variable ''b'')) \<rightarrow> ((Variable ''c''))
+    ((Add (Variable ''a'') (Variable ''b'')) \<rightarrow> ((Variable ''c''))
       where (
-        <is_Number>?(Variable ''a'');
-        <is_Number>?(Variable ''b'');
-        (Variable ''c'') := <add>(Add (Variable ''a'') (Variable ''b''))
-      )"
-*)
+        (condition (IsNumber (Variable ''a'')));
+        (condition (IsNumber (Variable ''a'')));
+        ((Variable ''c'') := <Plus>(Add (Variable ''a'') (Variable ''b'')))
+      ))"
 
 subsubsection "Rewrite Application"
 

@@ -6,12 +6,16 @@ session VeriComp in VeriComp = "HOL-Library" +
     "root.bib"
     "root.tex"
 
-session Stratego in Stratego = "HOL-Library" +
+session Locale_Code in Locale_Code = "HOL-Library" +
+  theories
+    Locale_Code
+
+session Stratego in Stratego = Locale_Code +
   options [document = pdf, document_output = "output",
            document_variants="document:outline=/proof",
            show_question_marks = false, quick_and_dirty]
   theories
-    Stratego
+    Stratego 
     CompileRewrite
   document_files (in "../latex")
     "root.tex"
