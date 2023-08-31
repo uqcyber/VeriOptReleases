@@ -22,41 +22,21 @@ using the @{term Rewritable} class.
 
 type_synonym 'e Binding = "(string, 'e) fmap"
 
-locale Rewritable = size +
+locale Rewritable =
+  size size
+  for size :: "'a \<Rightarrow> nat" +
   fixes rewrite :: "('a \<Rightarrow> 'a) \<Rightarrow> 'a \<Rightarrow> 'a"
-  fixes match :: "'a \<Rightarrow> 'a \<Rightarrow> ((string, 'a) fmap) option"
+  fixes match_term :: "'a \<Rightarrow> 'a \<Rightarrow> ((string, 'a) fmap) option"
   fixes varof :: "'a \<Rightarrow> string option"
   fixes var :: "string \<Rightarrow> 'a"
 
   fixes eval_condition :: "'b \<Rightarrow> bool"
-  fixes ground_condition :: "'b \<Rightarrow> 'a Binding \<Rightarrow> 'b option"
+  fixes ground_condition :: "'b \<Rightarrow> (string \<rightharpoonup> 'a) \<Rightarrow> 'b option"
 
   fixes transform :: "'c \<Rightarrow> 'a \<Rightarrow> 'a option"
 
-  fixes subexprs :: "'a \<Rightarrow> 'a list"
-  (*fixes map :: "('a \<Rightarrow> 'a) \<Rightarrow> 'a \<Rightarrow> 'a"*)
-  fixes chain :: "('a \<Rightarrow> nat \<Rightarrow> (nat \<times> 'a)) \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> (nat \<times> 'a)"
-  (*assumes "varof (var a) = Some a"
-  assumes "traverse f t = traverse f (traverse f t)"*)
-  assumes shrinks: "\<forall>e' \<in> set (subexprs e). size e > size e'"
-  assumes "map f (subexprs e) = subexprs (snd (chain (\<lambda>e a. (plus a 1, f e)) e 0))"
-  assumes "length (subexprs e) = fst (chain (\<lambda>e a. (plus a 1, f e)) e 0)"
-  (*assumes chain_term: "All chain_dom"*)
+  assumes "a' \<subseteq>\<^sub>m a \<Longrightarrow> ground_condition e a' = Some e' \<Longrightarrow> ground_condition e a' = ground_condition e a"
 begin
-fun map_tree :: "('a \<Rightarrow> 'a) \<Rightarrow> 'a \<Rightarrow> 'a" where
-  "map_tree f xs = snd (chain (\<lambda>e a. (plus a 1, f e)) xs (0::nat))"
-
-fun maybe_map_tree :: "('a \<Rightarrow> 'a option) \<Rightarrow> 'a \<Rightarrow> 'a option" where
-  "maybe_map_tree f xs = 
-    (let (flag, e') = (chain (\<lambda>e a. (if (f e) = None then 1 else 0, the (f e))) xs (0::nat)) in
-      (if flag = 1 then None else Some e'))"
-
-fun pattern_variables :: "'a \<Rightarrow> string list" where
-  "pattern_variables e = List.map_filter varof (subexprs e)"
-
-
-
-
 subsection "Rewrite Language"
 datatype ('e, 'cond, 't) Strategy =
   id | \<comment> \<open>identity operator\<close>
@@ -120,7 +100,7 @@ fun substitute :: "('a) Binding \<Rightarrow> 'a \<Rightarrow> 'a" where
 fun eval :: "('a, 'b, 'c) Strategy \<Rightarrow> ('a) State \<Rightarrow> ('a State \<times> bool)" where
   "eval (s!) (sub, b) = ((substitute b s, b), True)" |
   "eval (s?) (sub, b) =
-      (case match s sub of
+      (case match_term s sub of
         None \<Rightarrow> ((sub, b), False) |
         Some v \<Rightarrow> ((sub, b ++\<^sub>f v), True))" |
   "eval (s1 < s2 + s3) u =
@@ -128,7 +108,7 @@ fun eval :: "('a, 'b, 'c) Strategy \<Rightarrow> ('a) State \<Rightarrow> ('a St
         if suc then eval s2 u' else eval s3 u')" |
   "eval id u = (u, True)" |
   "eval fail u = (u, False)" |
-  "eval (condition e) (sub, b) = (case (ground_condition e b) of 
+  "eval (condition e) (sub, b) = (case (ground_condition e (fmlookup b)) of 
                                     Some e' \<Rightarrow> ((sub, b), eval_condition e') |
                                     None \<Rightarrow> ((sub, b), False))" |
   "eval (func f) (sub, b) = (case transform f sub of
@@ -240,11 +220,11 @@ fun eval_condition :: "ArithmeticCondition \<Rightarrow> bool" where
   "eval_condition (IsNumber (Number v)) = True" |
   "eval_condition _ = False"
 
-fun ground_condition :: "ArithmeticCondition \<Rightarrow> (string, Arithmetic) fmap \<Rightarrow> ArithmeticCondition option" where
-  "ground_condition (IsSub (Variable v)) f = (case fmlookup f v of 
+fun ground_condition :: "ArithmeticCondition \<Rightarrow> (string \<rightharpoonup> Arithmetic) \<Rightarrow> ArithmeticCondition option" where
+  "ground_condition (IsSub (Variable v)) f = (case f v of 
                                               Some v' \<Rightarrow> Some (IsSub v') |
                                               None \<Rightarrow> None)" |
-  "ground_condition (IsNumber (Variable v)) f = (case fmlookup f v of 
+  "ground_condition (IsNumber (Variable v)) f = (case f v of 
                                               Some v' \<Rightarrow> Some (IsNumber v') |
                                               None \<Rightarrow> None)" |
   "ground_condition e f = None"
@@ -260,7 +240,7 @@ fun transform_eval :: "Transformer \<Rightarrow> Arithmetic \<Rightarrow> Arithm
   "transform_eval _ _ = None"
 
 setup \<open>Locale_Code.open_block\<close>
-interpretation Arithmetic: Rewritable 
+interpretation Arithmetic: Rewritable
   size_Arithmetic
   rewrite_Arithmetic
   match_Arithmetic
@@ -269,23 +249,8 @@ interpretation Arithmetic: Rewritable
   "eval_condition"
   "ground_condition"
   transform_eval
-  subexprs_Arithmetic
-  chain_Arithmetic
-proof
-  fix e :: Arithmetic
-  show "\<forall>e' \<in> set (subexprs_Arithmetic e). size_Arithmetic e > size_Arithmetic e'"
-    by (cases e; simp)
-next
-  fix f :: "Arithmetic \<Rightarrow> Arithmetic"
-  fix e :: Arithmetic
-  show "map f (subexprs_Arithmetic e) = subexprs_Arithmetic (snd (chain_Arithmetic (\<lambda>e a. (plus a 1, f e)) e 0))"
-    by (cases e; simp)
-next
-  fix f :: "Arithmetic \<Rightarrow> Arithmetic"
-  fix e :: Arithmetic
-  show "length (subexprs_Arithmetic e) = fst (chain_Arithmetic (\<lambda>e a. (plus a 1, f e)) e 0)"
-    by (cases e; simp)
-qed
+  apply standard
+  by (smt (z3) domIff ground_condition.elims ground_condition.simps(1) ground_condition.simps(2) map_le_def option.case_eq_if option.distinct(1))
 setup \<open>Locale_Code.close_block\<close>
 
 

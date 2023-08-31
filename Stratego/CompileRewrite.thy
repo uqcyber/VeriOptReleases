@@ -6,6 +6,17 @@ theory CompileRewrite
     VeriComp.Compiler
 begin
 
+(*lift_definition fmupds :: "('x \<Rightarrow> 'z option) \<Rightarrow> 'x list \<Rightarrow> 'z list \<Rightarrow> ('x \<Rightarrow> 'z option)"
+  is map_upds .*)
+setup_lifting type_definition_fmap
+
+parametric_constant map_upds_transfer[transfer_rule]: map_upds_def
+
+lift_definition fmupds :: "('a, 'b) fmap \<Rightarrow> 'a list \<Rightarrow> 'b list \<Rightarrow> ('a, 'b) fmap"
+  is map_upds
+  parametric map_upds_transfer
+  by simp
+
 subsection \<open>Variable Scope\<close>
 
 type_synonym VarName = "string"
@@ -36,11 +47,35 @@ fun fresh :: "VarName \<Rightarrow> Scope \<Rightarrow> Scope \<times> VarName" 
 
 subsection \<open>Match Primitive\<close>
 
-datatype 'a MATCH =
-  match VarName "'a" |
+print_locale Rewritable
+
+
+
+locale CompiledRewrites = Rewritable +
+  fixes subexprs :: "'a \<Rightarrow> 'a list"
+  fixes chain :: "('a \<Rightarrow> nat \<Rightarrow> (nat \<times> 'a)) \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> (nat \<times> 'a)"
+  assumes shrinks: "\<forall>e' \<in> set (subexprs e). size e > size e'"
+  assumes "map f (subexprs e) = subexprs (snd (chain (\<lambda>e a. (plus a 1, f e)) e 0))"
+  assumes "length (subexprs e) = fst (chain (\<lambda>e a. (plus a 1, f e)) e 0)"
+begin
+
+fun map_tree :: "('a \<Rightarrow> 'a) \<Rightarrow> 'a \<Rightarrow> 'a" where
+  "map_tree f xs = snd (chain (\<lambda>e a. (plus a 1, f e)) xs (0::nat))"
+
+fun maybe_map_tree :: "('a \<Rightarrow> 'a option) \<Rightarrow> 'a \<Rightarrow> 'a option" where
+  "maybe_map_tree f xs = 
+    (let (flag, e') = (chain (\<lambda>e a. (if (f e) = None then 1 else 0, the (f e))) xs (0::nat)) in
+      (if flag = 1 then None else Some e'))"
+
+fun pattern_variables :: "'a \<Rightarrow> string list" where
+  "pattern_variables e = List.map_filter varof (subexprs e)"
+
+
+datatype ('e, 'cond) MATCH =
+  match VarName "'e" |
   equality VarName VarName (infixl "==" 52) |
-  andthen "'a MATCH" "'a MATCH" (infixl "&&" 50) |
-  condition "('a \<times> ('a \<times> bool))" | \<comment> \<open>This was 'a => bool as the second argument but it disagrees with code generation. Requires work regardless.\<close>
+  andthen "('e, 'cond) MATCH" "('e, 'cond) MATCH" (infixl "&&" 50) |
+  cond "'cond" | \<comment> \<open>This was 'a => bool as the second argument but it disagrees with code generation. Requires work regardless.\<close>
   noop
 
 fun register_name where
@@ -50,32 +85,32 @@ fun nth_fresh :: "VarName \<Rightarrow> Scope \<Rightarrow> nat \<Rightarrow> (S
   "nth_fresh v s 0 = fresh v s" |
   "nth_fresh v s (Suc n) = fresh v (fst (nth_fresh v s n))"
 
-fun replace_subexprs :: "Scope \<Rightarrow> ('a::Rewritable) \<Rightarrow> (Scope \<times> ('a::Rewritable))" where
+fun replace_subexprs :: "Scope \<Rightarrow> ('a) \<Rightarrow> (Scope \<times> ('a))" where
   "replace_subexprs s e =
     (let (n, e') = chain (\<lambda>e n. (plus n 1, var (snd (nth_fresh ''a'' s n)))) e 0
       in (fst (nth_fresh ''a'' s n), e'))"
 
-fun expression_vars :: "Scope \<Rightarrow> ('a::Rewritable) \<Rightarrow> (Scope \<times> string list)" where
+fun expression_vars :: "Scope \<Rightarrow> ('a) \<Rightarrow> (Scope \<times> string list)" where
   "expression_vars s e = 
     (chain_list s (\<lambda>e' s'. (fresh ''a'' s')) (subexprs e))"
 
-fun replace_subexpr :: "string list \<Rightarrow> ('a::Rewritable) \<Rightarrow> ('a::Rewritable)" where
+fun replace_subexpr :: "string list \<Rightarrow> ('a) \<Rightarrow> ('a)" where
   "replace_subexpr vs e = snd (chain (\<lambda>e n. (plus n 1, var (vs!n))) e 0)"
 
-fun join :: "('a MATCH) list \<Rightarrow> 'a MATCH" where
+fun join :: "(('e, 'cond) MATCH) list \<Rightarrow> ('e, 'cond) MATCH" where
   "join [] = noop" |
   "join [x] = x" |
   "join (x # xs) = (x && join xs)"
 
-type_synonym 'a MatchGenerator = "'a \<Rightarrow> VarName \<Rightarrow> Scope \<Rightarrow> Scope \<times> 'a MATCH"
+type_synonym ('e, 'cond) MatchGenerator = "'e \<Rightarrow> VarName \<Rightarrow> Scope \<Rightarrow> Scope \<times> ('e, 'cond) MATCH"
 
-abbreviation generate_subexprs :: "'a::Rewritable MatchGenerator \<Rightarrow> 'a list \<Rightarrow> Scope \<Rightarrow> string list \<Rightarrow> ((Scope \<times> nat) \<times> 'a MATCH list)" where
+abbreviation generate_subexprs :: "('a, 'b) MatchGenerator \<Rightarrow> 'a list \<Rightarrow> Scope \<Rightarrow> string list \<Rightarrow> ((Scope \<times> nat) \<times> ('a, 'b) MATCH list)" where
   "generate_subexprs f es s vs \<equiv> 
      (chain_list (s, 0) (\<lambda>e' (s', n). 
         (let (scope, m) = (f e' (vs!n) s') in
           ((scope, plus n 1), m))) es)"
 
-function match_pattern :: "'a::Rewritable MatchGenerator" where
+function match_pattern :: "('a, 'b) MatchGenerator" where
   "match_pattern e v s =
     (case varof e of
       Some vn \<Rightarrow> (case (snd s) vn of 
@@ -92,36 +127,15 @@ termination match_pattern
    apply simp+ apply auto[1]
   using shrinks sorry
 
-value "match_pattern
-(Sub (Add (Variable ''x'') (Variable ''y'')) (Variable ''y''))
-''e'' ({|''e''|}, Map.empty)"
-text \<open>@{value "match_pattern
-(Sub (Add (Variable ''x'') (Variable ''y'')) (Variable ''y''))
-''e'' ({|''e''|}, Map.empty)"}\<close>
-
-value "match_pattern
-(Sub 
-    (Add 
-        (Sub (Variable ''x'') (Variable ''x''))
-        (Sub (Variable ''y'') (Variable ''x'')))
-    (Variable ''y''))
-''e'' ({|''e''|}, Map.empty)"
-text \<open>@{value "match_pattern
-(Sub 
-    (Add 
-        (Sub (Variable ''x'') (Variable ''x''))
-        (Sub (Variable ''y'') (Variable ''x'')))
-    (Variable ''y''))
-''e'' ({|''e''|}, Map.empty)"}\<close>
-
-definition gen_pattern :: "('a::Rewritable) \<Rightarrow> VarName \<Rightarrow> 'a MATCH" where
+definition gen_pattern :: "('a) \<Rightarrow> VarName \<Rightarrow> ('a, 'b) MATCH" where
   "gen_pattern p v = snd (match_pattern p v ({|v|}, Map.empty))"
 
 subsubsection \<open>Semantics\<close>
-type_synonym 'a Subst = "VarName \<rightharpoonup> 'a"
 
-fun equal_ignore_vars :: "'a::Rewritable \<Rightarrow> 'a \<Rightarrow> bool" where
+fun equal_ignore_vars :: "'a \<Rightarrow> 'a \<Rightarrow> bool" where
   "equal_ignore_vars e1 e2 = ((map_tree (\<lambda>_. var ''a'') e1) = (map_tree (\<lambda>_. var ''a'') e2))"
+
+type_synonym 'e Subst = "string \<rightharpoonup> 'e"
 
 fun unify :: "string list \<Rightarrow> 'a list \<Rightarrow> 'a Subst \<Rightarrow> 'a Subst option" where
   "unify [] [] s = Some s" |
@@ -131,10 +145,10 @@ fun unify :: "string list \<Rightarrow> 'a list \<Rightarrow> 'a Subst \<Rightar
            else unify vs es (s(v \<mapsto> e))))" |
   "unify _ _ s = None"
 
-function ground_expr :: "'a::Rewritable \<Rightarrow> 'a Subst \<Rightarrow> 'a option" where
+function ground_expr :: "'a \<Rightarrow> 'a Binding \<Rightarrow> 'a option" where
   "ground_expr e s =
     (case varof e of
-      Some v \<Rightarrow>(case s v of None \<Rightarrow> None
+      Some v \<Rightarrow>(case fmlookup s v of None \<Rightarrow> None
                 | Some v' \<Rightarrow> Some v') |
       None \<Rightarrow> maybe_map_tree (\<lambda>e'. ground_expr e' s) e)"
   apply auto[1]
@@ -144,13 +158,14 @@ function ground_expr :: "'a::Rewritable \<Rightarrow> 'a Subst \<Rightarrow> 'a 
 termination  sorry
 
 lemma ground_expr_idempotent:
-  assumes "a' \<subseteq>\<^sub>m a"
+  assumes "a' \<subseteq>\<^sub>f a"
   assumes "ground_expr e a' = Some e'"
   shows "ground_expr e a' = ground_expr e a"
   using assms apply (induction e a' arbitrary: a a' rule: ground_expr.induct)
-  by (smt (verit, ccfv_threshold) domIff ground_expr.simps map_le_def option.case_eq_if option.distinct(1))
+  apply lifting sorry
 
-fun eval_match :: "('a::Rewritable) MATCH \<Rightarrow> 'a Subst \<Rightarrow> ('a Subst) option" where
+
+fun eval_match :: "('a, 'b) MATCH \<Rightarrow> 'a Subst \<Rightarrow> ('a Subst) option" where
   "eval_match (match v e) s =
     (case s v of
       Some e' \<Rightarrow>
@@ -164,28 +179,28 @@ fun eval_match :: "('a::Rewritable) MATCH \<Rightarrow> 'a Subst \<Rightarrow> (
         None \<Rightarrow> None |
         Some s' \<Rightarrow> eval_match m2 s')" |
   "eval_match noop s = Some s" |
-  "eval_match (condition (v, f)) s =
-      (case ground_expr v s of
+  "eval_match (cond e) s =
+      (case ground_condition e s of
         None \<Rightarrow> None |
-        Some e \<Rightarrow> (if (snd f) then Some s else None))"
+        Some e' \<Rightarrow> (if (eval_condition e') then Some s else None))"
 
 subsubsection \<open>Validity\<close>
 
-fun def_vars :: "'a::Rewritable MATCH \<Rightarrow> string set" where
+fun def_vars :: "('a, 'b) MATCH \<Rightarrow> string set" where
   "def_vars (match v p) = set (pattern_variables p)" |
   "def_vars (equality e1 e2) = {e1, e2}" |
   "def_vars (m1 && m2) = def_vars m1 \<union> def_vars m2" |
-  "def_vars (condition c) = {}" |
+  "def_vars (cond c) = {}" |
   "def_vars noop = {}"
 
-fun use_vars :: "'a::Rewritable MATCH \<Rightarrow> string set" where
+fun use_vars :: "('a, 'b) MATCH \<Rightarrow> string set" where
   "use_vars (match v p) = {v}" |
   "use_vars (equality e1 e2) = {}" |
   "use_vars (m1 && m2) = use_vars m1 \<union> (use_vars m2 - def_vars m1)" |
-  "use_vars (condition c) = {}" |
+  "use_vars (cond c) = {}" |
   "use_vars noop = {}"
 
-fun valid_match :: "'a::Rewritable MATCH \<Rightarrow> bool" where
+fun valid_match :: "('a, 'b) MATCH \<Rightarrow> bool" where
   "valid_match (match v e) = (v \<notin> set (pattern_variables e) \<and> distinct (pattern_variables e))" |
   "valid_match (m1 && m2) = (valid_match m1 \<and> valid_match m2 \<and> use_vars m1 \<inter> def_vars m2 = {})" |
   "valid_match _ = True"
@@ -248,6 +263,7 @@ next
   then show ?case by simp
 qed
 
+
 lemma match_def_affect:
   assumes "eval_match m u = Some a"
   shows "\<forall>v. v \<notin> def_vars m \<longrightarrow> u v = a v"
@@ -261,8 +277,8 @@ next
     by (metis eval_match.simps(2) option.discI option.inject)
 next
   case (3 m1 m2 s)
-  then show ?case
-    by (metis (mono_tags, lifting) UnCI def_vars.simps(3) eval_match.simps(3) option.case_eq_if option.collapse)
+  then show ?case using UnCI def_vars.simps(3) eval_match.simps(3) option.case_eq_if option.collapse
+    by (smt (verit, ccfv_threshold))
 next
   case (4 s)
   then show ?case
@@ -330,10 +346,10 @@ next
 next
   case (andthen m1 m2)
   then show ?case
-    using valid_match.simps(2)
-    by (metis eval_match.simps(3) map_le_trans option.case_eq_if option.collapse)
+    using valid_match.simps(2) eval_match.simps(3) map_le_trans option.case_eq_if option.collapse
+    sorry
 next
-  case (condition x)
+  case (cond x)
   then show ?case
     using match_def_affect by fastforce
 next
@@ -391,12 +407,11 @@ next
   then show ?case
     by (metis andthen.IH(1) andthen.IH(2) andthen.prems(2) andthen.prems(3) eval_match.simps(3) eval_match_subset m1eval m2eval map_le_antisym option.simps(5) valid_match.simps(2))
 next
-  case (condition c)
-  then have "(ground_expr (fst c) a') = (ground_expr (fst c) a)"
-    using ground_expr_idempotent
-    by (smt (z3) eval_match.simps(5) option.distinct(1) option.exhaust option.simps(4) prod.exhaust_sel)
+  case (cond c)
+  then have "(ground_condition c a') = (ground_condition c a)"
+    by (metis (no_types, lifting) Rewritable_axioms Rewritable_def eval_match.simps(5) option.case_eq_if option.collapse option.distinct(1))
   then show ?case
-    by (smt (verit, ccfv_SIG) condition.prems(1) eval_match.simps(5) option.case_eq_if option.distinct(1) prod.exhaust_sel)
+    by (smt (verit, ccfv_SIG) cond.prems(1) eval_match.simps(5) option.case_eq_if option.distinct(1) prod.exhaust_sel)
 next
   case noop
   then show ?case by simp
@@ -462,9 +477,10 @@ next
   then show ?case
     by (simp add: m2idem)
 next
-  case (condition x)
+  case (cond x)
   then show ?case
-    using match_def_affect by force
+    using match_def_affect
+    by fastforce
 next
   case noop
   then show ?case
@@ -477,17 +493,16 @@ lemma match_eq:
   using assms
   by (simp add: idempotent_match option.case_eq_if)
 
-
 subsection \<open>Combining Rules\<close>
 
-datatype 'a Rules =
-  base "'a::Rewritable" |
-  cond "'a MATCH" "'a Rules" (infixl "?" 52) |
-  else "'a Rules" "'a Rules" (infixl "else" 50) |
-  seq "'a Rules" "'a Rules" (infixl "\<then>" 49) |
-  choice "('a Rules) list"
+datatype ('e, 'cond) Rules =
+  base "'e" |
+  cond' "('e, 'cond) MATCH" "('e, 'cond) Rules" (infixl "?" 52) |
+  else "('e, 'cond) Rules" "('e, 'cond) Rules" (infixl "else" 50) |
+  seq "('e, 'cond) Rules" "('e, 'cond) Rules" (infixl "\<then>" 49) |
+  choice "(('e, 'cond) Rules) list"
 
-function var_expr :: "'a::Rewritable \<Rightarrow> Scope \<Rightarrow> 'a" where
+function var_expr :: "'a \<Rightarrow> Scope \<Rightarrow> 'a" where
   "var_expr e (s, m) =
     (case varof e of
       Some v \<Rightarrow>(case m v of None \<Rightarrow> var v
@@ -499,15 +514,17 @@ function var_expr :: "'a::Rewritable \<Rightarrow> Scope \<Rightarrow> 'a" where
 text \<open>Requires a proof that all the arguments to the map tree anonymous function are less than the original input\<close>
 termination var_expr sorry
 
-fun generate :: "'a::Rewritable \<Rightarrow> 'a \<Rightarrow> 'a Rules" where
+fun generate :: "'a \<Rightarrow> 'a \<Rightarrow> ('a, 'b) Rules" where
   "generate p r = 
     (let (s, m) = match_pattern p ''e'' ({||}, (\<lambda>x. None))
      in (m ? (base (var_expr r s))))"
 
-fun generate_with_condition :: "'a::Rewritable \<Rightarrow> 'a \<Rightarrow> ('a \<times> ('a \<times> bool)) \<Rightarrow> 'a Rules" where
-  "generate_with_condition p r (v, f) = 
+(*
+fun generate_with_condition :: "'a \<Rightarrow> 'a \<Rightarrow> ('b) \<Rightarrow> ('a, 'b) Rules" where
+  "generate_with_condition p r c = 
     (let (s, m) = match_pattern p ''e'' ({||}, (\<lambda>x. None))
-     in ((m && condition (var_expr v s, f)) ? (base (var_expr r s))))"
+     in ((m && (cond (the (ground_condition v s)))) ? (base (var_expr r s))))" (* TODO: the *)
+*)
 
 subsubsection \<open>Semantics\<close>
 
@@ -519,7 +536,7 @@ fun has_none :: "('a option) list \<Rightarrow> bool" where
   "has_none [] = False" |
   "has_none (x # xs) = ((x = None) \<and> has_none xs)"
 
-function eval_expr :: "'a::Rewritable \<Rightarrow> 'a Subst \<Rightarrow> 'a option" where
+function eval_expr :: "'a \<Rightarrow> 'a Subst \<Rightarrow> 'a option" where
   "eval_expr e u =
     (case varof e of
         Some v \<Rightarrow> u v
@@ -531,16 +548,16 @@ function eval_expr :: "'a::Rewritable \<Rightarrow> 'a Subst \<Rightarrow> 'a op
 
 termination eval_expr sorry
 
-inductive eval_rules :: "('a::Rewritable) Rules \<Rightarrow> 'a Subst \<Rightarrow> 'a option \<Rightarrow> bool" where
+inductive eval_rules :: "('a, 'b) Rules \<Rightarrow> 'a Subst \<Rightarrow> 'a option \<Rightarrow> bool" where
   \<comment> \<open>Evaluate the result\<close>
   "eval_rules (base e) u (eval_expr e u)" |
 
   \<comment> \<open>Evaluate a condition\<close>
   "\<lbrakk>eval_match m u = Some u' \<and>
     eval_rules r u' e\<rbrakk>
-   \<Longrightarrow> eval_rules (cond m r) u e" |
+   \<Longrightarrow> eval_rules (cond' m r) u e" |
   "\<lbrakk>eval_match m u = None\<rbrakk>
-   \<Longrightarrow> eval_rules (cond m r) u None" |
+   \<Longrightarrow> eval_rules (cond' m r) u None" |
 
   \<comment> \<open>Evaluate else\<close>
   "\<lbrakk>eval_rules r1 u (Some r)\<rbrakk>
@@ -567,16 +584,16 @@ inductive eval_rules :: "('a::Rewritable) Rules \<Rightarrow> 'a Subst \<Rightar
    \<Longrightarrow> eval_rules (r1 \<then> r2) u r"
 
 inductive_cases baseE: "eval_rules (base e') u e"
-inductive_cases condE: "eval_rules (cond m r) u e"
+inductive_cases condE: "eval_rules (cond' m r) u e"
 inductive_cases elseE: "eval_rules (r1 else r2) u e"
 inductive_cases choiceE: "eval_rules (choice r) u e"
 inductive_cases seqE: "eval_rules (r1 \<then> r2) u e"
 
-code_pred [show_modes] eval_rules .
+(*code_pred [show_modes] eval_rules .*)
 
 subsubsection \<open>Validity\<close>
 
-fun valid_rules :: "'a::Rewritable Rules \<Rightarrow> bool" where
+fun valid_rules :: "('a, 'b) Rules \<Rightarrow> bool" where
   "valid_rules (m ? r) = (valid_match m \<and> valid_rules r)" |
   "valid_rules (r1 else r2) = (valid_rules r1 \<and> valid_rules r2)" |
   "valid_rules (r1 \<then> r2) = (valid_rules r1 \<and> valid_rules r2)" |
@@ -757,8 +774,8 @@ lemma choice_Single:
   "eval_rules (choice [r]) u e = eval_rules r u e"
   apply (cases e)
   using eval_choice_none apply auto[1]
-  using choiceE eval_rules.intros(6) apply fastforce apply fastforce
-  by (smt (verit, best) choiceE eval_rules.intros(6) list.set_cases list.set_intros(1) neq_Nil_conv set_ConsD)
+  using choiceE eval_rules.intros(6) by fastforce
+
 
 lemma redundant_conditions:
   assumes "valid_match m"
@@ -773,11 +790,12 @@ proof -
   ultimately show ?thesis by simp
 qed
 
+
 subsection \<open>Rule Optimizations\<close>
 
 subsubsection \<open>Eliminate \texttt{noop} Operations\<close>
 
-fun elim_noop :: "'a MATCH \<Rightarrow> 'a MATCH" where
+fun elim_noop :: "('e, 'cond) MATCH \<Rightarrow> ('e, 'cond) MATCH" where
   "elim_noop (lhs && noop) = elim_noop lhs" |
   "elim_noop (noop && rhs) = elim_noop rhs" |
   "elim_noop (lhs && rhs) = ((elim_noop lhs) && (elim_noop rhs))" |
@@ -793,7 +811,7 @@ lemma sound_optimize_noop:
   apply (metis elim_noop.simps(17) elim_noop.simps(24) seq_det_rhs)
   by simp+
 
-fun eliminate_noop :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
+fun eliminate_noop :: "('e, 'cond) Rules \<Rightarrow> ('e, 'cond) Rules" where
   "eliminate_noop (base e) = base e" |
   "eliminate_noop (noop ? r) = eliminate_noop r" |
   "eliminate_noop (m ? r) = elim_noop m ? eliminate_noop r" |
@@ -828,17 +846,24 @@ fun eliminate_empty :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
   "eliminate_empty (choice rules) = choice (List.map eliminate_empty rules)" |
   "eliminate_empty (r1 \<then> r2) = (eliminate_empty r1 \<then> eliminate_empty r2)"*)
 
+
 subsubsection \<open>Lift primitive sequential (\texttt{\&\&}) to rule sequential (\texttt{?})\<close>
 
-fun combined_size :: "'a::Rewritable Rules \<Rightarrow> nat" where
-  "combined_size (m ? r) = (2 * size m) + combined_size r" |
+definition size_condition :: "'cond \<Rightarrow> nat" where
+  "size_condition _ = 0"
+
+definition size_Rule :: "('a, 'b) Rules \<Rightarrow> nat" where
+  "size_Rule = size_Rules size size_condition"
+
+fun combined_size :: "('e, 'cond) Rules \<Rightarrow> nat" where
+  "combined_size (m ? r) = (2 * size_MATCH size_condition size_condition m) + combined_size r" |
   "combined_size (base e) = 0" |
   "combined_size (r1 else r2) = combined_size r1 + combined_size r2" |
   "combined_size (choice (rule # rules)) = 1 + combined_size rule + combined_size (choice rules)" |
   "combined_size (choice []) = 1" |
   "combined_size (r1 \<then> r2) = combined_size r1 + combined_size r2"
 
-function (sequential) lift_match :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
+function (sequential) lift_match :: "('e, 'cond) Rules \<Rightarrow> ('e, 'cond) Rules" where
   "lift_match (r1 else r2) = ((lift_match r1) else (lift_match r2))" |
   "lift_match (choice rules) = choice (map lift_match rules)" |
   "lift_match ((m1 && m2) ? r) = (lift_match (m1 ? (m2 ? r)))" |
@@ -847,7 +872,7 @@ function (sequential) lift_match :: "'a::Rewritable Rules \<Rightarrow> 'a Rules
   "lift_match (r1 \<then> r2) = (lift_match r1 \<then> lift_match r2)"
   by pat_completeness auto
 termination lift_match
-  apply (relation "measures [combined_size, size]") apply auto[1]
+  apply (relation "measures [combined_size, (size_Rules size_condition size_condition)]") apply auto[1]
   apply auto[1] apply auto[1] apply simp
   subgoal for rules x apply (induction rules) apply simp by fastforce
   apply simp subgoal for m2 r apply (cases m2)
@@ -877,7 +902,7 @@ lemma lift_match_valid:
 
 subsubsection \<open>Merge Common Conditions in \texttt{else} and sequential (\texttt{?}) Operations\<close>
 
-fun join_conditions :: "'a::Rewritable Rules \<Rightarrow> 'a Rules option" where
+fun join_conditions :: "('e, 'cond) Rules \<Rightarrow> ('e, 'cond) Rules option" where
   "join_conditions (m1 ? r1 else m2 ? r2) = 
     (if m1 = m2
       then Some (m1 ? (r1 else r2)) else None)" |
@@ -887,13 +912,13 @@ fun join_conditions :: "'a::Rewritable Rules \<Rightarrow> 'a Rules option" wher
   "join_conditions r = None"
 
 lemma join_conditions_shrinks:
-  "join_conditions r = Some r' \<Longrightarrow> (<) (size r') (size r)"
+  "join_conditions r = Some r' \<Longrightarrow> (<) (size_Rule r') (size_Rule r)"
   apply (induction r rule: join_conditions.induct)
   using Rules.size(7) Rules.size(8) Suc_le_eq add.left_commute add.right_neutral antisym_conv1 join_conditions.simps(1) le_simps(1) option.distinct(1) option.sel plus_nat.simps(2)
-   add_Suc_right le_add2
+   add_Suc_right le_add2 sorry(*
   apply (smt (z3))
   apply (metis Rules.size(7) add.right_neutral add_Suc_right join_conditions.simps(2) less_add_Suc2 option.distinct(1) option.sel)
-  by simp+
+  by simp+*)
 
 lemma join_conditions_valid:
   assumes "valid_rules r"
@@ -909,7 +934,7 @@ lemma join_conditions_valid:
   qed
   by simp+
 
-function lift_common :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
+function lift_common :: "('e, 'cond) Rules \<Rightarrow> ('e, 'cond) Rules" where
   "lift_common (r1 else r2) = (
     case join_conditions (r1 else r2) 
     of Some r \<Rightarrow> lift_common r |
@@ -924,12 +949,12 @@ function lift_common :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
   using combined_size.cases 
   apply (smt (verit, ccfv_threshold))
   by simp+
-termination
-  apply (relation "measures [size]") apply auto[1]
+termination sorry (*
+  apply (relation "measures [size_Rule]") apply auto[1]
     apply simp subgoal for r1 r2 apply (induction r1 rule: join_conditions.induct) by simp+
    apply auto[1]
   using join_conditions_shrinks apply fastforce+
-  by (simp add: le_imp_less_Suc size_list_estimation')+
+  by (simp add: le_imp_less_Suc size_list_estimation')+*)
 
 lemma lift_common_valid:
   assumes "valid_rules r"
@@ -984,21 +1009,21 @@ qed
 
 subsubsection \<open>Merge Common Conditions in Non-deterministic Choice\<close>
 
-fun find_common :: "'a::Rewritable MATCH \<Rightarrow> 'a Rules \<Rightarrow> 'a Rules option" where
+fun find_common :: "('e, 'cond) MATCH \<Rightarrow> ('e, 'cond) Rules \<Rightarrow> ('e, 'cond) Rules option" where
   "find_common m (m' ? r) = (if m = m' then Some r else None)" |
   "find_common m r = None"
 
-fun find_uncommon :: "'a::Rewritable MATCH \<Rightarrow> 'a Rules \<Rightarrow> 'a Rules option" where
+fun find_uncommon :: "('e, 'cond) MATCH \<Rightarrow> ('e, 'cond) Rules \<Rightarrow> ('e, 'cond) Rules option" where
   "find_uncommon m (m' ? r) = (if m = m' then None else Some (m' ? r))" |
   "find_uncommon m r = Some r"
 
-definition join_common :: "'a::Rewritable MATCH \<Rightarrow> 'a Rules list \<Rightarrow> 'a Rules list" where
+definition join_common :: "('e, 'cond) MATCH \<Rightarrow> ('e, 'cond) Rules list \<Rightarrow> ('e, 'cond) Rules list" where
   "join_common m rules = List.map_filter (find_common m) rules"
 
-definition join_uncommon :: "'a::Rewritable MATCH \<Rightarrow> 'a Rules list \<Rightarrow> 'a Rules list" where
+definition join_uncommon :: "('e, 'cond) MATCH \<Rightarrow> ('e, 'cond) Rules list \<Rightarrow> ('e, 'cond) Rules list" where
   "join_uncommon m rules = List.map_filter (find_uncommon m) rules"
 
-function (sequential) combine_conditions :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
+function (sequential) combine_conditions :: "('e, 'cond) Rules \<Rightarrow> ('e, 'cond) Rules" where
   "combine_conditions (base e) = base e" |
   "combine_conditions (r1 else r2) = (combine_conditions r1 else combine_conditions r2)" |
   "combine_conditions (m ? r) = (m ? combine_conditions r)" |
@@ -1011,7 +1036,7 @@ function (sequential) combine_conditions :: "'a::Rewritable Rules \<Rightarrow> 
   apply pat_completeness+
   by simp+
 
-fun common_size :: "'a::Rewritable Rules \<Rightarrow> nat" where
+fun common_size :: "('e, 'cond) Rules \<Rightarrow> nat" where
   "common_size (m ? r) = 1 + common_size r" |
   "common_size (base e) = 0" |
   "common_size (r1 else r2) = 1 + common_size r1 + common_size r2" |
@@ -1021,9 +1046,10 @@ fun common_size :: "'a::Rewritable Rules \<Rightarrow> nat" where
 
 lemma find_common_size:
   assumes "(find_common m r) \<noteq> None"
-  shows "size (the (find_common m r)) < size r"
+  shows "size_Rule (the (find_common m r)) < size_Rule r"
   using assms apply (induction r rule: find_common.induct)
-  apply simp+ apply fastforce by simp+
+  apply simp+
+  using size_Rule_def apply fastforce apply fastforce by simp+
 
 lemma common_size_choice_gt:
   "x \<in> set va \<Longrightarrow> common_size x \<le> common_size (choice va)"
@@ -1234,20 +1260,20 @@ proof -
     then show ?thesis
       using eval_rules.intros(6) r by blast
   next
-    case (cond m' r')
+    case (cond' m' r')
     then show ?thesis
     proof (cases "m = m'")
       case True
       then have "r' \<in> set (join_common m rules)"
-        using cond r join_common_set_def
+        using cond' r join_common_set_def
         by blast
       then show ?thesis
-        by (metis True cond eval_rules.intros(6) image_eqI image_set pull_cond_out_rhs r)
+        by (metis True cond' eval_rules.intros(6) image_eqI image_set pull_cond_out_rhs r)
     next
       case False
       have "r \<in> set (join_uncommon m rules)"
         using join_uncommon_set_def False r
-        using cond by blast
+        using cond' by blast
       then show ?thesis
         using eval_rules.intros(6) r by blast
     qed
@@ -1381,7 +1407,7 @@ lemma combine_conditions_valid:
 
 subsubsection \<open>Eliminate Non-deterministic Choice Operations\<close>
 
-fun eliminate_choice :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
+fun eliminate_choice :: "('e, 'cond) Rules \<Rightarrow> ('e, 'cond) Rules" where
   "eliminate_choice (base e) = base e" |
   "eliminate_choice (r1 else r2) = (eliminate_choice r1 else eliminate_choice r2)" |
   "eliminate_choice (m ? r) = (m ? eliminate_choice r)" |
@@ -1417,13 +1443,18 @@ lemma eliminate_choice_valid:
 
 subsection \<open>Combine Rule Optimizations\<close>
 
-definition optimized_export where
+definition optimized_export :: "('e, 'cond) Rules \<Rightarrow> ('e, 'cond) Rules" where
   "optimized_export =
     eliminate_choice
     o combine_conditions
     o lift_common
     o lift_match
     o eliminate_noop"
+
+(*
+definition optimized_export :: "('e, 'cond) Rules \<Rightarrow> ('e, 'cond) Rules" where
+  "optimized_export r =
+    eliminate_noop r"*)
 
 
 (*lemma elim_empty_preserve_def_vars:
@@ -1480,11 +1511,13 @@ lemma eliminate_noop_preserve_valid:
   using assms apply (induction r rule: eliminate_noop.induct)
   by (simp add: elim_noop_preserve_valid)+
 
+(*
 lemma lift_match_preserve_valid:
   assumes "valid_rules r"
   shows "valid_rules (lift_match r)"
   using assms apply (induction r rule: lift_match.induct)
   by simp+
+
 
 lemma optimized_export_valid:
   assumes "valid_rules r"
@@ -1495,7 +1528,7 @@ lemma optimized_export_valid:
   by (metis assms eliminate_noop_preserve_valid lift_common_valid lift_match_preserve_valid)
 
 thm_oracles optimized_export_valid
-
+*)
 
 subsection \<open>Compiling Match Patterns\<close>
 
@@ -1505,16 +1538,16 @@ subsection \<open>Compiling Match Patterns\<close>
 (Variable ''x'')
 ((Variable ''y''), \<lambda>x. True))"*)
 
-definition gen_rewrite :: "('a::Rewritable) \<Rightarrow> 'a \<Rightarrow> VarName \<Rightarrow> 'a Rules" where
+definition gen_rewrite :: "('a) \<Rightarrow> 'a \<Rightarrow> VarName \<Rightarrow> ('a, 'b) Rules" where
   "gen_rewrite p r v = (
     let (s, lhs) = (match_pattern p v ({|v|}, Map.empty)) in lhs? base (var_expr r s))"
 
-fun compile' :: "('a::Rewritable) Strategy \<Rightarrow> 'a Rules option" where
+fun compile' :: "('a, 'b, 'c) Strategy \<Rightarrow> ('a, 'b) Rules option" where
   "compile' (s1 \<rightarrow> s2) = Some (gen_rewrite s1 s2 ''e'')" |
   "compile' _ = None"(* |
   "compile (s1?; (v1?; s3; v2!); s2!) = ((gen_pattern s1 ''e'') ? base s2)"*)
 
-fun compile :: "(('a::Rewritable) Strategy \<times> 'a) \<Rightarrow> ('a Rules \<times> 'a) option" where
+fun compile :: "(('a, 'b, 'c) Strategy \<times> 'a) \<Rightarrow> (('a, 'b) Rules \<times> 'a) option" where
   "compile ((s1 \<rightarrow> s2), t) = Some ((gen_rewrite s1 s2 ''e''), t)" |
   "compile _ = None"
 
@@ -1527,7 +1560,49 @@ fun compile :: "(('a::Rewritable) Strategy \<times> 'a) \<Rightarrow> ('a Rules 
   "compile (r!) s = base (ground_expr r s)" |
   "compile ((v1?; x; v2!); r) s = (if v1 = v2 then (condition x)? compile r s else noop)"*)
 
+end
+
 subsection \<open>Example: Arithmetic\<close>
+
+setup \<open>Locale_Code.open_block\<close>
+ML_val \<open>Locale_Code.tracing_enabled\<close>
+interpretation ArithmeticCompiled: CompiledRewrites
+  size_Arithmetic
+  rewrite_Arithmetic
+  match_Arithmetic
+  varof_Arithmetic
+  var_Arithmetic
+  "eval_condition"
+  "ground_condition"
+  transform_eval
+  subexprs_Arithmetic
+  chain_Arithmetic
+proof
+  fix e :: Arithmetic
+  show "\<forall>e' \<in> set (subexprs_Arithmetic e). size_Arithmetic e > size_Arithmetic e'"
+    by (cases e; simp)
+next
+  fix f :: "Arithmetic \<Rightarrow> Arithmetic"
+  fix e :: Arithmetic
+  show "map f (subexprs_Arithmetic e) = subexprs_Arithmetic (snd (chain_Arithmetic (\<lambda>e a. (plus a 1, f e)) e 0))"
+    by (cases e; simp)
+next
+  fix f :: "Arithmetic \<Rightarrow> Arithmetic"
+  fix e :: Arithmetic
+  show "length (subexprs_Arithmetic e) = fst (chain_Arithmetic (\<lambda>e a. (plus a 1, f e)) e 0)"
+    by (cases e; simp)
+qed
+setup \<open>Locale_Code.close_block\<close>
+
+definition "join = ArithmeticCompiled.join"
+definition "compile' = ArithmeticCompiled.compile'"
+definition "generate = ArithmeticCompiled.generate"
+definition "match_pattern = ArithmeticCompiled.match_pattern"
+definition "optimized_export = ArithmeticCompiled.optimized_export"
+notation ArithmeticCompiled.choice ("choice _")
+notation ArithmeticCompiled.else ("_ else _")
+
+export_code "compile'" checking SML
 
 value "compile' RedundantAdd"
 text \<open>@{value[display] "compile' RedundantAdd"}\<close>
@@ -1536,6 +1611,28 @@ text \<open>@{value[display] "compile' RedundantSub"}\<close>
 (*value "compile' ShiftConstRight"
 value "compile' EvalMinus1"
 value "compile' EvalAdd"*)
+
+value "match_pattern
+(Sub (Add (Variable ''x'') (Variable ''y'')) (Variable ''y''))
+''e'' ({|''e''|}, Map.empty)"
+text \<open>@{value "match_pattern
+(Sub (Add (Variable ''x'') (Variable ''y'')) (Variable ''y''))
+''e'' ({|''e''|}, Map.empty)"}\<close>
+
+value "match_pattern
+(Sub 
+    (Add 
+        (Sub (Variable ''x'') (Variable ''x''))
+        (Sub (Variable ''y'') (Variable ''x'')))
+    (Variable ''y''))
+''e'' ({|''e''|}, Map.empty)"
+text \<open>@{value "match_pattern
+(Sub 
+    (Add 
+        (Sub (Variable ''x'') (Variable ''x''))
+        (Sub (Variable ''y'') (Variable ''x'')))
+    (Variable ''y''))
+''e'' ({|''e''|}, Map.empty)"}\<close>
 
 definition Identity where
   "Identity = generate 
@@ -1590,6 +1687,7 @@ text "@{value[display] \<open>(optimized_export (choice [LeftConst, Evaluate, Id
 value "(optimized_export (optimized_export (choice [LeftConst, Evaluate, Identity])))"
 text "@{value[display] \<open>(optimized_export (optimized_export (choice [LeftConst, Evaluate, Identity])))\<close>}"
 
+(*
 value "eval (RedundantAdd <+ RedundantSub) ((Add (Number 10) (Number 0)), fmempty)"
 
 inductive loadStrategy :: "('a::Rewritable Strategy \<times> 'a) \<Rightarrow> ('a Strategy \<times> 'a State \<times> bool) \<Rightarrow> bool" where
@@ -1733,5 +1831,6 @@ interpretation compile_valid:
       by (metis \<open>p2 = (gen_rewrite lhs rhs ''e'', t)\<close> loadRules.simps loadS prod.inject)
   qed
   done
+*)
 
 end
