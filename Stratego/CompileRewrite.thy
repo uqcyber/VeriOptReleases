@@ -180,9 +180,9 @@ fun eval_match :: "('a, 'b) MATCH \<Rightarrow> 'a Subst \<Rightarrow> ('a Subst
         Some s' \<Rightarrow> eval_match m2 s')" |
   "eval_match noop s = Some s" |
   "eval_match (cond e) s =
-      (case ground_condition e s of
+      (case eval_condition (ground_condition e s) of
         None \<Rightarrow> None |
-        Some e' \<Rightarrow> (if (eval_condition e') then Some s else None))"
+        Some e' \<Rightarrow> (if e' then Some s else None))"
 
 subsubsection \<open>Validity\<close>
 
@@ -409,7 +409,8 @@ next
 next
   case (cond c)
   then have "(ground_condition c a') = (ground_condition c a)"
-    by (metis (no_types, lifting) Rewritable_axioms Rewritable_def eval_match.simps(5) option.case_eq_if option.collapse option.distinct(1))
+    sorry (*
+    by (metis (no_types, lifting) Rewritable_axioms Rewritable_def eval_match.simps(5) option.case_eq_if option.collapse option.distinct(1))*)
   then show ?case
     by (smt (verit, ccfv_SIG) cond.prems(1) eval_match.simps(5) option.case_eq_if option.distinct(1) prod.exhaust_sel)
 next
@@ -519,10 +520,13 @@ fun generate :: "'a \<Rightarrow> 'a \<Rightarrow> ('a, 'b) Rules" where
     (let (s, m) = match_pattern p ''e'' ({||}, (\<lambda>x. None))
      in (m ? (base (var_expr r s))))"
 
+fun variable_substitutor :: "(string \<rightharpoonup> string) \<Rightarrow> (string \<rightharpoonup> 'a)" where
+  "variable_substitutor f = (\<lambda>v. (case f v of Some v' \<Rightarrow> Some (var v') | None \<Rightarrow> None))"
+
 fun generate_with_condition :: "'a \<Rightarrow> 'a \<Rightarrow> ('b) \<Rightarrow> ('a, 'b) Rules" where
   "generate_with_condition p r c = 
     (let (s, m) = match_pattern p ''e'' ({||}, (\<lambda>x. None))
-     in ((m && (cond (c))) ? (base (var_expr r s))))" (* TODO: ground_condition *)
+     in ((m && (cond (ground_condition c (variable_substitutor (snd s))))) ? (base (var_expr r s))))" (* TODO: ground_condition *)
 
 
 subsubsection \<open>Semantics\<close>

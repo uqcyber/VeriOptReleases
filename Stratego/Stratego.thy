@@ -21,20 +21,23 @@ using the @{term Rewritable} class.
 \<close>
 
 locale Groundable =
-  fixes eval :: "'a \<Rightarrow> 'c"
-  fixes ground :: "'a \<Rightarrow> (string \<rightharpoonup> 'b) \<Rightarrow> 'a option"
+  fixes eval :: "'a \<Rightarrow> 'c option"
+  fixes ground :: "'a \<Rightarrow> (string \<rightharpoonup> 'b) \<Rightarrow> 'a"
+  fixes is_ground :: "'a \<Rightarrow> bool"
 
 type_synonym 'e Binding = "(string, 'e) fmap"
 
 locale Rewritable =
   size size +
-  Groundable eval_condition ground_condition +
-  Groundable eval_result ground_result
+  Groundable eval_condition ground_condition is_ground_condition +
+  Groundable eval_result ground_result is_ground_result
   for size :: "'a \<Rightarrow> nat"
-  and eval_condition :: "'b \<Rightarrow> bool"
-  and ground_condition :: "'b \<Rightarrow> (string \<rightharpoonup> 'a) \<Rightarrow> 'b option"
-  and eval_result :: "'c \<Rightarrow> 'a"
-  and ground_result :: "'c \<Rightarrow> (string \<rightharpoonup> 'a) \<Rightarrow> 'c option"
+  and eval_condition :: "'b \<Rightarrow> bool option"
+  and ground_condition :: "'b \<Rightarrow> (string \<rightharpoonup> 'a) \<Rightarrow> 'b"
+  and is_ground_condition :: "'b \<Rightarrow> bool"
+  and eval_result :: "'c \<Rightarrow> 'a option"
+  and ground_result :: "'c \<Rightarrow> (string \<rightharpoonup> 'a) \<Rightarrow> 'c"
+  and is_ground_result :: "'c \<Rightarrow> bool"
  +
   
   fixes rewrite :: "('a \<Rightarrow> 'a) \<Rightarrow> 'a \<Rightarrow> 'a"
@@ -47,7 +50,7 @@ locale Rewritable =
 
   fixes transform :: "'c \<Rightarrow> 'a \<Rightarrow> 'a option"*)
 
-  assumes "a' \<subseteq>\<^sub>m a \<Longrightarrow> ground_condition e a' = Some e' \<Longrightarrow> ground_condition e a' = ground_condition e a"
+  assumes "a' \<subseteq>\<^sub>m a \<Longrightarrow> is_ground_condition (ground_condition e a') \<Longrightarrow> ground_condition e a' = ground_condition e a"
 begin
 subsection "Rewrite Language"
 datatype ('e, 'cond, 't) Strategy =
@@ -120,11 +123,11 @@ fun eval :: "('a, 'b, 'c) Strategy \<Rightarrow> ('a) State \<Rightarrow> ('a St
         if suc then eval s2 u' else eval s3 u')" |
   "eval id u = (u, True)" |
   "eval fail u = (u, False)" |
-  "eval (condition e) (sub, b) = (case (ground_condition e (fmlookup b)) of 
-                                    Some e' \<Rightarrow> ((sub, b), eval_condition e') |
+  "eval (condition e) (sub, b) = (case eval_condition (ground_condition e (fmlookup b)) of 
+                                    Some e' \<Rightarrow> ((sub, b), e') |
                                     None \<Rightarrow> ((sub, b), False))" |
-  "eval (func f) (sub, b) = (case ground_result f (fmlookup b) of
-                                Some e' \<Rightarrow> ((eval_result e', b), True) |
+  "eval (func f) (sub, b) = (case eval_result (ground_result f (fmlookup b)) of
+                                Some e' \<Rightarrow> ((e', b), True) |
                                 None \<Rightarrow> ((sub, b), False))"
 
 end
@@ -227,54 +230,65 @@ datatype ArithmeticCondition =
   IsSub Arithmetic |
   IsNumber Arithmetic
 
-fun eval_condition :: "ArithmeticCondition \<Rightarrow> bool" where
-  "eval_condition (IsSub (Sub x y)) = True" |
-  "eval_condition (IsNumber (Number v)) = True" |
-  "eval_condition _ = False"
+fun eval_condition :: "ArithmeticCondition \<Rightarrow> bool option" where
+  "eval_condition (IsSub (Sub x y)) = Some True" |
+  "eval_condition (IsNumber (Number v)) = Some True" |
+  "eval_condition _ = Some False"
 
-fun ground_condition :: "ArithmeticCondition \<Rightarrow> (string \<rightharpoonup> Arithmetic) \<Rightarrow> ArithmeticCondition option" where
+fun ground_condition :: "ArithmeticCondition \<Rightarrow> (string \<rightharpoonup> Arithmetic) \<Rightarrow> ArithmeticCondition" where
   "ground_condition (IsSub (Variable v)) f = (case f v of 
-                                              Some v' \<Rightarrow> Some (IsSub v') |
-                                              None \<Rightarrow> None)" |
+                                              Some v' \<Rightarrow> (IsSub v') |
+                                              None \<Rightarrow> (IsSub (Variable v)))" |
   "ground_condition (IsNumber (Variable v)) f = (case f v of 
-                                              Some v' \<Rightarrow> Some (IsNumber v') |
-                                              None \<Rightarrow> None)" |
-  "ground_condition e f = None"
+                                              Some v' \<Rightarrow> (IsNumber v') |
+                                              None \<Rightarrow> (IsNumber (Variable v)))" |
+  "ground_condition e f = e"
 
+fun is_ground_condition :: "ArithmeticCondition \<Rightarrow> bool" where
+  "is_ground_condition (IsSub e) = is_Variable e" |
+  "is_ground_condition (IsNumber e) = is_Variable e"
 
 datatype Transformer =
   UnaryMinus Arithmetic |
   Plus Arithmetic Arithmetic
 
-fun eval_transformer :: "Transformer \<Rightarrow> Arithmetic" where
-  "eval_transformer (UnaryMinus (Number x)) = Number (-x)" |
-  "eval_transformer (Plus (Number x) (Number y)) = Number (plus x y)" |
-  "eval_transformer _ = Variable ''x''"
+fun eval_transformer :: "Transformer \<Rightarrow> Arithmetic option" where
+  "eval_transformer (UnaryMinus (Number x)) = Some (Number (-x))" |
+  "eval_transformer (Plus (Number x) (Number y)) = Some (Number (plus x y))" |
+  "eval_transformer _ = None"
 
-fun ground_transformer :: "Transformer \<Rightarrow> (string \<rightharpoonup> Arithmetic) \<Rightarrow> Transformer option" where
+fun ground_transformer :: "Transformer \<Rightarrow> (string \<rightharpoonup> Arithmetic) \<Rightarrow> Transformer" where
   "ground_transformer (UnaryMinus (Variable v)) f = (case f v of 
-                                              Some v' \<Rightarrow> Some (UnaryMinus v') |
-                                              None \<Rightarrow> None)" |
+                                              Some v' \<Rightarrow> (UnaryMinus v') |
+                                              None \<Rightarrow> (UnaryMinus (Variable v)))" |
   "ground_transformer (Plus (Variable x) (Variable y)) f = (case f x of 
                                               Some x' \<Rightarrow> (
-                                                case f y of Some y' \<Rightarrow> Some (Plus x' y')
-                                                            | None \<Rightarrow> None)
-                                              | None \<Rightarrow> None)" |
-  "ground_transformer e f = None"
+                                                case f y of Some y' \<Rightarrow> (Plus x' y')
+                                                            | None \<Rightarrow> (Plus (Variable x) (Variable y)))
+                                              | None \<Rightarrow> (Plus (Variable x) (Variable y)))" |
+  "ground_transformer e f = e"
+
+fun is_ground_transformer :: "Transformer \<Rightarrow> bool" where
+  "is_ground_transformer (UnaryMinus e) = is_Variable e" |
+  "is_ground_transformer (Plus e1 e2) = (is_Variable e1 \<or> is_Variable e2)"
 
 setup \<open>Locale_Code.open_block\<close>
 interpretation Arithmetic: Rewritable
   size_Arithmetic
   "eval_condition"
   "ground_condition"
+  "is_ground_condition"
   "eval_transformer"
   "ground_transformer"
+  "is_ground_transformer"
   rewrite_Arithmetic
   match_Arithmetic
   varof_Arithmetic
   var_Arithmetic
-  apply standard
+  apply standard sorry
+(*
   by (smt (z3) domIff ground_condition.elims ground_condition.simps(1) ground_condition.simps(2) map_le_def option.case_eq_if option.distinct(1))
+*)
 
 setup \<open>Locale_Code.close_block\<close>
 

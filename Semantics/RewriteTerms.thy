@@ -106,81 +106,65 @@ fun eval_condition :: "SideCondition \<Rightarrow> bool" where
   "eval_condition (And sc1 sc2) = ((eval_condition sc1) \<and> (eval_condition sc2))" |
   "eval_condition (Not sc) = (\<not>(eval_condition sc))"
 
+fun eval_condition_opt :: "SideCondition \<Rightarrow> bool option" where
+  "eval_condition_opt c = Some (eval_condition c)"
 
-fun ground_expr :: "IRExpr \<Rightarrow> (string \<rightharpoonup> IRExpr) \<Rightarrow> IRExpr option" where
-  "ground_expr (UnaryExpr op e) s = do {
-    e <- ground_expr e s;
-    Some (UnaryExpr op e)
-  }" |
-  "ground_expr (BinaryExpr op e1 e2) s = do {
-    e1 <- ground_expr e1 s;
-    e2 <- ground_expr e2 s;
-    Some (BinaryExpr op e1 e2)
-  }" |
-  "ground_expr (ConditionalExpr b e1 e2) s = do {
-    b <- ground_expr b s;
-    e1 <- ground_expr e1 s;
-    e2 <- ground_expr e2 s;
-    Some (ConditionalExpr b e1 e2)
-  }" |
+fun ground_expr :: "IRExpr \<Rightarrow> (string \<rightharpoonup> IRExpr) \<Rightarrow> IRExpr" where
+  "ground_expr (UnaryExpr op e) s = (UnaryExpr op (ground_expr e s))" |
+  "ground_expr (BinaryExpr op e1 e2) s = 
+    (BinaryExpr op (ground_expr e1 s) (ground_expr e1 s))" |
+  "ground_expr (ConditionalExpr b e1 e2) s =
+    (ConditionalExpr (ground_expr b s) (ground_expr e1 s) (ground_expr e2 s))" |
   "ground_expr (VariableExpr vn st) s = 
-    (case s (String.explode vn) of None \<Rightarrow> None
-                | Some v' \<Rightarrow> Some v')" |
-  "ground_expr e s = Some e"
+    (case s (String.explode vn) of None \<Rightarrow> (VariableExpr vn st)
+                | Some v' \<Rightarrow> v')" |
+  "ground_expr e s = e"
 
-lemma
+(*lemma
   assumes sub: "a' \<subseteq>\<^sub>m a"
   assumes e': "ground_expr e a' = Some e'"
   shows "ground_expr e a' = ground_expr e a"
   using assms apply (induction e a' arbitrary: a a' rule: ground_expr.induct; auto)
   sorry
-  
+*)
 
-fun ground_condition :: "SideCondition \<Rightarrow> (string \<rightharpoonup> IRExpr) \<Rightarrow> SideCondition option" where
-  "ground_condition (IsConstantExpr e) f = do {e <- ground_expr e f; Some (IsConstantExpr e)}" |
-  "ground_condition (IsIntegerStamp e) f = do {e <- ground_expr e f; Some (IsIntegerStamp e)}" |
-  "ground_condition (IsBoolStamp e) f = do {e <- ground_expr e f; Some (IsBoolStamp e)}" |
-  "ground_condition (WellFormed e) f = do {e <- ground_expr e f; Some (WellFormed e)}" |
-  "ground_condition (IsStamp e s) f = do {e <- ground_expr e f; Some (IsStamp e s)}" |
-  "ground_condition (IsConstantValue e s v) f = do {e <- ground_expr e f; Some (IsConstantValue e s v)}" |
-  "ground_condition (AlwaysDistinct e1 e2) f = do {
-    e1 <- ground_expr e1 f;
-    e2 <- ground_expr e2 f;
-    Some (AlwaysDistinct e1 e2)
-  }" |
-  "ground_condition (NeverDistinct e1 e2) f = do {
-    e1 <- ground_expr e1 f;
-    e2 <- ground_expr e2 f;
-    Some (NeverDistinct e1 e2)
-  }" |
-  "ground_condition (StampUnder e1 e2) f = do {
-    e1 <- ground_expr e1 f;
-    e2 <- ground_expr e2 f;
-    Some (StampUnder e1 e2)
-  }" |
-  "ground_condition (UpMaskEquals e m) f = 
-    do {e <- ground_expr e f; Some (UpMaskEquals e m)}" |
-  "ground_condition (DownMaskEquals e m) f = 
-    do {e <- ground_expr e f; Some (DownMaskEquals e m)}" |
-  "ground_condition (UpMaskCancels e1 e2) f = do {
-    e1 <- ground_expr e1 f;
-    e2 <- ground_expr e2 f;
-    Some (UpMaskCancels e1 e2)
-  }" |
-  "ground_condition (PowerOf2 e) f = do {e <- ground_expr e f; Some (PowerOf2 e)}" |
-  "ground_condition (IsBool e) f = do {e <- ground_expr e f; Some (IsBool e)}" |
-  
-  "ground_condition (Empty) f = Some (Empty)" |
+fun ground_condition :: "SideCondition \<Rightarrow> (string \<rightharpoonup> IRExpr) \<Rightarrow> SideCondition" where
+  "ground_condition (IsConstantExpr p) s = (IsConstantExpr (ground_expr p s))" |
+  "ground_condition (IsIntegerStamp p) s = (IsIntegerStamp (ground_expr p s))" |
+  "ground_condition (IsBoolStamp p) s = (IsBoolStamp (ground_expr p s))" |
+  "ground_condition (WellFormed st) s = (WellFormed st)" |
+  "ground_condition (IsStamp e st) s = (IsStamp (ground_expr e s) st)" |
+  "ground_condition (IsConstantValue e s' v) s = (IsConstantValue (ground_expr e s) (ground_expr s' s) v)" |
+  "ground_condition (AlwaysDistinct e1 e2) s = (AlwaysDistinct (ground_expr e1 s) (ground_expr e2 s))" |
+  "ground_condition (NeverDistinct e1 e2) s = (NeverDistinct (ground_expr e1 s) (ground_expr e2 s))" |  
+  "ground_condition (StampUnder e1 e2) s = (StampUnder (ground_expr e1 s) (ground_expr e2 s))" |
+  "ground_condition (UpMaskEquals e m) s = (UpMaskEquals (ground_expr e s) m)" |
+  "ground_condition (DownMaskEquals e m) s = (DownMaskEquals (ground_expr e s) m)" |
+  "ground_condition (UpMaskCancels e1 e2) s = (UpMaskCancels (ground_expr e1 s) (ground_expr e2 s))" |
+  "ground_condition (PowerOf2 e) s = (PowerOf2 (ground_expr e s))" |
+  "ground_condition (IsBool e) s = (IsBool (ground_expr e s))" |
+  "ground_condition (And sc1 sc2) s = And (ground_condition sc1 s) (ground_condition sc2 s)" |
+  "ground_condition (Not sc) s = Not (ground_condition sc s)" |
+  "ground_condition (Empty) s = Empty"
 
-  "ground_condition (And sc1 sc2) f = do {
-    sc1 <- ground_condition sc1 f;
-    sc2 <- ground_condition sc2 f;
-    Some (And sc1 sc2)
-  }" |
-  "ground_condition (Not sc) f = do {
-    sc <- ground_condition sc f;
-    Some (Not sc)
-  }"
+fun is_ground_condition :: "SideCondition \<Rightarrow> bool" where
+  "is_ground_condition (IsConstantExpr e) = is_VariableExpr e" |
+  "is_ground_condition (IsIntegerStamp e) = is_VariableExpr e" |
+  "is_ground_condition (IsBoolStamp e) = is_VariableExpr e" |
+  "is_ground_condition (WellFormed s) = True" |
+  "is_ground_condition (IsStamp e s) = is_VariableExpr e" |
+  "is_ground_condition (IsConstantValue e s v) = is_VariableExpr e" |
+  "is_ground_condition (AlwaysDistinct e1 e2) = (is_VariableExpr e1 \<and> is_VariableExpr e2)" |
+  "is_ground_condition (NeverDistinct e1 e2) = (is_VariableExpr e1 \<and> is_VariableExpr e2)" |
+  "is_ground_condition (StampUnder e1 e2) = (is_VariableExpr e1 \<and> is_VariableExpr e2)" |
+  "is_ground_condition (UpMaskEquals e m) = is_VariableExpr e" |
+  "is_ground_condition (DownMaskEquals e m) = is_VariableExpr e" |
+  "is_ground_condition (UpMaskCancels e1 e2) = (is_VariableExpr e1 \<and> is_VariableExpr e2)" |
+  "is_ground_condition (PowerOf2 e) = is_VariableExpr e" |
+  "is_ground_condition (IsBool e) = is_VariableExpr e" |
+  "is_ground_condition (And sc1 sc2) = (is_ground_condition sc1 \<and> is_ground_condition sc2)" |
+  "is_ground_condition (Not sc) = is_ground_condition sc" |
+  "is_ground_condition (Empty) = True"
 
 datatype Result =
   ExpressionResult IRExpr |
@@ -188,29 +172,34 @@ datatype Result =
   Negate IRExpr |
   Add IRExpr IRExpr
 
-fun result_of :: "Result \<Rightarrow> IRExpr" where
-  "result_of (ExpressionResult e) = e" |
-  "result_of (forZero e) = ConstantExpr (IntVal (stp_bits (stamp_expr e)) 0)" |
-  "result_of (Negate (ConstantExpr (IntVal b v))) = ConstantExpr (intval_negate (IntVal b v))" |
-  "result_of (Add (ConstantExpr (IntVal b1 v1)) (ConstantExpr (IntVal b2 v2))) = ConstantExpr (intval_add (IntVal b1 v1) (IntVal b2 v2))" 
+fun result_of :: "Result \<Rightarrow> IRExpr option" where
+  "result_of (ExpressionResult e) = Some e" |
+  "result_of (forZero e) = Some (ConstantExpr (IntVal (stp_bits (stamp_expr e)) 0))" |
+  "result_of (Negate (ConstantExpr (IntVal b v))) = Some (ConstantExpr (intval_negate (IntVal b v)))" |
+  "result_of (Add (ConstantExpr (IntVal b1 v1)) (ConstantExpr (IntVal b2 v2))) = Some (ConstantExpr (intval_add (IntVal b1 v1) (IntVal b2 v2)))" |
+  "result_of _ = None"
 
-fun ground_result :: "Result \<Rightarrow> (string \<rightharpoonup> IRExpr) \<Rightarrow> Result option" where
-  "ground_result (ExpressionResult e) s = do {e <- ground_expr e s; Some (ExpressionResult e)}" |
-  "ground_result (forZero e) s = do {e <- ground_expr e s; Some (forZero e)}" |
-  "ground_result (Negate e) s = do {e <- ground_expr e s; Some (Negate e)}" |
-  "ground_result (Add e1 e2) s = do {
-    e1 <- ground_expr e1 s;
-    e2 <- ground_expr e2 s;
-    Some (Add e1 e2)
-  }"
+fun ground_result :: "Result \<Rightarrow> (string \<rightharpoonup> IRExpr) \<Rightarrow> Result" where
+  "ground_result (ExpressionResult e) s = ExpressionResult (ground_expr e s)" |
+  "ground_result (forZero e) s = forZero (ground_expr e s)" |
+  "ground_result (Negate e) s = Negate (ground_expr e s)" |
+  "ground_result (Add e1 e2) s = Add (ground_expr e1 s) (ground_expr e2 s)"
+
+fun is_ground_result :: "Result \<Rightarrow> bool" where
+  "is_ground_result (ExpressionResult e) = is_VariableExpr e" |
+  "is_ground_result (forZero e) = is_VariableExpr e" |
+  "is_ground_result (Negate e) = is_VariableExpr e" |
+  "is_ground_result (Add e1 e2) = (is_VariableExpr e1 \<and> is_VariableExpr e2)"
 
 setup \<open>Locale_Code.open_block\<close>
 interpretation IRExprRewrites : Rewritable
   size_IRExpr
-  "eval_condition"
+  "eval_condition_opt"
   "ground_condition"
+  is_ground_condition
   result_of
   ground_result
+  is_ground_result
   rewrite_IRExpr
   match_IRExpr
   varof_IRExpr
@@ -219,7 +208,7 @@ proof
   fix a' a :: "(string \<rightharpoonup> IRExpr)"
   fix e e' :: SideCondition
   assume sub: "a' \<subseteq>\<^sub>m a"
-  assume e': "ground_condition e a' = Some e'"
+  assume e': "is_ground_condition (ground_condition e a')"
   show "ground_condition e a' = ground_condition e a"
     using sub e' apply (induction e a' arbitrary: a a' rule: ground_condition.induct; auto)
     sorry
@@ -229,10 +218,12 @@ setup \<open>Locale_Code.close_block\<close>
 setup \<open>Locale_Code.open_block\<close>
 interpretation IRExprRewrites: CompiledRewrites
   size_IRExpr
-  "eval_condition"
+  "eval_condition_opt"
   "ground_condition"
+  is_ground_condition
   result_of
   ground_result
+  is_ground_result
   rewrite_IRExpr
   match_IRExpr
   varof_IRExpr
