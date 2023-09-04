@@ -498,7 +498,7 @@ subsection \<open>Combining Rules\<close>
 datatype ('e, 'cond) Rules =
   base "'e" |
   cond' "('e, 'cond) MATCH" "('e, 'cond) Rules" (infixl "?" 52) |
-  else "('e, 'cond) Rules" "('e, 'cond) Rules" (infixl "else" 50) |
+  else' "('e, 'cond) Rules" "('e, 'cond) Rules" (infixl "else" 50) |
   seq "('e, 'cond) Rules" "('e, 'cond) Rules" (infixl "\<then>" 49) |
   choice "(('e, 'cond) Rules) list"
 
@@ -519,12 +519,11 @@ fun generate :: "'a \<Rightarrow> 'a \<Rightarrow> ('a, 'b) Rules" where
     (let (s, m) = match_pattern p ''e'' ({||}, (\<lambda>x. None))
      in (m ? (base (var_expr r s))))"
 
-(*
 fun generate_with_condition :: "'a \<Rightarrow> 'a \<Rightarrow> ('b) \<Rightarrow> ('a, 'b) Rules" where
   "generate_with_condition p r c = 
     (let (s, m) = match_pattern p ''e'' ({||}, (\<lambda>x. None))
-     in ((m && (cond (the (ground_condition v s)))) ? (base (var_expr r s))))" (* TODO: the *)
-*)
+     in ((m && (cond (c))) ? (base (var_expr r s))))" (* TODO: ground_condition *)
+
 
 subsubsection \<open>Semantics\<close>
 
@@ -1278,9 +1277,9 @@ proof -
         using eval_rules.intros(6) r by blast
     qed
   next
-    case (else x31 x32)
+    case (else' x31 x32)
     have "r \<in> set (join_uncommon m rules)"
-      using join_uncommon_set_def else r by blast
+      using join_uncommon_set_def else' r by blast
     then show ?thesis
       using eval_rules.intros(6) r by blast
   next
