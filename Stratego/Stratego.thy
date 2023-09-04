@@ -20,20 +20,32 @@ using the @{term Rewritable} class.
 \end{description}
 \<close>
 
+locale Groundable =
+  fixes eval :: "'a \<Rightarrow> 'c"
+  fixes ground :: "'a \<Rightarrow> (string \<rightharpoonup> 'b) \<Rightarrow> 'a option"
+
 type_synonym 'e Binding = "(string, 'e) fmap"
 
 locale Rewritable =
-  size size
-  for size :: "'a \<Rightarrow> nat" +
+  size size +
+  Groundable eval_condition ground_condition +
+  Groundable eval_result ground_result
+  for size :: "'a \<Rightarrow> nat"
+  and eval_condition :: "'b \<Rightarrow> bool"
+  and ground_condition :: "'b \<Rightarrow> (string \<rightharpoonup> 'a) \<Rightarrow> 'b option"
+  and eval_result :: "'c \<Rightarrow> 'a"
+  and ground_result :: "'c \<Rightarrow> (string \<rightharpoonup> 'a) \<Rightarrow> 'c option"
+ +
+  
   fixes rewrite :: "('a \<Rightarrow> 'a) \<Rightarrow> 'a \<Rightarrow> 'a"
   fixes match_term :: "'a \<Rightarrow> 'a \<Rightarrow> ((string, 'a) fmap) option"
   fixes varof :: "'a \<Rightarrow> string option"
   fixes var :: "string \<Rightarrow> 'a"
 
-  fixes eval_condition :: "'b \<Rightarrow> bool"
+  (*fixes eval_condition :: "'b \<Rightarrow> bool"
   fixes ground_condition :: "'b \<Rightarrow> (string \<rightharpoonup> 'a) \<Rightarrow> 'b option"
 
-  fixes transform :: "'c \<Rightarrow> 'a \<Rightarrow> 'a option"
+  fixes transform :: "'c \<Rightarrow> 'a \<Rightarrow> 'a option"*)
 
   assumes "a' \<subseteq>\<^sub>m a \<Longrightarrow> ground_condition e a' = Some e' \<Longrightarrow> ground_condition e a' = ground_condition e a"
 begin
@@ -111,8 +123,8 @@ fun eval :: "('a, 'b, 'c) Strategy \<Rightarrow> ('a) State \<Rightarrow> ('a St
   "eval (condition e) (sub, b) = (case (ground_condition e (fmlookup b)) of 
                                     Some e' \<Rightarrow> ((sub, b), eval_condition e') |
                                     None \<Rightarrow> ((sub, b), False))" |
-  "eval (func f) (sub, b) = (case transform f sub of
-                                Some sub' \<Rightarrow> ((sub', b), True) |
+  "eval (func f) (sub, b) = (case ground_result f (fmlookup b) of
+                                Some e' \<Rightarrow> ((eval_result e', b), True) |
                                 None \<Rightarrow> ((sub, b), False))"
 
 end
@@ -231,26 +243,39 @@ fun ground_condition :: "ArithmeticCondition \<Rightarrow> (string \<rightharpoo
 
 
 datatype Transformer =
-  UnaryMinus |
-  Plus
+  UnaryMinus Arithmetic |
+  Plus Arithmetic Arithmetic
 
-fun transform_eval :: "Transformer \<Rightarrow> Arithmetic \<Rightarrow> Arithmetic option" where
-  "transform_eval UnaryMinus (Number v) = Some (Number (-v))" |
-  "transform_eval Plus (Add (Number v1) (Number v2)) = Some (Number (plus v1 v2))" |
-  "transform_eval _ _ = None"
+fun eval_transformer :: "Transformer \<Rightarrow> Arithmetic" where
+  "eval_transformer (UnaryMinus (Number x)) = Number (-x)" |
+  "eval_transformer (Plus (Number x) (Number y)) = Number (plus x y)" |
+  "eval_transformer _ = Variable ''x''"
+
+fun ground_transformer :: "Transformer \<Rightarrow> (string \<rightharpoonup> Arithmetic) \<Rightarrow> Transformer option" where
+  "ground_transformer (UnaryMinus (Variable v)) f = (case f v of 
+                                              Some v' \<Rightarrow> Some (UnaryMinus v') |
+                                              None \<Rightarrow> None)" |
+  "ground_transformer (Plus (Variable x) (Variable y)) f = (case f x of 
+                                              Some x' \<Rightarrow> (
+                                                case f y of Some y' \<Rightarrow> Some (Plus x' y')
+                                                            | None \<Rightarrow> None)
+                                              | None \<Rightarrow> None)" |
+  "ground_transformer e f = None"
 
 setup \<open>Locale_Code.open_block\<close>
 interpretation Arithmetic: Rewritable
   size_Arithmetic
+  "eval_condition"
+  "ground_condition"
+  "eval_transformer"
+  "ground_transformer"
   rewrite_Arithmetic
   match_Arithmetic
   varof_Arithmetic
   var_Arithmetic
-  "eval_condition"
-  "ground_condition"
-  transform_eval
   apply standard
   by (smt (z3) domIff ground_condition.elims ground_condition.simps(1) ground_condition.simps(2) map_le_def option.case_eq_if option.distinct(1))
+
 setup \<open>Locale_Code.close_block\<close>
 
 
@@ -311,12 +336,12 @@ definition ShiftConstRight2 :: "StrategyRule" where
 definition EvalMinus :: "StrategyRule" where
   "EvalMinus = 
     ((UMinus (Variable ''a'')) \<rightarrow> ((Variable ''b''))
-      where (condition (IsNumber (Variable ''a'')); ((Variable ''a'')!; func UnaryMinus); (Variable ''b'')?))"
+      where (condition (IsNumber (Variable ''a'')); func (UnaryMinus (Variable ''a'')); (Variable ''b'')?))"
 
 definition EvalMinus1 :: "StrategyRule" where
   "EvalMinus1 =
     (UMinus (Variable ''a'')) \<rightarrow> Variable ''b''
-      where (condition (IsNumber (Variable ''a'')); (Variable ''b'') := (<UnaryMinus>(Variable ''a'')))"
+      where (condition (IsNumber (Variable ''a'')); (Variable ''b'') := (func (UnaryMinus (Variable ''a''))))"
 
 definition EvalAdd :: "StrategyRule" where
   "EvalAdd =
@@ -324,7 +349,7 @@ definition EvalAdd :: "StrategyRule" where
       where (
         (condition (IsNumber (Variable ''a'')));
         (condition (IsNumber (Variable ''a'')));
-        ((Variable ''c'') := <Plus>(Add (Variable ''a'') (Variable ''b'')))
+        ((Variable ''c'') := (func (Plus (Variable ''a'') (Variable ''b''))))
       ))"
 
 subsubsection "Rewrite Application"
@@ -352,11 +377,11 @@ text \<open>@{value "eval (RedundantSub <+ RedundantAdd) ((Add (Number 10) (Numb
 value "ShiftConstRight"
 value "eval ShiftConstRight ((Add (Number 0) (Number 10)), fmempty)"
 value "eval ShiftConstRight ((Add (Number 10) (Add (Number 10) (Number 20))), fmempty)"
-value "eval ShiftConstRight ((Add (Number 10) (Number 10)), fmempty)"
+value "eval ShiftConstRight ((Add (Number 10) (Number 120)), fmempty)"
 
 value "eval ShiftConstRight2 ((Add (Number 0) (Number 10)), fmempty)"
 value "eval ShiftConstRight2 ((Add (Number 10) (Add (Number 10) (Number 20))), fmempty)"
-value "eval ShiftConstRight2 ((Add (Number 10) (Number 10)), fmempty)"
+value "eval ShiftConstRight2 ((Add (Number 10) (Number 120)), fmempty)"
 
 value "eval EvalMinus ((UMinus (Number 10)), fmempty)"
 value "eval EvalMinus ((UMinus (Add (Number 10) (Number 10))), fmempty)"

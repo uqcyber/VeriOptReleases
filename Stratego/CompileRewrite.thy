@@ -1564,17 +1564,19 @@ end
 
 subsection \<open>Example: Arithmetic\<close>
 
+(*
 setup \<open>Locale_Code.open_block\<close>
 ML_val \<open>Locale_Code.tracing_enabled\<close>
 interpretation ArithmeticCompiled: CompiledRewrites
   size_Arithmetic
+  "eval_condition"
+  "ground_condition"
+  "eval_transformer"
+  "ground_transformer"
   rewrite_Arithmetic
   match_Arithmetic
   varof_Arithmetic
   var_Arithmetic
-  "eval_condition"
-  "ground_condition"
-  transform_eval
   subexprs_Arithmetic
   chain_Arithmetic
 proof
@@ -1686,6 +1688,13 @@ value "(optimized_export (choice [LeftConst, Evaluate, Identity]))"
 text "@{value[display] \<open>(optimized_export (choice [LeftConst, Evaluate, Identity]))\<close>}"
 value "(optimized_export (optimized_export (choice [LeftConst, Evaluate, Identity])))"
 text "@{value[display] \<open>(optimized_export (optimized_export (choice [LeftConst, Evaluate, Identity])))\<close>}"
+*)
+
+
+
+
+
+
 
 (*
 value "eval (RedundantAdd <+ RedundantSub) ((Add (Number 10) (Number 0)), fmempty)"
