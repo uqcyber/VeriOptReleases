@@ -266,7 +266,7 @@ lemma fmlookup_of_list[code]: "fmlookup (fmap_of_list m) = map_of m"
 export_code "eval" checking SML
 
 definition join where "join = IRExprRewrites.join"
-definition compile' where "compile' = IRExprRewrites.compile'"
+(*definition compile' where "compile' = IRExprRewrites.compile'"*)
 definition generate where "generate = IRExprRewrites.generate"
 definition generate_with_condition where "generate_with_condition = IRExprRewrites.generate_with_condition"
 
@@ -275,7 +275,7 @@ definition optimized_export where "optimized_export = IRExprRewrites.optimized_e
 notation IRExprRewrites.choice ("choice _")
 notation IRExprRewrites.else ("_ else _")
 
-export_code "compile'" checking SML
+export_code "generate_with_condition" checking SML
 
 definition RedundantAdd :: "StrategyRule" where
   "RedundantAdd = 
@@ -374,7 +374,7 @@ definition Identity where
     (BinaryExpr BinMul
       (var ''x'')
       (ConstantExpr (IntVal 32 1)))
-    (var ''x'')"
+    (ExpressionResult (var ''x''))"
 
 value "Identity"
 value "(optimized_export (Identity))"
@@ -385,7 +385,7 @@ definition Evaluate where
     (BinaryExpr BinMul
       (ConstantVar STR ''x'')
       (ConstantVar STR ''y''))
-    ((ConstantVar STR ''x''))"
+    (ExpressionResult (ConstantVar STR ''x''))"
 (* doesn't support constant evaluation *)
 value "Evaluate"
 value "(optimized_export (Evaluate))"
@@ -396,7 +396,7 @@ definition Shift where
     (BinaryExpr BinMul
       (var ''x'')
       (ConstantVar STR ''y''))
-    ((BinaryExpr BinLeftShift (var ''x'') (ConstantVar STR ''y'')))
+    (ExpressionResult (BinaryExpr BinLeftShift (var ''x'') (ConstantVar STR ''y'')))
     (PowerOf2 (ConstantVar STR ''y''))"
 (* doesn't support constant evaluation *)
 value "Shift"
@@ -408,14 +408,16 @@ definition LeftConst where
     (BinaryExpr BinMul
       (ConstantVar STR ''x'')
       (var ''y''))
-    ((BinaryExpr BinMul (var ''y'') (ConstantVar STR ''x'')))
+    (ExpressionResult (BinaryExpr BinMul (var ''y'') (ConstantVar STR ''x'')))
     (Not (IsConstantExpr (var ''y'')))"
 (* doesn't support constant evaluation *)
 value "LeftConst"
 
 (*no_notation "\<^syntax_const>\<open>_thenM\<close>" (infixl "\<then>" 54)*)
 
-value "LeftConst else Evaluate else Identity else Shift"
+value "optimized_export (optimized_export (LeftConst else (Evaluate else (Identity else Shift))))"
+
+value " (optimized_export (choice [LeftConst, Shift, Evaluate]))"
 
 
 end

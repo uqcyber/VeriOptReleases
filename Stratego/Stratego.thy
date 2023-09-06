@@ -1,6 +1,6 @@
 section "Stratego"
 theory Stratego
-  imports Main "HOL-Library.Finite_Map" "HOL-Library.Word" Locale_Code.Locale_Code
+  imports Main "HOL-Library.Finite_Map" "HOL-Library.Word" Locale_Code.Locale_Code "HOL-Library.Monad_Syntax"
 begin
 
 no_notation plus (infixl "+" 65)
@@ -152,7 +152,7 @@ datatype (discs_sels) Arithmetic =
 fun compatible :: "('a, 'b) fmap \<Rightarrow> ('a, 'b) fmap \<Rightarrow> bool" where
   "compatible s1 s2 = (\<forall>x \<in> fset (fmdom s1) . fmlookup s2 x \<noteq> None \<longrightarrow> fmlookup s1 x = fmlookup s2 x)"
 
-fun union :: "(('a, 'b) fmap) option \<Rightarrow> (('a, 'b) fmap) option \<Rightarrow> (('a, 'b) fmap) option" where
+(*fun union :: "(('a, 'b) fmap) option \<Rightarrow> (('a, 'b) fmap) option \<Rightarrow> (('a, 'b) fmap) option" where
   "union s1 s2 = 
       (case s1 of
        None \<Rightarrow> None |
@@ -161,7 +161,14 @@ fun union :: "(('a, 'b) fmap) option \<Rightarrow> (('a, 'b) fmap) option \<Righ
             None \<Rightarrow> None |
             Some s2' \<Rightarrow> (if compatible s1' s2' then Some (s1' ++\<^sub>f s2') else None)
            )
-      )"
+      )"*)
+
+fun union :: "(('a, 'b) fmap) option \<Rightarrow> (('a, 'b) fmap) option \<Rightarrow> (('a, 'b) fmap) option" where
+  "union s1 s2 = do {
+    s1' <- s1;
+    s2' <- s2;
+    if compatible s1' s2' then Some (s1' ++\<^sub>f s2') else None
+  }"
 
 fun rewrite_Arithmetic :: "(Arithmetic \<Rightarrow> Arithmetic) \<Rightarrow> Arithmetic \<Rightarrow> Arithmetic" where
   "rewrite_Arithmetic f (Add x y) = f (Add (rewrite_Arithmetic f x) (rewrite_Arithmetic f y))" |
@@ -272,6 +279,7 @@ fun is_ground_transformer :: "Transformer \<Rightarrow> bool" where
   "is_ground_transformer (UnaryMinus e) = is_Variable e" |
   "is_ground_transformer (Plus e1 e2) = (is_Variable e1 \<or> is_Variable e2)"
 
+print_locale Rewritable
 setup \<open>Locale_Code.open_block\<close>
 interpretation Arithmetic: Rewritable
   size_Arithmetic
