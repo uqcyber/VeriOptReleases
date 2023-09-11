@@ -3,7 +3,7 @@ section \<open>Match Patterns\<close>
 theory CompileRewrite
   imports
     Stratego
-    VeriComp.Compiler
+    (*VeriComp.Compiler*)
 begin
 
 (*lift_definition fmupds :: "('x \<Rightarrow> 'z option) \<Rightarrow> 'x list \<Rightarrow> 'z list \<Rightarrow> ('x \<Rightarrow> 'z option)"
@@ -49,7 +49,19 @@ subsection \<open>Match Primitive\<close>
 
 print_locale Rewritable
 
+datatype ('e, 'cond) MATCH =
+  match VarName "'e" |
+  equality VarName VarName (infixl "==" 52) |
+  andthen "('e, 'cond) MATCH" "('e, 'cond) MATCH" (infixl "&&" 50) |
+  cond "'cond" | \<comment> \<open>This was 'a => bool as the second argument but it disagrees with code generation. Requires work regardless.\<close>
+  noop
 
+datatype ('e, 'cond, 'r) Rules =
+  base "'r" |
+  cond' "('e, 'cond) MATCH" "('e, 'cond, 'r) Rules" (infixl "?" 52) |
+  else' "('e, 'cond, 'r) Rules" "('e, 'cond, 'r) Rules" (infixl "else" 50) |
+  seq "('e, 'cond, 'r) Rules" "('e, 'cond, 'r) Rules" (infixl "\<then>" 49) |
+  choice "(('e, 'cond, 'r) Rules) list"
 
 locale CompiledRewrites = Rewritable +
   fixes subexprs :: "'a \<Rightarrow> 'a list"
@@ -69,14 +81,6 @@ fun maybe_map_tree :: "('a \<Rightarrow> 'a option) \<Rightarrow> 'a \<Rightarro
 
 fun pattern_variables :: "'a \<Rightarrow> string list" where
   "pattern_variables e = List.map_filter varof (subexprs e)"
-
-
-datatype ('e, 'cond) MATCH =
-  match VarName "'e" |
-  equality VarName VarName (infixl "==" 52) |
-  andthen "('e, 'cond) MATCH" "('e, 'cond) MATCH" (infixl "&&" 50) |
-  cond "'cond" | \<comment> \<open>This was 'a => bool as the second argument but it disagrees with code generation. Requires work regardless.\<close>
-  noop
 
 fun register_name where
   "register_name (s, m) vn v = (s, m(vn\<mapsto>v))"
@@ -496,13 +500,6 @@ lemma match_eq:
 
 subsection \<open>Combining Rules\<close>
 
-datatype ('e, 'cond, 'r) Rules =
-  base "'r" |
-  cond' "('e, 'cond) MATCH" "('e, 'cond, 'r) Rules" (infixl "?" 52) |
-  else' "('e, 'cond, 'r) Rules" "('e, 'cond, 'r) Rules" (infixl "else" 50) |
-  seq "('e, 'cond, 'r) Rules" "('e, 'cond, 'r) Rules" (infixl "\<then>" 49) |
-  choice "(('e, 'cond, 'r) Rules) list"
-
 function var_expr :: "'a \<Rightarrow> Scope \<Rightarrow> 'a" where
   "var_expr e (s, m) =
     (case varof e of
@@ -856,6 +853,9 @@ subsubsection \<open>Lift primitive sequential (\texttt{\&\&}) to rule sequentia
 
 definition size_condition :: "'cond \<Rightarrow> nat" where
   "size_condition _ = 0"
+
+definition size_match :: "('a, 'b) MATCH \<Rightarrow> nat" where
+  "size_match = size_MATCH size size_condition"
 
 definition size_Rule :: "('a, 'b, 'c) Rules \<Rightarrow> nat" where
   "size_Rule = size_Rules size size_condition size_condition"
@@ -1568,6 +1568,7 @@ fun compile :: "(('a, 'b, 'c) Strategy \<times> 'a) \<Rightarrow> (('a, 'b) Rule
   "compile ((v1?; x; v2!); r) s = (if v1 = v2 then (condition x)? compile r s else noop)"*)
 
 end
+
 
 subsection \<open>Example: Arithmetic\<close>
 

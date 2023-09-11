@@ -257,11 +257,13 @@ fun is_ground_condition :: "ArithmeticCondition \<Rightarrow> bool" where
 
 datatype Transformer =
   UnaryMinus Arithmetic |
-  Plus Arithmetic Arithmetic
+  Plus Arithmetic Arithmetic |
+  Result Arithmetic
 
 fun eval_transformer :: "Transformer \<Rightarrow> Arithmetic option" where
   "eval_transformer (UnaryMinus (Number x)) = Some (Number (-x))" |
   "eval_transformer (Plus (Number x) (Number y)) = Some (Number (plus x y))" |
+  "eval_transformer (Result a) = Some a" |
   "eval_transformer _ = None"
 
 fun ground_transformer :: "Transformer \<Rightarrow> (string \<rightharpoonup> Arithmetic) \<Rightarrow> Transformer" where
@@ -273,11 +275,15 @@ fun ground_transformer :: "Transformer \<Rightarrow> (string \<rightharpoonup> A
                                                 case f y of Some y' \<Rightarrow> (Plus x' y')
                                                             | None \<Rightarrow> (Plus (Variable x) (Variable y)))
                                               | None \<Rightarrow> (Plus (Variable x) (Variable y)))" |
+  "ground_transformer (Result (Variable v)) f = (case f v of 
+                                              Some v' \<Rightarrow> (Result v') |
+                                              None \<Rightarrow> (Result (Variable v)))" |
   "ground_transformer e f = e"
 
 fun is_ground_transformer :: "Transformer \<Rightarrow> bool" where
   "is_ground_transformer (UnaryMinus e) = is_Variable e" |
-  "is_ground_transformer (Plus e1 e2) = (is_Variable e1 \<or> is_Variable e2)"
+  "is_ground_transformer (Plus e1 e2) = (is_Variable e1 \<or> is_Variable e2)" |
+  "is_ground_transformer (Result e) = is_Variable e"
 
 print_locale Rewritable
 setup \<open>Locale_Code.open_block\<close>
