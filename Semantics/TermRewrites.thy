@@ -1904,10 +1904,10 @@ datatype Expression =
   IntegerConstant int |
   TrueValue |
   FalseValue |
-  MethodCall Expression MethodName "Expression list" |
-  Constructor ClassName "Expression list" |
-  InstanceOf Expression ClassName VariableName |
-  Equal Expression Expression |
+  MethodCall Expression MethodName "Expression list" ("_._(_)") |
+  Constructor ClassName "Expression list" ("new _(_)") |
+  InstanceOf Expression ClassName VariableName ("_ instanceof _ _") |
+  Equal Expression Expression (infix "==" 58) |
   Less Expression Expression |
   Negate Expression |
   And Expression Expression |
@@ -1915,10 +1915,18 @@ datatype Expression =
   Unsupported string
 
 datatype Statement =
-  Assignment VariableName Expression |
-  Branch Expression Statement |
+  Assignment VariableName Expression (infixr ":=" 56) |
+  Branch Expression Statement ("if _ {(2//_)//}") |
   Return Expression |
   Sequential "Statement list"
+
+syntax
+  "_seq" :: "Statement \<Rightarrow> Statement => Statement" (infixr ";//" 55)
+
+translations
+  "_seq x y" == "CONST Sequential [x, y]"
+
+value "v1 := (Ref v2); v2 := (Ref v3); v3 := (Ref v4)"
 
 fun intersperse :: "string \<Rightarrow> string list \<Rightarrow> string list" where
   "intersperse i es = foldr (\<lambda>x ys . x # (if ys = [] then ys else i # ys)) es []"
@@ -2020,41 +2028,41 @@ fun export_value :: "Value \<Rightarrow> Expression" where
 
 fun export_irexpr :: "IRExpr \<Rightarrow> Expression" where
   "export_irexpr (UnaryExpr op e1) =
-    Constructor (unary_op_class op) [export_irexpr e1]" |
+    new (unary_op_class op)([export_irexpr e1])" |
   "export_irexpr (BinaryExpr op e1 e2) =
-    Constructor (binary_op_class op) [export_irexpr e1, export_irexpr e2]" |
+    new (binary_op_class op)([export_irexpr e1, export_irexpr e2])" |
   "export_irexpr (ConditionalExpr e1 e2 e3) =
-    Constructor ''ConditionalNode''  [export_irexpr e1, export_irexpr e2, export_irexpr e3]" |
+    new ''ConditionalNode''([export_irexpr e1, export_irexpr e2, export_irexpr e3])" |
   "export_irexpr (ConstantExpr val) =
-    Constructor ''ConstantNode'' [export_value val]" |
+    new ''ConstantNode''([export_value val])" |
   "export_irexpr (ConstantVar var) =
-    Constructor ''ConstantNode'' [Ref var]" |
+    new ''ConstantNode''([Ref var])" |
   "export_irexpr (VariableExpr v s) = Ref v"
 
 fun export_result :: "Result \<Rightarrow> Expression" where
   "export_result (ExpressionResult e) = export_irexpr e" |
-  "export_result (forZero e) = Constructor ''ConstantNode'' [IntegerConstant 0]"
+  "export_result (forZero e) = new ''ConstantNode''([IntegerConstant 0])"
 
 fun export_stamp :: "Stamp \<Rightarrow> Expression" where
   "export_stamp (IntegerStamp bits lower higher) =
-    Constructor ''IntegerStamp'' 
-      [IntegerConstant bits, IntegerConstant lower,
-       IntegerConstant higher]" |
+    new ''IntegerStamp'' 
+      ([IntegerConstant bits, IntegerConstant lower,
+       IntegerConstant higher])" |
   "export_stamp _ =
     Unsupported ''unsupported Stamp''"
 
 definition stampOf :: "Expression \<Rightarrow> Expression" where
-  "stampOf e = (MethodCall e ''stamp'' [Ref STR ''view''])"
+  "stampOf e = (e.''stamp''([Ref STR ''view'']))"
 
 definition upMask :: "Expression \<Rightarrow> Expression" where
-  "upMask e = (MethodCall (stampOf e) ''upMask'' [])"
+  "upMask e = ((stampOf e).''upMask''([]))"
 
 definition downMask :: "Expression \<Rightarrow> Expression" where
-  "downMask e = (MethodCall (stampOf e) ''downMask'' [])"
+  "downMask e = ((stampOf e).''downMask''([]))"
 
 fun export_condition :: "SideCondition \<Rightarrow> Expression" where
-  "export_condition (IsConstantExpr e) = (InstanceOf (export_irexpr e) ''ConstantNode'' STR ''t'')" |
-  "export_condition (IsIntegerStamp e) = (InstanceOf (stampOf (export_irexpr e)) ''IntegerStamp'' STR ''t'')" |
+  "export_condition (IsConstantExpr e) = ((export_irexpr e) instanceof ''ConstantNode'' STR ''t'')" |
+  "export_condition (IsIntegerStamp e) = ((stampOf (export_irexpr e)) instanceof ''IntegerStamp'' STR ''t'')" |
   "export_condition (WellFormed s) = TrueValue" |
   "export_condition (IsStamp e s) =
     (Equal (stampOf (export_irexpr e)) (export_stamp s))" |
@@ -2081,37 +2089,51 @@ fun export_condition :: "SideCondition \<Rightarrow> Expression" where
   "export_condition (Empty) = TrueValue"
 
 fun export_assignments :: "VarName \<Rightarrow> PatternExpr \<Rightarrow> Statement \<Rightarrow> Statement" where
-  "export_assignments v (UnaryPattern op v1) s = Sequential
-    [Assignment v1 (MethodCall (Ref (v + STR ''c'')) ''getValue'' []), s]" |
-  "export_assignments v (BinaryPattern op v1 v2) s = Sequential
-    [Assignment v1 (MethodCall (Ref (v + STR ''c'')) ''getX'' []),
-     Assignment v2 (MethodCall (Ref (v + STR ''c'')) ''getY'' []), s]" |
-  "export_assignments v (ConditionalPattern v1 v2 v3) s = Sequential
-    [Assignment v1 (MethodCall (Ref (v + STR ''c'')) ''condition'' []),
-     Assignment v2 (MethodCall (Ref (v + STR ''c'')) ''trueValue'' []),
-     Assignment v3 (MethodCall (Ref (v + STR ''c'')) ''falseValue'' []), s]" |
+  "export_assignments v (UnaryPattern op v1) s =
+    v1 := ((Ref v).''getValue'' []); s" |
+  "export_assignments v (BinaryPattern op v1 v2) s =
+    v1 := ((Ref v).''getX'' []);
+    v2 := ((Ref v).''getY'' []); s" |
+  "export_assignments v (ConditionalPattern v1 v2 v3) s =
+    v1 := ((Ref v).''condition'' []);
+    v2 := ((Ref v).''trueValue'' []);
+    v3 := ((Ref v).''falseValue'' []); s" |
   "export_assignments v (ConstantPattern val) s =
-    Branch (InstanceOf (MethodCall (Ref (v + STR ''c'')) ''getValue'' []) ''PrimitiveConstant'' (v + STR ''cd''))
-    (Branch (Equal (MethodCall (Ref (v + STR ''cd'')) ''asLong'' []) (export_value val)) s)" |
+    if (((Ref v).''getValue'' []) instanceof ''PrimitiveConstant'' (v + STR ''d'')) {
+      if (((Ref (v + STR ''d'')).''asLong'' []) == (export_value val)) {
+        s
+      }
+    }" |
   "export_assignments v (ConstantVarPattern var) s =
-    Branch (Equal (MethodCall (Ref (v + STR ''c'')) ''getValue'' []) (Ref var)) s" |
+    if (((Ref v).''getValue'' []) == (Ref var)) {
+      s
+    }" |
   "export_assignments v (VariablePattern var) s =
     Return (Unsupported ''export_assignments for VariablePattern'')" 
 
 function (sequential) export_match :: "MATCH \<Rightarrow> Statement \<Rightarrow> Statement" where
   "export_match (match v p) r  = 
-    Branch (InstanceOf (Ref v) (export_pattern p) (String.implode (String.explode v @ ''c'')))
-      (export_assignments v p r)" |
+    if ((Ref v) instanceof (export_pattern p) (v + STR ''c'')) {
+      (export_assignments (v + STR ''c'') p r)
+    }" |
   "export_match (andthen m1 m2) r = 
     export_match m1 (export_match m2 r)" |
   "export_match (equality v1 v2) r = 
-    Branch (Equal (Ref v1) (Ref v2)) r" |
+    if (Ref v1 == Ref v2) {
+      r
+    }" |
   "export_match (condition (SideCondition.And sc1 sc2)) r = 
-    Branch (export_condition sc1) (Branch (export_condition sc2) r)" |
+    if (export_condition sc1) {
+      if (export_condition sc2) {
+        r
+      }
+    }" |
   "export_match (condition (WellFormed s)) r = r" |
   "export_match (condition (Empty)) r = r" |
   "export_match (condition sc) r = 
-    Branch (export_condition sc) r" |
+    if (export_condition sc) {
+      r
+    }" |
   "export_match noop r = r"
   apply pat_completeness+
   by simp+
@@ -2123,13 +2145,23 @@ fun size_condition :: "(MATCH \<times> Statement) \<Rightarrow> nat" where
 termination export_match
   apply (relation "measures [size_condition]") apply simp apply simp sorry
 
+fun export_rules_assignment :: "VarName \<Rightarrow> Rules \<Rightarrow> Statement" where
+  "export_rules_assignment v (base e) = v := (export_result e)" |
+  "export_rules_assignment v (cond m r) = export_match m (export_rules_assignment v r)" |
+  "export_rules_assignment v (r1 else r2) = export_rules_assignment v r1; export_rules_assignment v r2" |
+  "export_rules_assignment v (choice rules) = Sequential (map (export_rules_assignment v) rules)" |
+  "export_rules_assignment v (r1 \<then> r2) = 
+    export_rules_assignment (the (entry_var r2)) r1;
+    export_rules_assignment v r2"
 
 fun export_rules :: "Rules \<Rightarrow> Statement" where
   "export_rules (base e) = Return (export_result e)" |
   "export_rules (cond m r) = export_match m (export_rules r)" |
-  "export_rules (r1 else r2) = Sequential [export_rules r1, export_rules r2]" |
+  "export_rules (r1 else r2) = export_rules r1; export_rules r2" |
   "export_rules (choice rules) = Sequential (map export_rules rules)" |
-  "export_rules (r1 \<then> r2) = Sequential [export_rules r1, export_rules r2]" (* TODO: should modify e *)
+  "export_rules (r1 \<then> r2) = 
+    export_rules_assignment (the (entry_var r2)) r1;
+    export_rules r2"
 
 
 subsection \<open>Experiments\<close>
@@ -2326,6 +2358,10 @@ corollary
 
 subsubsection \<open>Java Generation\<close>
 
+translations
+  "s" <= "CONST Ref (_Literal s)"
+  
+
 value "RedundantSub"
 value "(export_rules RedundantSub)"
 value "generate_statement 0 (export_rules RedundantSub)"
@@ -2338,6 +2374,9 @@ value "export_rules (optimized_export (RedundantSub else AddLeftNegateToSub))"
 value "lift_match (eliminate_noop (NestedNot else RedundantSub else AddLeftNegateToSub))"
 value "export_rules (optimized_export ((RedundantSub else AddLeftNegateToSub) else NestedNot))"
 value "export_rules (optimized_export (NestedNot else RedundantSub else AddLeftNegateToSub))"
+
+value "export_rules (optimized_export (NestedNot \<then> (optimized_export (RedundantSub else AddLeftNegateToSub))))"
+
 
 no_notation cond (infixl "?" 52)
 no_notation seq (infixl "\<then>" 50)
