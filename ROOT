@@ -10,6 +10,10 @@ session Locale_Code in Locale_Code = "HOL-Library" +
   theories
     Locale_Code
 
+session Jinja in Jinja = "HOL-Library" +
+  theories
+    Jinja
+
 session Stratego in Stratego = Locale_Code +
   options [document = pdf, document_output = "output",
            document_variants="document:outline=/proof",
@@ -339,6 +343,20 @@ session ValidationPaperSnippets in "Papers/Validation" = ConditionalElimination 
   theories
     IRGraphSort
     ValidationSnippets
+  document_files (in "../../latex")
+    "root.tex"
+    "mathpartir.sty"
+
+
+session CodeGenPaper in "Papers/CodeGen" = Semantics +
+  description
+    "Snippets of Isabelle theories used for a paper on the code generation facilities"
+  options [document = pdf, document_output = "output",
+           show_question_marks = false, quick_and_dirty]
+  sessions
+    Snippets
+  theories
+    IRExprCodeGen
   document_files (in "../../latex")
     "root.tex"
     "mathpartir.sty"
