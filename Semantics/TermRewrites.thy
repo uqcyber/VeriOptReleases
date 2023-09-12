@@ -1934,6 +1934,15 @@ fun intersperse :: "string \<Rightarrow> string list \<Rightarrow> string list" 
 fun param_list :: "string list \<Rightarrow> string" where
   "param_list es = (foldr (@) (intersperse '', '' es) '''')"
 
+(* https://stackoverflow.com/questions/23864965/string-of-nat-in-isabelle *)
+fun string_of_nat :: "nat \<Rightarrow> string" where
+  "string_of_nat n = (if n < 10 then [char_of (48 + n)] else 
+     string_of_nat (n div 10) @ [char_of (48 + (n mod 10))])"
+
+definition string_of_int :: "int \<Rightarrow> string" where
+  "string_of_int i = (if i < 0 then ''-'' @ string_of_nat (nat (- i)) else 
+     string_of_nat (nat i))"
+
 fun generate_expression :: "Expression \<Rightarrow> string" where
   "generate_expression (Ref v) = String.explode v" |
   "generate_expression (IntegerConstant n) = ''0''" | (*TODO FIX*)
@@ -2005,43 +2014,34 @@ fun binary_op_class :: "IRBinaryOp \<Rightarrow> ClassName" where
   "binary_op_class BinIntegerNormalizeCompare = ''IntegerNormalizeCompareNode''" |
   "binary_op_class BinIntegerMulHigh = ''IntegerMulHighNode''"
 
-fun export_pattern :: "PatternExpr \<Rightarrow> ClassName" where
-  "export_pattern (UnaryPattern op v) = unary_op_class op" |
-  "export_pattern (BinaryPattern op v1 v2) = binary_op_class op" |
-  "export_pattern (ConditionalPattern v1 v2 v3) = ''ConditionalNode''" |
-  "export_pattern (ConstantPattern v) = ''ConstantNode''" |
-  "export_pattern (ConstantVarPattern v) = ''ConstantNode''" |
-  "export_pattern (VariablePattern v) = ''ERROR: Variable should not occur on LHS''"
+fun class_name :: "PatternExpr \<Rightarrow> ClassName" where
+  "class_name (UnaryPattern op v) = unary_op_class op" |
+  "class_name (BinaryPattern op v1 v2) = binary_op_class op" |
+  "class_name (ConditionalPattern v1 v2 v3) = ''ConditionalNode''" |
+  "class_name (ConstantPattern v) = ''ConstantNode''" |
+  "class_name (ConstantVarPattern v) = ''ConstantNode''" |
+  "class_name (VariablePattern v) = ''ERROR: Variable should not occur on LHS''"
 
-(* https://stackoverflow.com/questions/23864965/string-of-nat-in-isabelle *)
-fun string_of_nat :: "nat \<Rightarrow> string" where
-  "string_of_nat n = (if n < 10 then [char_of (48 + n)] else 
-     string_of_nat (n div 10) @ [char_of (48 + (n mod 10))])"
+fun generate_value :: "Value \<Rightarrow> Expression" where
+  "generate_value (IntVal s v) = IntegerConstant (sint v)" |
+  "generate_value _ = Unsupported ''unsupported Value''"
 
-definition string_of_int :: "int \<Rightarrow> string" where
-  "string_of_int i = (if i < 0 then ''-'' @ string_of_nat (nat (- i)) else 
-     string_of_nat (nat i))"
-
-fun export_value :: "Value \<Rightarrow> Expression" where
-  "export_value (IntVal s v) = IntegerConstant (sint v)" |
-  "export_value _ = Unsupported ''unsupported Value''"
-
-fun export_irexpr :: "IRExpr \<Rightarrow> Expression" where
-  "export_irexpr (UnaryExpr op e1) =
-    new (unary_op_class op)([export_irexpr e1])" |
-  "export_irexpr (BinaryExpr op e1 e2) =
-    new (binary_op_class op)([export_irexpr e1, export_irexpr e2])" |
-  "export_irexpr (ConditionalExpr e1 e2 e3) =
-    new ''ConditionalNode''([export_irexpr e1, export_irexpr e2, export_irexpr e3])" |
-  "export_irexpr (ConstantExpr val) =
-    new ''ConstantNode''([export_value val])" |
-  "export_irexpr (ConstantVar var) =
+fun construct_node :: "IRExpr \<Rightarrow> Expression" where
+  "construct_node (UnaryExpr op e1) =
+    new (unary_op_class op)([construct_node e1])" |
+  "construct_node (BinaryExpr op e1 e2) =
+    new (binary_op_class op)([construct_node e1, construct_node e2])" |
+  "construct_node (ConditionalExpr e1 e2 e3) =
+    new ''ConditionalNode''([construct_node e1, construct_node e2, construct_node e3])" |
+  "construct_node (ConstantExpr val) =
+    new ''ConstantNode''([generate_value val])" |
+  "construct_node (ConstantVar var) =
     new ''ConstantNode''([Ref var])" |
-  "export_irexpr (VariableExpr v s) = Ref v"
+  "construct_node (VariableExpr v s) = Ref v"
 
-fun export_result :: "Result \<Rightarrow> Expression" where
-  "export_result (ExpressionResult e) = export_irexpr e" |
-  "export_result (forZero e) = new ''ConstantNode''([IntegerConstant 0])"
+fun generate_result :: "Result \<Rightarrow> Expression" where
+  "generate_result (ExpressionResult e) = construct_node e" |
+  "generate_result (forZero e) = new ''ConstantNode''([IntegerConstant 0])"
 
 fun export_stamp :: "Stamp \<Rightarrow> Expression" where
   "export_stamp (IntegerStamp bits lower higher) =
@@ -2060,81 +2060,73 @@ definition upMask :: "Expression \<Rightarrow> Expression" where
 definition downMask :: "Expression \<Rightarrow> Expression" where
   "downMask e = ((stampOf e).''downMask''([]))"
 
-fun export_condition :: "SideCondition \<Rightarrow> Expression" where
-  "export_condition (IsConstantExpr e) = ((export_irexpr e) instanceof ''ConstantNode'' STR ''t'')" |
-  "export_condition (IsIntegerStamp e) = ((stampOf (export_irexpr e)) instanceof ''IntegerStamp'' STR ''t'')" |
-  "export_condition (WellFormed s) = TrueValue" |
-  "export_condition (IsStamp e s) =
-    (Equal (stampOf (export_irexpr e)) (export_stamp s))" |
-  "export_condition (IsConstantValue e s v) =
+fun generate_condition :: "SideCondition \<Rightarrow> Expression" where
+  "generate_condition (IsConstantExpr e) = ((construct_node e) instanceof ''ConstantNode'' STR ''t'')" |
+  "generate_condition (IsIntegerStamp e) = ((stampOf (construct_node e)) instanceof ''IntegerStamp'' STR ''t'')" |
+  "generate_condition (WellFormed s) = TrueValue" |
+  "generate_condition (IsStamp e s) =
+    (Equal (stampOf (construct_node e)) (export_stamp s))" |
+  "generate_condition (IsConstantValue e s v) =
     (And
-      (InstanceOf (export_irexpr e) ''ConstantNode'' STR ''t'')
-      (Equal (MethodCall (export_irexpr e) ''getConstantValue'' []) (IntegerConstant (sint v))))" |
-  "export_condition (StampUnder e1 e2) =
+      (InstanceOf (construct_node e) ''ConstantNode'' STR ''t'')
+      (Equal (MethodCall (construct_node e) ''getConstantValue'' []) (IntegerConstant (sint v))))" |
+  "generate_condition (StampUnder e1 e2) =
     (Less 
-      (MethodCall (stampOf (export_irexpr e1)) ''upperBound'' []) 
-      (MethodCall (stampOf (export_irexpr e2)) ''lowerBound'' []))" |
-  "export_condition (UpMaskEquals e m) =
-    Equal (upMask (export_irexpr e)) (IntegerConstant (sint m))" |
-  "export_condition (DownMaskEquals e m) =
-    Equal (downMask (export_irexpr e)) (IntegerConstant (sint m))" |
-  "export_condition (UpMaskCancels e1 e2) =
-    Equal (BitAnd (upMask (export_irexpr e1)) (upMask (export_irexpr e2))) (IntegerConstant 0)" |
-  "export_condition (PowerOf2 e) =
-    MethodCall (Ref STR ''CodeUtil'') ''isPowerOf2'' [export_irexpr e]" |
-  "export_condition (IsBool e) =
-    Equal (MethodCall (export_irexpr e) ''upMask'' []) (IntegerConstant 1)" |
-  "export_condition (Not sc) = Negate (export_condition sc)" |
-  "export_condition (SideCondition.And sc1 sc2) = And (export_condition sc1) (export_condition sc2)" |
-  "export_condition (Empty) = TrueValue"
+      (MethodCall (stampOf (construct_node e1)) ''upperBound'' []) 
+      (MethodCall (stampOf (construct_node e2)) ''lowerBound'' []))" |
+  "generate_condition (UpMaskEquals e m) =
+    Equal (upMask (construct_node e)) (IntegerConstant (sint m))" |
+  "generate_condition (DownMaskEquals e m) =
+    Equal (downMask (construct_node e)) (IntegerConstant (sint m))" |
+  "generate_condition (UpMaskCancels e1 e2) =
+    Equal (BitAnd (upMask (construct_node e1)) (upMask (construct_node e2))) (IntegerConstant 0)" |
+  "generate_condition (PowerOf2 e) =
+    MethodCall (Ref STR ''CodeUtil'') ''isPowerOf2'' [construct_node e]" |
+  "generate_condition (IsBool e) =
+    Equal (MethodCall (construct_node e) ''upMask'' []) (IntegerConstant 1)" |
+  "generate_condition (Not sc) = Negate (generate_condition sc)" |
+  "generate_condition (SideCondition.And sc1 sc2) = And (generate_condition sc1) (generate_condition sc2)" |
+  "generate_condition (Empty) = TrueValue"
 
-fun export_assignments :: "VarName \<Rightarrow> PatternExpr \<Rightarrow> Statement \<Rightarrow> Statement" where
-  "export_assignments v (UnaryPattern op v1) s =
+fun match_body :: "VarName \<Rightarrow> PatternExpr \<Rightarrow> Statement \<Rightarrow> Statement" where
+  "match_body v (UnaryPattern op v1) s =
     v1 := ((Ref v).''getValue'' []); s" |
-  "export_assignments v (BinaryPattern op v1 v2) s =
+  "match_body v (BinaryPattern op v1 v2) s =
     v1 := ((Ref v).''getX'' []);
     v2 := ((Ref v).''getY'' []); s" |
-  "export_assignments v (ConditionalPattern v1 v2 v3) s =
+  "match_body v (ConditionalPattern v1 v2 v3) s =
     v1 := ((Ref v).''condition'' []);
     v2 := ((Ref v).''trueValue'' []);
     v3 := ((Ref v).''falseValue'' []); s" |
-  "export_assignments v (ConstantPattern val) s =
+  "match_body v (ConstantPattern val) s =
     if (((Ref v).''getValue'' []) instanceof ''PrimitiveConstant'' (v + STR ''d'')) {
-      if (((Ref (v + STR ''d'')).''asLong'' []) == (export_value val)) {
+      if (((Ref (v + STR ''d'')).''asLong'' []) == (generate_value val)) {
         s
       }
     }" |
-  "export_assignments v (ConstantVarPattern var) s =
+  "match_body v (ConstantVarPattern var) s =
     if (((Ref v).''getValue'' []) == (Ref var)) {
       s
     }" |
-  "export_assignments v (VariablePattern var) s =
+  "match_body v (VariablePattern var) s =
     Return (Unsupported ''export_assignments for VariablePattern'')" 
 
-function (sequential) export_match :: "MATCH \<Rightarrow> Statement \<Rightarrow> Statement" where
-  "export_match (match v p) r  = 
-    if ((Ref v) instanceof (export_pattern p) (v + STR ''c'')) {
-      (export_assignments (v + STR ''c'') p r)
+function (sequential) generate_match :: "MATCH \<Rightarrow> Statement \<Rightarrow> Statement" where
+  "generate_match (match v p) r  = 
+    if ((Ref v) instanceof (class_name p) (v + STR ''c'')) {
+      (match_body (v + STR ''c'') p r)
     }" |
-  "export_match (andthen m1 m2) r = 
-    export_match m1 (export_match m2 r)" |
-  "export_match (equality v1 v2) r = 
+  "generate_match (andthen m1 m2) r = 
+    generate_match m1 (generate_match m2 r)" |
+  "generate_match (equality v1 v2) r = 
     if (Ref v1 == Ref v2) {
       r
     }" |
-  "export_match (condition (SideCondition.And sc1 sc2)) r = 
-    if (export_condition sc1) {
-      if (export_condition sc2) {
-        r
-      }
-    }" |
-  "export_match (condition (WellFormed s)) r = r" |
-  "export_match (condition (Empty)) r = r" |
-  "export_match (condition sc) r = 
-    if (export_condition sc) {
+  "generate_match (condition sc) r = 
+    if (generate_condition sc) {
       r
     }" |
-  "export_match noop r = r"
+  "generate_match noop r = r"
   apply pat_completeness+
   by simp+
 
@@ -2142,26 +2134,21 @@ fun size_condition :: "(MATCH \<times> Statement) \<Rightarrow> nat" where
   "size_condition ((condition c), s) = size (condition c) + size c" |
   "size_condition (m, s) = size m"
 
-termination export_match
+termination generate_match
   apply (relation "measures [size_condition]") apply simp apply simp sorry
 
-fun export_rules_assignment :: "VarName \<Rightarrow> Rules \<Rightarrow> Statement" where
-  "export_rules_assignment v (base e) = v := (export_result e)" |
-  "export_rules_assignment v (cond m r) = export_match m (export_rules_assignment v r)" |
-  "export_rules_assignment v (r1 else r2) = export_rules_assignment v r1; export_rules_assignment v r2" |
-  "export_rules_assignment v (choice rules) = Sequential (map (export_rules_assignment v) rules)" |
-  "export_rules_assignment v (r1 \<then> r2) = 
-    export_rules_assignment (the (entry_var r2)) r1;
-    export_rules_assignment v r2"
+fun generate_rules :: "VarName option \<Rightarrow> Rules \<Rightarrow> Statement" where
+  "generate_rules None (base e) = Return (generate_result e)" |
+  "generate_rules (Some v) (base e) = v := (generate_result e)" |
+  "generate_rules v (cond m r) = generate_match m (generate_rules v r)" |
+  "generate_rules v (r1 else r2) = generate_rules v r1; generate_rules v r2" |
+  "generate_rules v (choice rules) = Sequential (map (generate_rules v) rules)" |
+  "generate_rules v (r1 \<then> r2) = 
+    generate_rules (entry_var r2) r1;
+    generate_rules v r2"
 
-fun export_rules :: "Rules \<Rightarrow> Statement" where
-  "export_rules (base e) = Return (export_result e)" |
-  "export_rules (cond m r) = export_match m (export_rules r)" |
-  "export_rules (r1 else r2) = export_rules r1; export_rules r2" |
-  "export_rules (choice rules) = Sequential (map export_rules rules)" |
-  "export_rules (r1 \<then> r2) = 
-    export_rules_assignment (the (entry_var r2)) r1;
-    export_rules r2"
+
+definition "export_rules = generate_rules None"
 
 
 subsection \<open>Experiments\<close>
@@ -2438,5 +2425,7 @@ value "LeftConst"
 
 
 value "(optimized_export (optimized_export (LeftConst \<then> (optimized_export (Evaluate else (Identity else Shift))))))"
+value "export_rules (optimized_export (optimized_export (LeftConst \<then> (optimized_export (Evaluate else (Identity else Shift))))))"
+
 
 end
