@@ -105,6 +105,14 @@ gencode "ConditionalCode" "( (optimized_export (
 
 print_phases
 
+gencode "PaperNaive" "(optimized_export
+  (choice [Identity, Evaluate, Shift, LeftConst]))"
+
+gencode "PaperStategy" "(optimized_export
+  (LeftConst \<then> (choice [Identity, Evaluate] else Shift)))"
+
+gencode "PaperNoOpt" "(
+  (choice [Identity, Evaluate, Shift, LeftConst]))"
 
 gencode "AllOpts" "(optimized_export
   (choice [

@@ -134,8 +134,8 @@ fun rewrite_rhs (rewrite: rewrite) =
 
 fun rewrite_cond (rewrite: rewrite) =
   case (#rewrite rewrite) of
-    Transform (_, _) => @{term "Empty"}
-    | Conditional (_, _, cond) => cond
+    Transform (_, _) => NONE
+    | Conditional (_, _, cond) => SOME cond
     | _ => raise TERM ("rewrite cannot be translated yet", [])
 
 fun mkstr ctxt name =
@@ -158,21 +158,36 @@ fun ground_IRExpr ctxt trm =
     | _ => trm)
 
 fun type_checked_rewrites ctxt rewrite =
-  let
-    val [lhs, rhs, cond] = 
-      Syntax.check_terms ctxt
-        [(rewrite_lhs rewrite),
-         (rewrite_rhs rewrite),
-         (rewrite_cond rewrite)]
-  in
-    (lhs, rhs, cond)
-  end
+ case (rewrite_cond rewrite) of
+    NONE => 
+    let
+      val [lhs, rhs] =
+          (Syntax.check_terms ctxt
+            [(rewrite_lhs rewrite),
+             (rewrite_rhs rewrite)])
+    in
+      (lhs, rhs, NONE)
+    end
+    | SOME c =>
+    let
+      val [lhs, rhs, c'] =
+          (Syntax.check_terms ctxt
+            [(rewrite_lhs rewrite),
+             (rewrite_rhs rewrite),
+             c])
+    in
+      (lhs, rhs, SOME c')
+    end
 
 fun rewrite_to_term_param ctxt rewrite =
   let 
     val (lhs, rhs, cond) = type_checked_rewrites ctxt rewrite;
   in
-    (ground_IRExpr ctxt lhs, ground_IRExpr ctxt rhs, ground_IRExpr ctxt cond)
+    (ground_IRExpr ctxt lhs, ground_IRExpr ctxt rhs,
+       case cond of 
+        NONE => (Const ("Option.option.None", @{typ "SideCondition option"})) |
+        SOME cond' =>
+          (Const ("Option.option.Some", @{typ "SideCondition => SideCondition option"}) $ ground_IRExpr ctxt cond'))
   (*case (#rewrite rewrite) of
     Transform (lhs, rhs) => 
       ground_IRExpr ctxt lhs $ ground_IRExpr ctxt rhs
@@ -183,7 +198,7 @@ fun generate ctxt term =
   let
     val (lhs, rhs, cond) = rewrite_to_term_param ctxt term;
     val generate_term = 
-      (((Const ("TermRewrites.generate", @{typ "IRExpr \<Rightarrow> Result \<Rightarrow> SideCondition \<Rightarrow> Rules"}))
+      (((Const ("TermRewrites.generate", @{typ "IRExpr \<Rightarrow> Result \<Rightarrow> SideCondition option \<Rightarrow> Rules"}))
       $ lhs) $ rhs) $ cond
     val value = Code_Evaluation.dynamic_value_strict ctxt generate_term;
   in              
