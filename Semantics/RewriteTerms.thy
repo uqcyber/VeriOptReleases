@@ -1,6 +1,16 @@
 theory RewriteTerms
-imports IRTreeEval Stratego.CompileRewrite "HOL-Library.Monad_Syntax"
+imports IRTreeEval Stratego.JavaExport "HOL-Library.Monad_Syntax"
 begin
+
+fun compatible :: "('a, 'b) fmap \<Rightarrow> ('a, 'b) fmap \<Rightarrow> bool" where
+  "compatible s1 s2 = (\<forall>x \<in> fset (fmdom s1) . fmlookup s2 x \<noteq> None \<longrightarrow> fmlookup s1 x = fmlookup s2 x)"
+
+fun union :: "(('a, 'b) fmap) option \<Rightarrow> (('a, 'b) fmap) option \<Rightarrow> (('a, 'b) fmap) option" where
+  "union s1 s2 = do {
+    s1' <- s1;
+    s2' <- s2;
+    if compatible s1' s2' then Some (s1' ++\<^sub>f s2') else None
+  }"
 
 fun rewrite_IRExpr :: "(IRExpr \<Rightarrow> IRExpr) \<Rightarrow> IRExpr \<Rightarrow> IRExpr" where
   "rewrite_IRExpr f (UnaryExpr op x) = f (UnaryExpr op (rewrite_IRExpr f x))" |
@@ -191,6 +201,186 @@ fun is_ground_result :: "Result \<Rightarrow> bool" where
   "is_ground_result (Negate e) = is_VariableExpr e" |
   "is_ground_result (Add e1 e2) = (is_VariableExpr e1 \<and> is_VariableExpr e2)"
 
+
+subsection \<open>Java Generation\<close>
+
+fun unary_op_class :: "IRUnaryOp \<Rightarrow> ClassName" where
+  "unary_op_class UnaryAbs = ''AbsNode''" |
+  "unary_op_class UnaryNeg = ''NegateNode''" |
+  "unary_op_class UnaryNot = ''NotNode''" |
+  "unary_op_class UnaryLogicNegation = ''LogicNegationNode''" |
+  "unary_op_class (UnaryNarrow _ _) = ''NarrowNode''" |
+  "unary_op_class (UnarySignExtend _ _) = ''SignExtendNode''" |
+  "unary_op_class (UnaryZeroExtend _ _) = ''ZeroExtendNode''" |
+  "unary_op_class UnaryIsNull = ''IsNullNode''" |
+  "unary_op_class UnaryReverseBytes = ''ReverseBytesNode''" |
+  "unary_op_class UnaryBitCount = ''BitCountNode''"
+
+fun binary_op_class :: "IRBinaryOp \<Rightarrow> ClassName" where
+  "binary_op_class BinAdd = ''AddNode''" |
+  "binary_op_class BinMul = ''MulNode''" |
+  "binary_op_class BinSub = ''SubNode''" |
+  "binary_op_class BinAnd = ''AndNode''" |
+  "binary_op_class BinOr = ''OrNode''" |
+  "binary_op_class BinXor = ''XorNode''" |
+  "binary_op_class BinShortCircuitOr = ''ShortCircuitOrNode''" |
+  "binary_op_class BinLeftShift = ''LeftShiftNode''" |
+  "binary_op_class BinRightShift = ''RightShiftNode''" |
+  "binary_op_class BinURightShift = ''UnaryRightShiftNode''" |
+  "binary_op_class BinIntegerEquals = ''IntegerEqualsNode''" |
+  "binary_op_class BinIntegerLessThan = ''IntegerLessThanNode''" |
+  "binary_op_class BinIntegerBelow = ''IntegerBelowNode''" |
+  "binary_op_class BinIntegerTest = ''IntegerTestNode''" |
+  "binary_op_class BinIntegerNormalizeCompare = ''IntegerNormalizeCompareNode''" |
+  "binary_op_class BinIntegerMulHigh = ''IntegerMulHighNode''"
+
+fun class_of_irexpr :: "IRExpr \<Rightarrow> ClassName" where
+  "class_of_irexpr (UnaryExpr op v) = unary_op_class op" |
+  "class_of_irexpr (BinaryExpr op v1 v2) = binary_op_class op" |
+  "class_of_irexpr (ConditionalExpr v1 v2 v3) = ''ConditionalNode''" |
+  "class_of_irexpr (ConstantExpr v) = ''ConstantNode''" |
+  "class_of_irexpr (ConstantVar v) = ''ConstantNode''" |
+  "class_of_irexpr (VariableExpr v s) = ''ERROR: Variable should not occur on LHS''"
+
+(* https://stackoverflow.com/questions/23864965/string-of-nat-in-isabelle *)
+fun string_of_nat :: "nat \<Rightarrow> string" where
+  "string_of_nat n = (if n < 10 then [char_of (48 + n)] else 
+     string_of_nat (n div 10) @ [char_of (48 + (n mod 10))])"
+
+definition string_of_int :: "int \<Rightarrow> string" where
+  "string_of_int i = (if i < 0 then ''-'' @ string_of_nat (nat (- i)) else 
+     string_of_nat (nat i))"
+
+datatype Expression =
+  Ref VariableName |
+  IntegerConstant int |
+  TrueValue |
+  FalseValue |
+  MethodCall Expression MethodName "Expression list"
+    ("_._(_)") |
+  Constructor ClassName "Expression list"
+    ("new _(_)") |
+  InstanceOf Expression ClassName VariableName
+    ("_ instanceof _ _")|
+  Equal Expression Expression
+    (infix "==" 58) |
+  Less Expression Expression |
+  Negate Expression |
+  And Expression Expression |
+  BitAnd Expression Expression |
+  Unsupported string
+
+fun generate_expression :: "Expression \<Rightarrow> string" where
+  "generate_expression (Ref v) = v" |
+  "generate_expression (IntegerConstant n) = ''0''" | (*TODO FIX*)
+  "generate_expression TrueValue = ''true''" |
+  "generate_expression FalseValue = ''false''" |
+  "generate_expression (MethodCall e mn ps) = 
+    (generate_expression e) @ ''.'' @ mn @ ''('' @ param_list (map generate_expression ps) @ '')''" |
+  "generate_expression (Constructor cn ps) =
+    ''new '' @ cn @ ''('' @ param_list (map generate_expression ps) @ '')''" |
+  "generate_expression (InstanceOf e cn var) =
+    (generate_expression e) @ '' instanceof '' @ cn @ '' '' @ var" |
+  "generate_expression (Equal e1 e2) =
+    (generate_expression e1) @ '' == '' @ (generate_expression e2)" |
+  "generate_expression (Less e1 e2) =
+    (generate_expression e1) @ '' < '' @ (generate_expression e2)" |
+  "generate_expression (Negate e) =
+    ''!('' @ (generate_expression e) @ '')''" |
+  "generate_expression (And e1 e2) =
+    (generate_expression e1) @ '' && '' @ (generate_expression e2)" |
+  "generate_expression (BitAnd e1 e2) =
+    (generate_expression e1) @ '' & '' @ (generate_expression e2)" |
+  "generate_expression (Unsupported x) = x"
+
+fun export_value :: "Value \<Rightarrow> Expression" where
+  "export_value (IntVal s v) = IntegerConstant (sint v)" |
+  "export_value _ = Unsupported ''unsupported Value''"
+
+fun construct_node :: "IRExpr \<Rightarrow> Expression" where
+  "construct_node (UnaryExpr op e1) =
+    Constructor (unary_op_class op) [construct_node e1]" |
+  "construct_node (BinaryExpr op e1 e2) =
+    Constructor (binary_op_class op) [construct_node e1, construct_node e2]" |
+  "construct_node (ConditionalExpr e1 e2 e3) =
+    Constructor ''ConditionalNode''  [construct_node e1, construct_node e2, construct_node e3]" |
+  "construct_node (ConstantExpr val) =
+    Constructor ''ConstantNode'' [export_value val]" |
+  "construct_node (ConstantVar v) =
+    Constructor ''ConstantNode'' [Ref (String.explode v)]" |
+  "construct_node (VariableExpr v s) = Ref (String.explode v)"
+
+fun export_result :: "Result \<Rightarrow> Expression" where
+  "export_result (ExpressionResult e) = construct_node e" |
+  "export_result (forZero e) = Constructor ''ConstantNode'' [IntegerConstant 0]"
+
+fun export_stamp :: "Stamp \<Rightarrow> Expression" where
+  "export_stamp (IntegerStamp bits lower higher) =
+    Constructor ''IntegerStamp'' 
+      [IntegerConstant bits, IntegerConstant lower,
+       IntegerConstant higher]" |
+  "export_stamp _ =
+    Unsupported ''unsupported Stamp''"
+
+definition stampOf :: "Expression \<Rightarrow> Expression" where
+  "stampOf e = (MethodCall e ''stamp'' [Ref ''view''])"
+
+definition upMask :: "Expression \<Rightarrow> Expression" where
+  "upMask e = (MethodCall (stampOf e) ''upMask'' [])"
+
+definition downMask :: "Expression \<Rightarrow> Expression" where
+  "downMask e = (MethodCall (stampOf e) ''downMask'' [])"
+
+fun export_condition :: "SideCondition \<Rightarrow> Expression" where
+  "export_condition (IsConstantExpr e) = (InstanceOf (construct_node e) ''ConstantNode'' ''t'')" |
+  "export_condition (IsIntegerStamp e) = (InstanceOf (stampOf (construct_node e)) ''IntegerStamp'' ''t'')" |
+  "export_condition (WellFormed s) = TrueValue" |
+  "export_condition (IsStamp e s) =
+    (Equal (stampOf (construct_node e)) (export_stamp s))" |
+  "export_condition (IsConstantValue e s v) =
+    (And
+      (InstanceOf (construct_node e) ''ConstantNode'' ''t'')
+      (Equal (MethodCall (construct_node e) ''getConstantValue'' []) (IntegerConstant (sint v))))" |
+  "export_condition (StampUnder e1 e2) =
+    (Less 
+      (MethodCall (stampOf (construct_node e1)) ''upperBound'' []) 
+      (MethodCall (stampOf (construct_node e2)) ''lowerBound'' []))" |
+  "export_condition (UpMaskEquals e m) =
+    Equal (upMask (construct_node e)) (IntegerConstant (sint m))" |
+  "export_condition (DownMaskEquals e m) =
+    Equal (downMask (construct_node e)) (IntegerConstant (sint m))" |
+  "export_condition (UpMaskCancels e1 e2) =
+    Equal (BitAnd (upMask (construct_node e1)) (upMask (construct_node e2))) (IntegerConstant 0)" |
+  "export_condition (PowerOf2 e) =
+    MethodCall (Ref ''CodeUtil'') ''isPowerOf2'' [construct_node e]" |
+  "export_condition (IsBool e) =
+    Equal (MethodCall (construct_node e) ''upMask'' []) (IntegerConstant 1)" |
+  "export_condition (Not sc) = Negate (export_condition sc)" |
+  "export_condition (SideCondition.And sc1 sc2) = And (export_condition sc1) (export_condition sc2)" |
+  "export_condition (Empty) = TrueValue"
+
+
+instantiation Expression :: JavaExpression
+begin
+definition "expToJava_Expression = generate_expression" 
+instance ..
+end
+
+fun export_assignments :: "VarName \<Rightarrow> IRExpr \<Rightarrow> Expression list" where
+  "export_assignments v (UnaryExpr op (VariableExpr v1 st)) =
+    [(MethodCall (Ref (v @ ''c'')) ''getValue'' [])]" |
+  "export_assignments v (BinaryExpr op (VariableExpr v1 st) (VariableExpr v2 st')) =
+    [(MethodCall (Ref (v @ ''c'')) ''getX'' []),
+     (MethodCall (Ref (v @ ''c'')) ''getY'' [])]" |
+  "export_assignments v (ConditionalExpr (VariableExpr v1 st) (VariableExpr v2 st') (VariableExpr v3 st'')) =
+    [(MethodCall (Ref (v @ ''c'')) ''condition'' []),
+     (MethodCall (Ref (v @ ''c'')) ''trueValue'' []),
+     (MethodCall (Ref (v @ ''c'')) ''falseValue'' [])]" |
+  "export_assignments v (ConstantExpr val) = []" | (* TODO: conditionals *)
+  "export_assignments v (ConstantVar v') = []" | (* TODO: conditionals *)
+  "export_assignments v (VariableExpr v' st) = []" 
+
+
 setup \<open>Locale_Code.open_block\<close>
 interpretation IRExprRewrites : Rewritable
   size_IRExpr
@@ -200,6 +390,8 @@ interpretation IRExprRewrites : Rewritable
   result_of
   ground_result
   is_ground_result
+  subexprs_IRExpr
+  chain_IRExpr
   rewrite_IRExpr
   match_IRExpr
   varof_IRExpr
@@ -212,25 +404,7 @@ proof
   show "ground_condition e a' = ground_condition e a"
     using sub e' apply (induction e a' arbitrary: a a' rule: ground_condition.induct; auto)
     sorry
-qed
-setup \<open>Locale_Code.close_block\<close>
-
-setup \<open>Locale_Code.open_block\<close>
-interpretation IRExprRewrites: CompiledRewrites
-  size_IRExpr
-  "eval_condition_opt"
-  "ground_condition"
-  is_ground_condition
-  result_of
-  ground_result
-  is_ground_result
-  rewrite_IRExpr
-  match_IRExpr
-  varof_IRExpr
-  var_IRExpr
-  subexprs_IRExpr
-  chain_IRExpr
-proof
+next
   fix e :: IRExpr
   show "\<forall>e' \<in> set (subexprs_IRExpr e). size_IRExpr e > size_IRExpr e'"
     by (cases e; simp)
@@ -244,18 +418,53 @@ next
   fix e :: IRExpr
   show "length (subexprs_IRExpr e) = fst (chain_IRExpr (\<lambda>e a. (plus a 1, f e)) e 0)"
     by (cases e; simp)
+next
+  fix c :: SideCondition
+  show "eval_condition_opt c = None \<equiv> \<not> is_ground_condition c"
+    sorry
 qed
+setup \<open>Locale_Code.close_block\<close>
+
+setup \<open>Locale_Code.open_block\<close>
+interpretation IRExprRewrites: CompiledRewrites
+  size_IRExpr
+  "eval_condition_opt"
+  "ground_condition"
+  is_ground_condition
+  result_of
+  ground_result
+  is_ground_result
+  subexprs_IRExpr
+  chain_IRExpr
+  rewrite_IRExpr
+  match_IRExpr
+  varof_IRExpr
+  var_IRExpr
+  by standard
+
+interpretation IRExprRewrites: JavaTarget
+  size_IRExpr
+  "eval_condition_opt"
+  "ground_condition"
+  is_ground_condition
+  result_of
+  ground_result
+  is_ground_result
+  subexprs_IRExpr
+  chain_IRExpr
+  rewrite_IRExpr
+  match_IRExpr
+  varof_IRExpr
+  var_IRExpr
+  class_of_irexpr
+  export_condition
+  export_result
+  export_assignments
+  by standard
 setup \<open>Locale_Code.close_block\<close>
 
 definition eval where "eval = IRExprRewrites.eval"
 definition var where "var = var_IRExpr"
-
-no_notation Arithmetic.func ("func _")
-no_notation Arithmetic.else ("_ else _")
-notation IRExprRewrites.conditional_rewrite_to ("_ \<rightarrow> _ where _")
-notation IRExprRewrites.not ("not _")
-notation IRExprRewrites.condition ("condition _")
-notation IRExprRewrites.func ("func _")
 
 type_synonym StrategyRule = "(IRExpr, SideCondition, Result) IRExprRewrites.Strategy"
 
@@ -272,10 +481,15 @@ definition generate_with_condition where "generate_with_condition = IRExprRewrit
 
 definition match_pattern where "match_pattern = IRExprRewrites.match_pattern"
 definition optimized_export where "optimized_export = IRExprRewrites.optimized_export"
-notation IRExprRewrites.choice ("choice _")
-notation IRExprRewrites.else ("_ else _")
 
 export_code "generate_with_condition" checking SML
+
+(*
+definition Identity :: "StrategyRule" where
+  "Identity = 
+    ((BinaryExpr BinMul (var ''a'') (ConstantExpr (IntVal 32 0)))
+      \<rightarrow> (var ''a''))"
+
 
 definition RedundantAdd :: "StrategyRule" where
   "RedundantAdd = 
@@ -286,6 +500,7 @@ definition RedundantSub :: "StrategyRule" where
   "RedundantSub = 
     ((BinaryExpr BinSub (var ''a'') (ConstantExpr (IntVal 32 0)))
       \<rightarrow> (var ''a''))"
+
 
 definition ShiftConstRight :: "StrategyRule" where
   "ShiftConstRight = 
@@ -322,7 +537,7 @@ value "eval (RedundantAdd <+ RedundantSub)
 value "eval (RedundantSub <+ RedundantAdd)
         ((BinaryExpr BinAdd (ConstantExpr (IntVal 32 10)) (ConstantExpr (IntVal 32 0))), fmempty)"
 
-(*value "ShiftConstRight"*)
+value "ShiftConstRight"
 value "eval ShiftConstRight 
       ((BinaryExpr BinAdd (ConstantExpr (IntVal 32 10)) (ConstantExpr (IntVal 32 0))), fmempty)"
 value "eval ShiftConstRight
@@ -334,7 +549,7 @@ value "eval EvalMinus ((UnaryExpr UnaryNeg (BinaryExpr BinAdd (ConstantExpr (Int
 
 value "eval EvalAdd ((UnaryExpr UnaryNeg (ConstantExpr (IntVal 32 10))), fmempty)"
 value "eval EvalAdd ((BinaryExpr BinAdd (ConstantExpr (IntVal 32 10)) (ConstantExpr (IntVal 32 10))), fmempty)"
-
+*)
 
 instantiation IRExpr :: full_exhaustive
 begin
@@ -418,6 +633,18 @@ value "LeftConst"
 value "optimized_export (optimized_export (LeftConst else (Evaluate else (Identity else Shift))))"
 
 value " (optimized_export (choice [LeftConst, Shift, Evaluate]))"
+
+definition "export_rules = IRExprRewrites.export_rules"
+definition generate_statement where "generate_statement = statementToJava"
+
+
+value "export_rules"
+
+value "export_rules (choice [LeftConst, Shift, Evaluate])"
+value "export_rules (optimized_export (choice [LeftConst, Shift, Evaluate]))"
+
+
+value "generate_statement 0 (export_rules (choice [LeftConst, Shift, Evaluate]))"
 
 
 end
