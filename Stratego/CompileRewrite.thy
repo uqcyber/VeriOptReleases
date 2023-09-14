@@ -6,8 +6,6 @@ theory CompileRewrite
     (*VeriComp.Compiler*)
 begin
 
-(*lift_definition fmupds :: "('x \<Rightarrow> 'z option) \<Rightarrow> 'x list \<Rightarrow> 'z list \<Rightarrow> ('x \<Rightarrow> 'z option)"
-  is map_upds .*)
 setup_lifting type_definition_fmap
 
 parametric_constant map_upds_transfer[transfer_rule]: map_upds_def
@@ -63,13 +61,11 @@ datatype ('e, 'cond, 'r) Rules =
   seq "('e, 'cond, 'r) Rules" "('e, 'cond, 'r) Rules" (infixl "\<then>" 49) |
   choice "(('e, 'cond, 'r) Rules) list"
 
-locale CompiledRewrites = Rewritable +
-  fixes subexprs :: "'a \<Rightarrow> 'a list"
-  fixes chain :: "('a \<Rightarrow> nat \<Rightarrow> (nat \<times> 'a)) \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> (nat \<times> 'a)"
-  assumes shrinks: "\<forall>e' \<in> set (subexprs e). size e > size e'"
-  assumes "map f (subexprs e) = subexprs (snd (chain (\<lambda>e a. (plus a 1, f e)) e 0))"
-  assumes "length (subexprs e) = fst (chain (\<lambda>e a. (plus a 1, f e)) e 0)"
+locale CompiledRewrites = Rewritable
 begin
+
+notation plus (infixl "+" 65)
+notation less ("(_/ < _)"  [51, 51] 50)
 
 fun map_tree :: "('a \<Rightarrow> 'a) \<Rightarrow> 'a \<Rightarrow> 'a" where
   "map_tree f xs = snd (chain (\<lambda>e a. (plus a 1, f e)) xs (0::nat))"
@@ -159,14 +155,18 @@ function ground_expr :: "'a \<Rightarrow> 'a Binding \<Rightarrow> 'a option" wh
   by fastforce
 
 \<comment> \<open>Requires a proof that all the arguments to the map tree anonymous function are less than the original input\<close>
-termination  sorry
+termination ground_expr
+  apply (relation "measure (\<lambda>(e, v). length (subexprs e))")
+   apply simp
+  apply simp sorry
 
 lemma ground_expr_idempotent:
   assumes "a' \<subseteq>\<^sub>f a"
   assumes "ground_expr e a' = Some e'"
   shows "ground_expr e a' = ground_expr e a"
   using assms apply (induction e a' arbitrary: a a' rule: ground_expr.induct)
-  apply lifting sorry
+  apply lifting
+  by (smt (verit, ccfv_SIG) domIff fmsubset.rep_eq ground_expr.elims map_le_def option.case_eq_if option.distinct(1))
 
 
 fun eval_match :: "('a, 'b) MATCH \<Rightarrow> 'a Subst \<Rightarrow> ('a Subst) option" where
@@ -350,8 +350,8 @@ next
 next
   case (andthen m1 m2)
   then show ?case
-    using valid_match.simps(2) eval_match.simps(3) map_le_trans option.case_eq_if option.collapse
-    sorry
+    using eval_match.simps(3) map_le_trans option.case_eq_if option.collapse valid_match.simps(2)
+    by (smt (verit, ccfv_threshold))
 next
   case (cond x)
   then show ?case
@@ -412,9 +412,14 @@ next
     by (metis andthen.IH(1) andthen.IH(2) andthen.prems(2) andthen.prems(3) eval_match.simps(3) eval_match_subset m1eval m2eval map_le_antisym option.simps(5) valid_match.simps(2))
 next
   case (cond c)
+  then have "eval_condition (ground_condition c a') \<noteq> None"
+    unfolding eval_match.simps
+    using option.simps(4) by fastforce
+  then have "is_ground_condition (ground_condition c a')"
+    using Rewritable_axioms unfolding Rewritable_def by simp
   then have "(ground_condition c a') = (ground_condition c a)"
-    sorry (*
-    by (metis (no_types, lifting) Rewritable_axioms Rewritable_def eval_match.simps(5) option.case_eq_if option.collapse option.distinct(1))*)
+    using Rewritable_axioms unfolding Rewritable_def
+    using cond.prems(2) by presburger
   then show ?case
     by (smt (verit, ccfv_SIG) cond.prems(1) eval_match.simps(5) option.case_eq_if option.distinct(1) prod.exhaust_sel)
 next
@@ -530,6 +535,23 @@ fun generate_with_condition :: "'a \<Rightarrow> 'c \<Rightarrow> ('b) \<Rightar
 
 subsubsection \<open>Semantics\<close>
 
+fun match_entry_var :: "('ex, 'cond) MATCH \<Rightarrow> VarName option" where
+  "match_entry_var (match v p) = Some v" |
+  "match_entry_var (v1 == v2) = None" |
+  "match_entry_var (m1 && m2) = (case match_entry_var m1 of Some v \<Rightarrow> Some v | None \<Rightarrow> match_entry_var m2)" |
+  "match_entry_var (cond c) = None" |
+  "match_entry_var noop = None"
+
+abbreviation map_filter :: "('x \<Rightarrow> 'y option) \<Rightarrow> 'x list \<Rightarrow> 'y list" where
+  "map_filter f xs \<equiv> map (the \<circ> f) (filter (\<lambda>x. f x \<noteq> None) xs)"
+
+fun entry_var :: "('ex, 'cond, 'r) Rules \<Rightarrow> VarName option" where
+  "entry_var (m ? r) = (case match_entry_var m of Some v \<Rightarrow> Some v | None \<Rightarrow> entry_var r)" |
+  "entry_var (base e) = None" |
+  "entry_var (r1 else r2) = (case entry_var r1 of Some v \<Rightarrow> Some v | None \<Rightarrow> entry_var r2)" |
+  "entry_var (choice xs) = find (\<lambda>_.True) (map_filter entry_var xs)" |
+  "entry_var (r1 \<then> r2) = (case entry_var r1 of Some v \<Rightarrow> Some v | None \<Rightarrow> entry_var r2)"
+
 text \<open>Replace any variable expressions with value in a substitution.\<close>
 fun evaluated_terms where
   "evaluated_terms f es s = map (\<lambda>e. f e s) es"
@@ -578,10 +600,14 @@ inductive eval_rules :: "('a, 'b, 'c) Rules \<Rightarrow> 'a Subst \<Rightarrow>
    \<Longrightarrow> eval_rules (choice rules) u None" |
 
   \<comment> \<open>Evaluate sequential\<close>
-  "\<lbrakk>eval_rules r1 u (Some e') \<and>
-    eval_rules r2 (u(''e'' \<mapsto> e')) r\<rbrakk>
+  "\<lbrakk>eval_rules r1 u (Some e');
+    entry_var r2 = Some v;
+    eval_rules r2 (u(v \<mapsto> e')) r\<rbrakk>
    \<Longrightarrow> eval_rules (r1 \<then> r2) u r" |
-  "\<lbrakk>eval_rules r1 u None \<and>
+  "\<lbrakk>eval_rules r1 u (Some e');
+    entry_var r2 = None\<rbrakk>
+   \<Longrightarrow> eval_rules (r1 \<then> r2) u None" |
+  "\<lbrakk>eval_rules r1 u None;
     eval_rules r2 u r\<rbrakk>
    \<Longrightarrow> eval_rules (r1 \<then> r2) u r"
 
@@ -603,6 +629,24 @@ fun valid_rules :: "('a, 'b, 'c) Rules \<Rightarrow> bool" where
   "valid_rules _ = True"
 
 subsubsection \<open>Lemmata\<close>
+
+lemma entry_var_rules:
+  assumes "\<forall>r \<in> set rules. entry_var r = entry_var (f r)"
+  shows "entry_var (choice rules) = entry_var (choice (map f rules))"
+proof -
+  have "(map_filter entry_var rules) = (map_filter entry_var (map f rules))"
+  using assms proof (induct rules)
+    case Nil
+    then show ?case by simp
+  next
+    case (Cons a rules)
+    have "entry_var a = entry_var (f a)"
+      by (simp add: Cons.prems)
+    then show ?case
+      using Cons.hyps Cons.prems by auto
+  qed
+  then show ?thesis by simp
+qed
 
 lemma choice_join:
   assumes "eval_rules (a) u e = eval_rules (f a) u e"
@@ -631,7 +675,7 @@ lemma eval_always_result:
   using eval_rules.intros(1) apply auto[1]
   using eval_rules.intros(2,3) apply (metis option.exhaust)
   using eval_rules.intros(4,5) apply (metis split_option_ex) 
-  using eval_rules.intros(9,10) apply (metis split_option_ex) 
+  using eval_rules.intros(9,10,11) apply (metis not_None_eq)
   using eval_rules.intros(6,7) by (metis split_option_ex) 
 
 lemma unordered_choice:
@@ -651,10 +695,17 @@ lemma monotonic_else:
   using assms
   by (smt (verit, best) elseE eval_rules.intros(4) eval_rules.intros(5))
 
-lemma monotonic_seq:
+lemma monotonic_seq_with_entry:
   assumes "\<forall>e u. eval_rules r1 u e = eval_rules (f r1) u e"
   assumes "\<forall>e u. eval_rules r2 u e = eval_rules (f r2) u e"
+  assumes "entry_var r2 = entry_var (f r2)"
   shows "\<forall>e. eval_rules (r1 \<then> r2) u e = eval_rules (f r1 \<then> f r2) u e"
+  using assms
+  by (smt (verit) eval_rules.simps seqE)
+
+lemma monotonic_seq_without_entry:
+  assumes "\<forall>e u. eval_rules r1 u e = eval_rules (f r1) u e"
+  shows "\<forall>e. eval_rules (r1 \<then> r2) u e = eval_rules ((f r1) \<then> r2) u e"
   using assms
   by (smt (verit) eval_rules.simps seqE)
 
@@ -668,7 +719,8 @@ lemmas monotonic =
   monotonic_cond
   monotonic_else
   monotonic_choice
-  monotonic_seq
+  monotonic_seq_with_entry
+  monotonic_seq_without_entry
 
 lemma map_None:
   "(\<forall>r\<in>set rules. eval_rules (m ? r) u None) = eval_rules (choice (map ((?) m) rules)) u None"
@@ -803,6 +855,12 @@ fun elim_noop :: "('e, 'cond) MATCH \<Rightarrow> ('e, 'cond) MATCH" where
   "elim_noop (lhs && rhs) = ((elim_noop lhs) && (elim_noop rhs))" |
   "elim_noop m = m"
 
+lemma match_entry_elim_noop:
+  "match_entry_var m = match_entry_var (elim_noop m)"
+  apply (induction m rule: elim_noop.induct; auto)
+  apply (simp add: option.case_eq_if)
+  using match_entry_var.simps(3) by metis
+
 lemma sound_optimize_noop:
   "eval_match m s = eval_match (elim_noop m) s"
   apply (induction m arbitrary: s rule: elim_noop.induct)
@@ -821,6 +879,14 @@ fun eliminate_noop :: "('e, 'cond, 'r) Rules \<Rightarrow> ('e, 'cond, 'r) Rules
   "eliminate_noop (choice rules) = choice (List.map eliminate_noop rules)" |
   "eliminate_noop (r1 \<then> r2) = (eliminate_noop r1 \<then> eliminate_noop r2)"
 
+lemma entry_var_eliminate_noop:
+  "entry_var r = entry_var (eliminate_noop r)"
+  apply (induction r rule: eliminate_noop.induct; auto)
+     apply (metis match_entry_elim_noop match_entry_var.simps(3))
+    apply presburger  using entry_var_rules
+  apply auto[1]
+  by presburger
+
 lemma eliminate_noop_valid:
   "eval_rules r u e = eval_rules (eliminate_noop r) u e"
   apply (induction r arbitrary: u e rule: eliminate_noop.induct)
@@ -833,26 +899,14 @@ lemma eliminate_noop_valid:
   using sound_optimize_noop apply (simp add: monotonic_cond)
   using sound_optimize_noop apply (simp add: monotonic_else)
   apply (simp add: monotonic_choice)
-  by (simp add: monotonic_seq)
-
-(*
-fun elim_empty :: "'a MATCH \<Rightarrow> 'a MATCH" where
-  "elim_empty (condition Empty) = noop" |
-  "elim_empty (m1 && m2) = (elim_empty m1 && elim_empty m2)" |
-  "elim_empty m = m"
-
-fun eliminate_empty :: "'a::Rewritable Rules \<Rightarrow> 'a Rules" where
-  "eliminate_empty (base e) = base e" |
-  "eliminate_empty (m ? r) = elim_empty m ? eliminate_empty r" |
-  "eliminate_empty (r1 else r2) = (eliminate_empty r1 else eliminate_empty r2)" |
-  "eliminate_empty (choice rules) = choice (List.map eliminate_empty rules)" |
-  "eliminate_empty (r1 \<then> r2) = (eliminate_empty r1 \<then> eliminate_empty r2)"*)
+  using entry_var_eliminate_noop
+  by (smt (verit) eliminate_noop.simps(9) monotonic_seq_with_entry)
 
 
 subsubsection \<open>Lift primitive sequential (\texttt{\&\&}) to rule sequential (\texttt{?})\<close>
 
 definition size_condition :: "'cond \<Rightarrow> nat" where
-  "size_condition _ = 0"
+  "size_condition _ = 1"
 
 definition size_match :: "('a, 'b) MATCH \<Rightarrow> nat" where
   "size_match = size_MATCH size size_condition"
@@ -885,6 +939,17 @@ termination lift_match
     by simp+
   by fastforce+
 
+lemma entry_var_lift_match:
+  "entry_var r = entry_var (lift_match r)"
+apply (induction r rule: lift_match.induct)
+  using entry_var.simps(3) lift_match.simps(1) apply metis
+  using entry_var_rules using entry_var_rules
+         apply (metis lift_match.simps(2))
+  apply simp
+        apply (metis entry_var.simps(1) option.case_eq_if option.simps(5))
+  apply simp+
+  using entry_var.simps(5) lift_match.simps(9) by presburger
+
 lemma lift_match_valid:
   "eval_rules r u e = eval_rules (lift_match r) u e"
   apply (induction r arbitrary: u e rule: lift_match.induct) 
@@ -901,7 +966,8 @@ lemma lift_match_valid:
         apply (metis condE eval_rules.intros(2) eval_rules.intros(3) lift_match.simps(5))
        apply (metis condE eval_rules.intros(2) eval_rules.intros(3) lift_match.simps(6))
       apply (metis condE eval_rules.intros(2) eval_rules.intros(3) lift_match.simps(7))
-    apply simp
+  apply simp
+  using entry_var_lift_match
   by (smt (verit) Rules.distinct(11) Rules.distinct(15) Rules.distinct(19) Rules.distinct(5) Rules.inject(4) eval_rules.simps lift_match.simps(9))
 
 
@@ -916,14 +982,23 @@ fun join_conditions :: "('e, 'cond, 'r) Rules \<Rightarrow> ('e, 'cond, 'r) Rule
       then Some ((m1 ? r1)) else None)" |
   "join_conditions r = None"
 
+
 lemma join_conditions_shrinks:
-  "join_conditions r = Some r' \<Longrightarrow> (<) (size_Rule r') (size_Rule r)"
+  "join_conditions r = Some r' \<Longrightarrow> (<) (size_Rules size_condition size_condition size_condition r') (size_Rules size_condition size_condition size_condition r)"
   apply (induction r rule: join_conditions.induct)
-  using Rules.size(7) Rules.size(8) Suc_le_eq add.left_commute add.right_neutral antisym_conv1 join_conditions.simps(1) le_simps(1) option.distinct(1) option.sel plus_nat.simps(2)
-   add_Suc_right le_add2 sorry(*
-  apply (smt (z3))
-  apply (metis Rules.size(7) add.right_neutral add_Suc_right join_conditions.simps(2) less_add_Suc2 option.distinct(1) option.sel)
-  by simp+*)
+  apply simp
+  subgoal for m1 r1 m2 r2
+    apply (cases "m1 = m2") apply simp
+  unfolding size_Rule_def size_Rules_def size_condition_def size_MATCH_def
+   apply auto[1]
+  by simp
+  apply simp
+  subgoal for m1 m2
+    apply (cases "m1 = m2") apply simp
+  unfolding size_Rule_def size_Rules_def size_condition_def size_MATCH_def
+   apply auto[1]
+  by simp
+  by simp+
 
 lemma join_conditions_valid:
   assumes "valid_rules r"
@@ -937,6 +1012,15 @@ lemma join_conditions_valid:
     ultimately show ?thesis
       by (metis join_conditions.simps(2) option.discI option.sel p(1) redundant_conditions)
   qed
+  by simp+
+
+lemma entry_var_join_conditions:
+  assumes "join_conditions r = Some r'"
+  shows "entry_var r = entry_var r'"
+  using assms 
+  apply (induction r rule: join_conditions.induct)
+  apply (metis entry_var.simps(1) entry_var.simps(3) join_conditions.simps(1) option.case_eq_if option.distinct(1) option.sel)
+    apply (metis entry_var.simps(1) join_conditions.simps(2) option.case_eq_if option.distinct(1) option.sel)
   by simp+
 
 function lift_common :: "('e, 'cond, 'r) Rules \<Rightarrow> ('e, 'cond, 'r) Rules" where
@@ -954,12 +1038,42 @@ function lift_common :: "('e, 'cond, 'r) Rules \<Rightarrow> ('e, 'cond, 'r) Rul
   using combined_size.cases 
   apply (smt (verit, ccfv_threshold))
   by simp+
-termination sorry (*
-  apply (relation "measures [size_Rule]") apply auto[1]
-    apply simp subgoal for r1 r2 apply (induction r1 rule: join_conditions.induct) by simp+
+termination 
+  apply (relation "measures [size_Rules size_condition size_condition size_condition]") apply auto[1]
+         apply simp unfolding size_Rule_def
+  subgoal for r1 r2 apply (induction r1 rule: join_conditions.induct)
    apply auto[1]
-  using join_conditions_shrinks apply fastforce+
-  by (simp add: le_imp_less_Suc size_list_estimation')+*)
+    using join_conditions_shrinks by fastforce+
+  using join_conditions_shrinks 
+  apply (metis measures_less)
+      apply (metis One_nat_def Rules.size_gen(2) Suc_eq_plus1 less_add_Suc2 measures_less)
+  using join_conditions_shrinks 
+     apply (metis measures_less)
+  apply (metis One_nat_def Rules.size_gen(5) Suc_eq_plus1 le_eq_less_or_eq le_imp_less_Suc measures_less size_list_estimation')
+  by auto
+
+lemma entry_var_lift_common:
+  "entry_var r = entry_var (lift_common r)"
+proof (induction r rule: lift_common.induct)
+  case (1 r1 r2)
+  then show ?case 
+    using entry_var.simps(3) entry_var_join_conditions join_conditions.elims lift_common.simps(1) option.simps(4) option.simps(5)
+    by (smt (verit, del_insts) not_None_eq)
+next
+  case (2 m r)
+  then show ?case using entry_var_join_conditions
+    by (smt (z3) entry_var.simps(1) join_conditions.elims lift_common.simps(2) option.simps(4) option.simps(5))
+next
+  case (3 rules)
+  then show ?case using entry_var_rules by auto
+next
+  case (4 e)
+  then show ?case using entry_var_rules by auto
+next
+  case (5 r1 r2)
+  then show ?case
+    by (metis entry_var.simps(5) lift_common.simps(5))
+qed
 
 lemma lift_common_valid:
   assumes "valid_rules r"
@@ -1009,7 +1123,9 @@ next
   then show ?case by simp
 next
   case (5 r1 r2)
-  then show ?case by (simp add: monotonic_seq)
+  then show ?case using entry_var_lift_common
+    unfolding lift_common.simps
+    by (smt (verit, ccfv_SIG) monotonic_seq_with_entry valid_rules.simps(3))
 qed
 
 subsubsection \<open>Merge Common Conditions in Non-deterministic Choice\<close>
@@ -1037,7 +1153,7 @@ function (sequential) combine_conditions :: "('e, 'cond, 'r) Rules \<Rightarrow>
       # [combine_conditions (choice (join_uncommon m rules))])" |
   "combine_conditions (choice rules) = 
     choice (List.map combine_conditions rules)" |
-  "combine_conditions (r1 \<then> r2) = (combine_conditions r1 \<then> combine_conditions r2)"
+  "combine_conditions (r1 \<then> r2) = (combine_conditions r1 \<then> r2)"
   apply pat_completeness+
   by simp+
 
@@ -1422,6 +1538,22 @@ fun eliminate_choice :: "('e, 'cond, 'r) Rules \<Rightarrow> ('e, 'cond, 'r) Rul
     choice (List.map eliminate_choice rules)" |
   "eliminate_choice (r1 \<then> r2) = (eliminate_choice r1 \<then> eliminate_choice r2)"
 
+lemma entry_var_single_choice:
+  "entry_var r = entry_var (choice [r])"
+  unfolding entry_var.simps by simp
+
+lemma entry_var_eliminate_choice:
+  "entry_var r = entry_var (eliminate_choice r)"
+  apply (induction r rule: eliminate_choice.induct)
+  apply simp 
+  using eliminate_choice.simps(2) entry_var.simps(3) apply metis
+  using eliminate_choice.simps(3) entry_var.simps(1) apply metis
+  unfolding eliminate_choice.simps
+  using entry_var_single_choice apply force
+  apply simp 
+  using entry_var_rules apply blast+
+  by (metis entry_var.simps(5))
+
 lemma eliminate_choice_valid_1:
   "{e. eval_rules r u e} = {e. eval_rules (eliminate_choice r) u e}"
   apply (induction r arbitrary: u rule: eliminate_choice.induct)
@@ -1440,7 +1572,8 @@ lemma eliminate_choice_valid_1:
      apply (metis (no_types, lifting) Collect_cong mem_Collect_eq monotonic_choice)
       apply (metis Collect_cong mem_Collect_eq monotonic_choice)
   apply (metis (no_types, lifting) Collect_cong mem_Collect_eq monotonic_choice)
-  by (smt (verit) Collect_cong mem_Collect_eq monotonic_seq)
+  using entry_var_eliminate_choice
+  by (smt (verit) Collect_cong mem_Collect_eq monotonic_seq_with_entry)
 
 lemma eliminate_choice_valid:
   "eval_rules r u e = eval_rules (eliminate_choice r) u e"
@@ -1455,34 +1588,6 @@ definition optimized_export :: "('e, 'cond, 'r) Rules \<Rightarrow> ('e, 'cond, 
     o lift_common
     o lift_match
     o eliminate_noop"
-
-(*
-definition optimized_export :: "('e, 'cond) Rules \<Rightarrow> ('e, 'cond) Rules" where
-  "optimized_export r =
-    eliminate_noop r"*)
-
-
-(*lemma elim_empty_preserve_def_vars:
-  "def_vars m = def_vars (elim_empty m)"
-  apply (induction m rule: elim_empty.induct) by simp+
-
-lemma elim_empty_preserve_use_vars:
-  "use_vars m = use_vars (elim_empty m)"
-  apply (induction m rule: elim_empty.induct) apply simp
-  using elim_empty_preserve_def_vars apply auto[1] by simp+
-
-lemma elim_empty_preserve_valid:
-  assumes "valid_match m"
-  shows "valid_match (elim_empty m)"
-    using assms apply (induction m rule: elim_empty.induct) apply simp
-    using elim_empty_preserve_def_vars elim_empty_preserve_use_vars apply auto[1] 
-    by simp+
-
-lemma eliminate_empty_preserve_valid:
-  assumes "valid_rules r"
-  shows "valid_rules (eliminate_empty r)"
-  using assms apply (induction r rule: eliminate_empty.induct) apply simp
-  apply (simp add: elim_empty_preserve_valid) by simp+*)
 
 lemma elim_noop_preserve_def_vars:
   "def_vars m = def_vars (elim_noop m)"
@@ -1516,13 +1621,11 @@ lemma eliminate_noop_preserve_valid:
   using assms apply (induction r rule: eliminate_noop.induct)
   by (simp add: elim_noop_preserve_valid)+
 
-(*
 lemma lift_match_preserve_valid:
   assumes "valid_rules r"
   shows "valid_rules (lift_match r)"
   using assms apply (induction r rule: lift_match.induct)
   by simp+
-
 
 lemma optimized_export_valid:
   assumes "valid_rules r"
@@ -1533,7 +1636,6 @@ lemma optimized_export_valid:
   by (metis assms eliminate_noop_preserve_valid lift_common_valid lift_match_preserve_valid)
 
 thm_oracles optimized_export_valid
-*)
 
 subsection \<open>Compiling Match Patterns\<close>
 
@@ -1568,143 +1670,6 @@ fun compile :: "(('a, 'b, 'c) Strategy \<times> 'a) \<Rightarrow> (('a, 'b) Rule
   "compile ((v1?; x; v2!); r) s = (if v1 = v2 then (condition x)? compile r s else noop)"*)
 
 end
-
-
-subsection \<open>Example: Arithmetic\<close>
-
-(*
-setup \<open>Locale_Code.open_block\<close>
-ML_val \<open>Locale_Code.tracing_enabled\<close>
-interpretation ArithmeticCompiled: CompiledRewrites
-  size_Arithmetic
-  "eval_condition"
-  "ground_condition"
-  "is_ground_condition"
-  "eval_transformer"
-  "ground_transformer"
-  "is_ground_transformer"
-  rewrite_Arithmetic
-  match_Arithmetic
-  varof_Arithmetic
-  var_Arithmetic
-  subexprs_Arithmetic
-  chain_Arithmetic
-proof
-  fix e :: Arithmetic
-  show "\<forall>e' \<in> set (subexprs_Arithmetic e). size_Arithmetic e > size_Arithmetic e'"
-    by (cases e; simp)
-next
-  fix f :: "Arithmetic \<Rightarrow> Arithmetic"
-  fix e :: Arithmetic
-  show "map f (subexprs_Arithmetic e) = subexprs_Arithmetic (snd (chain_Arithmetic (\<lambda>e a. (plus a 1, f e)) e 0))"
-    by (cases e; simp)
-next
-  fix f :: "Arithmetic \<Rightarrow> Arithmetic"
-  fix e :: Arithmetic
-  show "length (subexprs_Arithmetic e) = fst (chain_Arithmetic (\<lambda>e a. (plus a 1, f e)) e 0)"
-    by (cases e; simp)
-qed
-setup \<open>Locale_Code.close_block\<close>
-
-definition "join = ArithmeticCompiled.join"
-(*definition "compile' = ArithmeticCompiled.compile'"*)
-definition "generate = ArithmeticCompiled.generate"
-definition "match_pattern = ArithmeticCompiled.match_pattern"
-definition "optimized_export = ArithmeticCompiled.optimized_export"
-notation ArithmeticCompiled.choice ("choice _")
-notation ArithmeticCompiled.else' ("_ else _")
-
-export_code "optimized_export" checking SML
-
-value "compile' RedundantAdd"
-text \<open>@{value[display] "compile' RedundantAdd"}\<close>
-value "compile' RedundantSub"
-text \<open>@{value[display] "compile' RedundantSub"}\<close>
-(*value "compile' ShiftConstRight"
-value "compile' EvalMinus1"
-value "compile' EvalAdd"*)
-
-value "match_pattern
-(Sub (Add (Variable ''x'') (Variable ''y'')) (Variable ''y''))
-''e'' ({|''e''|}, Map.empty)"
-text \<open>@{value "match_pattern
-(Sub (Add (Variable ''x'') (Variable ''y'')) (Variable ''y''))
-''e'' ({|''e''|}, Map.empty)"}\<close>
-
-value "match_pattern
-(Sub 
-    (Add 
-        (Sub (Variable ''x'') (Variable ''x''))
-        (Sub (Variable ''y'') (Variable ''x'')))
-    (Variable ''y''))
-''e'' ({|''e''|}, Map.empty)"
-text \<open>@{value "match_pattern
-(Sub 
-    (Add 
-        (Sub (Variable ''x'') (Variable ''x''))
-        (Sub (Variable ''y'') (Variable ''x'')))
-    (Variable ''y''))
-''e'' ({|''e''|}, Map.empty)"}\<close>
-
-definition Identity where
-  "Identity = generate 
-    (Add
-      (var ''x'')
-      (Number 0))
-    (var ''x'')"
-
-value "Identity"
-text "@{value[display] \<open>Identity\<close>}"
-value "optimized_export Identity"
-text "@{value[display] \<open>optimized_export Identity\<close>}"
-
-text \<open>@{text "const x + const y \<longrightarrow> const (x + y)"}\<close>
-definition Evaluate where
-  "Evaluate = generate 
-    (Add
-      (var ''x'')
-      (var ''y''))
-    ((var ''x''))"
-(* doesn't support constant evaluation *)
-value "Evaluate"
-value "(optimized_export (Evaluate))"
-
-(*
-text \<open>@{text "x * const y \<longrightarrow> x << const (log2 y)"}\<close>
-definition Shift where
-  "Shift = generate 
-    (BinaryExpr BinMul
-      (var ''x'')
-      (ConstantVar STR ''y''))
-    ((BinaryExpr BinLeftShift (var ''x'') (ConstantVar STR ''y'')))
-    (PowerOf2 (ConstantVar STR ''y''))"
-(* doesn't support constant evaluation *)
-value "Shift"
-*)
-
-text \<open>@{text "const x + y \<longrightarrow> y + const x when NotConst y"}\<close>
-definition LeftConst where
-  "LeftConst = generate 
-    (Add
-      (var ''x'')
-      (var ''y''))
-    ((Add (var ''y'') (var ''x'')))"
-(* doesn't support constant evaluation *)
-value "LeftConst"
-
-value "(choice [LeftConst, Evaluate, Identity])"
-text "@{value[display] \<open>choice [LeftConst, Evaluate, Identity]\<close>}"
-value "(optimized_export (choice [LeftConst, Evaluate, Identity]))"
-text "@{value[display] \<open>(optimized_export (choice [LeftConst, Evaluate, Identity]))\<close>}"
-value "(optimized_export (optimized_export (choice [LeftConst, Evaluate, Identity])))"
-text "@{value[display] \<open>(optimized_export (optimized_export (choice [LeftConst, Evaluate, Identity])))\<close>}"
-*)
-
-
-
-
-
-
 
 (*
 value "eval (RedundantAdd <+ RedundantSub) ((Add (Number 10) (Number 0)), fmempty)"
