@@ -1,31 +1,31 @@
-session VeriComp in VeriComp = "HOL-Library" +
+session VeriComp in "Lib/VeriComp" = "HOL-Library" +
   theories
     Compiler
     Fixpoint
-  document_files
-    "root.bib"
-    "root.tex"
 
-session Locale_Code in Locale_Code = "HOL-Library" +
+session Locale_Code in "Lib/Locale_Code" = "HOL-Library" +
   theories
     Locale_Code
 
-session Jinja in Jinja = "HOL-Library" +
-  theories
-    Jinja
+chapter "veriopt"
 
-session Stratego in Stratego = Locale_Code +
+session CodeGen in CodeGen = Locale_Code +
   options [document = pdf, document_output = "output",
            document_variants="document:outline=/proof",
-           show_question_marks = false, quick_and_dirty]
+           show_question_marks = false]
+  directories
+    Examples
   theories
-    Stratego 
-    CompileRewrite
+    Rewritable
+    MatchPattern
+    JavaExport
+    Stratego
+    "Examples/Arithmetic"
+    "Examples/ArithmeticStratego"
   document_files (in "../latex")
     "root.tex"
     "mathpartir.sty"
 
-chapter "veriopt"
 
 session Graph in Graph = VeriComp +
   description
