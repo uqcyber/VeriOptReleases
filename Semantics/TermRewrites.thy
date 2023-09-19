@@ -2500,4 +2500,418 @@ value "(optimized_export (optimized_export (LeftConst \<then> (optimized_export 
 value "export_rules (optimized_export (optimized_export (LeftConst \<then> (optimized_export (Evaluate else (Identity else Shift))))))"
 
 
+
+section "Sound Lowering"
+
+lemma fresh:
+  assumes "v' = fresh_var v s"
+  shows "v' |\<notin>| s"
+  using assms unfolding fresh_var.simps using fresh_notIn
+  by (metis finite_fset fmember.rep_eq)
+
+lemma fresh_add:
+  assumes "(s', v') = TermRewrites.fresh v s"
+  shows "v' |\<in>| fst s'"
+  using assms unfolding fresh.simps
+  by (metis Pair_inject add_var.simps finsertCI funion_iff prod.collapse)
+
+(*
+experiment begin
+lemma 
+  assumes "Some sub = match_tree ep e"
+  assumes "(s', p) = (match_pattern ep v init)"
+  assumes "v |\<in>| fst init"
+  assumes "Some sub' = eval_match p [v \<mapsto> e]"
+  shows "\<forall>(vn, e) \<in> graph (snd s'). sub vn = e"
+using assms(1,2,3) proof (induction ep arbitrary: init e sub p sub' v)
+  case (UnaryExpr x1 e1)
+  obtain a s' where a: "(s', a) = fresh STR ''a'' init"
+    by (metis surj_pair)
+  obtain am s'' where am: "(s'', am) = (match_pattern e1 a s')"
+    by (metis surj_pair)
+  have p: "p = andthen (match v (UnaryPattern x1 a)) am"
+    (is "p = andthen ?m am")
+    using a am UnaryExpr unfolding match_pattern.simps
+    by (metis (no_types, lifting) Pair_inject case_prod_conv)
+  have "a |\<notin>| fst init"
+    using a using fresh
+    by (metis fresh.simps fst_conv swap_simp)
+  then have "a \<noteq> v"
+    using UnaryExpr.prems(3) by fastforce
+  have em: "eval_match p [v \<mapsto> e] = 
+        (case eval_match ?m [v \<mapsto> e] of 
+        None \<Rightarrow> None |
+        Some s' \<Rightarrow> eval_match am s')"
+    using eval_match.simps(6) p by blast
+  then show ?case proof (cases "eval_match ?m [v \<mapsto> e]")
+    case None
+    then have "\<not>(is_UnaryExpr e) \<or> (\<exists>op e''. e = UnaryExpr op e'' \<and> op \<noteq> x1)"
+      apply (cases e; auto)
+      using \<open>a \<noteq> v\<close> by force
+    then have "match_tree (UnaryExpr x1 e1) e = None"
+      by (cases e; auto)
+    then show ?thesis
+      using UnaryExpr.prems(1) by auto
+  next
+    case (Some s')
+    then have "eval_match p [v \<mapsto> e] = eval_match am (s')"
+      using em
+      by simp
+    obtain e1' op where e1': "e = UnaryExpr op e1'"
+      using Some
+      by (smt (verit, ccfv_threshold) IRExpr.case_eq_if eval_match.simps(1) is_UnaryExpr_def map_upd_Some_unfold option.distinct(1) option.simps(5))
+    have "s' = [v \<mapsto> e, a \<mapsto> e1']"
+      using e1' Some apply simp
+      by (metis fun_upd_triv option.distinct(1) option.inject)
+    obtain sub'' where "Some sub'' = match_tree e1 e1'"
+      by (metis UnaryExpr.prems(1) e1' match_tree.simps(1) option.discI)
+    also obtain p' init' v' where "p' = snd (match_pattern e1 v' init')"
+      by simp
+    moreover have "v' |\<in>| fst init'"
+      sorry
+
+    ultimately obtain sub''' where "Some sub''' = eval_match p' [v' \<mapsto> e1]"
+      sorry
+    then show ?thesis
+      sorry
+  qed
+next
+  case (BinaryExpr x1 e11 e12)
+  then show ?case sorry
+next
+  case (ConditionalExpr e11 e12 e13)
+  then show ?case sorry
+next
+  case (ParameterExpr x1 x2)
+  then show ?case sorry
+next
+  case (LeafExpr x1 x2)
+  then show ?case sorry
+next
+  case (ConstantExpr x)
+  then show ?case sorry
+next
+  case (ConstantVar x)
+  then show ?case sorry
+next
+  case (VariableExpr x1 x2)
+  then show ?case sorry
+qed
+
+end
+
+lemma def_vars_generation:
+  assumes "p = snd (match_pattern e v s)"
+  assumes "v |\<in>| fst s"
+  shows "\<forall>v \<in> fset (fst s). v \<notin> def_vars p"
+  using assms proof (induction e arbitrary: s v p)
+  case (UnaryExpr op e')
+  obtain s' v' where fresh_def: "(s', v') = fresh STR ''a'' s"
+    by (metis fresh.simps)
+  let ?match = "(match v (UnaryPattern op v'))"
+  from fresh_def obtain am where pdef: "p = andthen ?match am"
+    by (metis (no_types, lifting) UnaryExpr.prems(1) match_pattern.simps(4) snd_eqD split_beta)
+  then have "(fst s) |\<subseteq>| (fst s')"
+    by (metis fresh_def add_var.simps fresh.simps fst_eqD fsubsetI funion_iff prod.collapse)
+  then have "am = snd (match_pattern e' v' s')"
+    by (smt (verit) MATCH.inject(3) UnaryExpr.prems \<open>(s', v') = TermRewrites.fresh STR ''a'' s\<close> fst_eqD match_pattern.simps(4) pdef snd_eqD split_beta)
+  also have "v' |\<in>| fst s'"
+    using \<open>(s', v') = TermRewrites.fresh STR ''a'' s\<close> fresh_add by blast
+  ultimately have "\<forall>v\<in>fset (fst s'). v \<notin> def_vars am"
+    by (simp add: UnaryExpr.IH)
+  have tluse: "\<forall>v \<in> fset (fst s). v \<notin> def_vars ?match"
+    unfolding def_vars.simps
+    by (metis TermRewrites.fresh fresh.simps fresh_def notin_fset pattern_variables.simps(1) singleton_iff snd_eqD)
+  then show ?case
+    by (metis Un_iff \<open>\<forall>v\<in>fset (fst s'). v \<notin> def_vars am\<close> \<open>fst s |\<subseteq>| fst s'\<close> def_vars.simps(3) less_eq_fset.rep_eq pdef subsetD)
+next
+  case (BinaryExpr x1 e1 e2)
+  then show ?case sorry
+next
+  case (ConditionalExpr e1 e2 e3)
+  then show ?case sorry
+next
+  case (ParameterExpr x1 x2)
+  then show ?case sorry
+next
+  case (LeafExpr x1 x2)
+  then show ?case sorry
+next
+  case (ConstantExpr x)
+  then show ?case sorry
+next
+  case (ConstantVar x)
+  then show ?case sorry
+next
+  case (VariableExpr x1 x2)
+  then show ?case sorry
+qed
+
+
+lemma use_var_eval:
+  assumes "m \<subseteq>\<^sub>m m'"
+  assumes "\<forall>v \<in> (dom m' - dom m). v \<notin> def_vars p"
+  assumes "Some sub = eval_match p m"
+  shows "\<exists>sub'. Some sub' = eval_match p m' \<and> sub \<subseteq>\<^sub>m sub'"
+  using assms proof (induction p m arbitrary: sub m' rule: eval_match.induct)
+  case (1 v op1 x s)
+  then show ?case unfolding eval_match.simps 
+    by (smt (z3) Diff_iff IRExpr.simps(65) IRExpr.split_sel_asm def_vars.simps(1) domIff insertCI is_none_code(2) is_none_simps(1) map_le_def map_le_upd option.case_eq_if option.sel pattern_variables.simps(1))
+next
+  case (2 v op1 x y s)
+  then show ?case sorry
+next
+  case (3 v c tb fb s)
+  then show ?case sorry
+next
+  case (4 v c1 s)
+  then show ?case sorry
+next
+  case (5 v1 v2 s)
+  then show ?case sorry
+next
+  case (6 m1 m2 s)
+  have "\<forall>v\<in>dom m' - dom s. v \<notin> def_vars m1"
+    using "6.prems"(2) by auto
+  also obtain subi where "Some subi = eval_match m1 s"
+    by (metis "6.prems"(3) eval_match.simps(6) option.exhaust_sel option.simps(4))
+  then obtain sub' where "Some sub' = eval_match m1 m' \<and> subi \<subseteq>\<^sub>m sub'"
+    using "6.IH"(1) "6.prems"(1) calculation by blast
+  then have "\<forall>v\<in>dom sub' - dom subi. v \<notin> def_vars m2"
+    sorry
+  then show ?case sorry
+next
+  case (7 s)
+  then show ?case sorry
+next
+  case (8 sc s)
+  then show ?case sorry
+next
+  case ("9_1" v vb s)
+  then show ?case sorry
+next
+  case ("9_2" v vb s)
+  then show ?case sorry
+qed
+
+
+lemma eval_match_subset_match:
+  assumes "p = snd (match_pattern e v s)"
+  assumes "m \<subseteq>\<^sub>m m'"
+  assumes "\<forall>v \<in> (dom m' - dom m). v |\<in>| fst s"
+  assumes "Some sub = eval_match p m"
+  shows "\<exists>sub'. Some sub' = eval_match p m' \<and> sub \<subseteq>\<^sub>m sub'"
+  using assms proof (induction e arbitrary: p m m' v s sub)
+  case (UnaryExpr op e')
+  obtain v' v'' am where "p = andthen (match v' (UnaryPattern op v'')) am"
+    by (simp add: UnaryExpr.prems(1) split_beta)
+  then obtain s'' where "am = snd (match_pattern e' v'' s'')"
+    by (smt (verit, del_insts) MATCH.inject(1) MATCH.inject(3) Pair_inject PatternExpr.inject(1) UnaryExpr.prems(1) match_pattern.simps(4) prod.collapse split_beta)
+  then show ?case sorry
+next
+  case (BinaryExpr x1 e1 e2)
+  then show ?case sorry
+next
+  case (ConditionalExpr e1 e2 e3)
+  then show ?case sorry
+next
+  case (ParameterExpr x1 x2)
+  then show ?case sorry
+next
+  case (LeafExpr x1 x2)
+  then show ?case sorry
+next
+  case (ConstantExpr x)
+  then show ?case sorry
+next
+  case (ConstantVar x)
+  then show ?case sorry
+next
+  case (VariableExpr x1 x2)
+  then show ?case sorry
+qed
+
+
+lemma 
+  assumes "Some sub = match_tree ep e"
+  assumes "p = (snd (match_pattern ep v init))"
+  assumes "v |\<in>| fst init"
+  shows "\<exists>sub'. Some sub' = eval_match p [v \<mapsto> e]"
+using assms(1,2,3) proof (induction ep arbitrary: init e sub p v)
+  case (UnaryExpr x1 e1)
+  obtain a s' where a: "(s', a) = fresh STR ''a'' init"
+    by (metis surj_pair)
+  obtain am s'' where am: "(s'', am) = (match_pattern e1 a s')"
+    by (metis surj_pair)
+  have p: "p = andthen (match v (UnaryPattern x1 a)) am"
+    (is "p = andthen ?m am")
+    using a am UnaryExpr unfolding match_pattern.simps
+    by (metis case_prod_conv snd_eqD)
+  have "a |\<notin>| fst init"
+    using a using fresh
+    by (metis fresh.simps fst_conv swap_simp)
+  then have "a \<noteq> v"
+    using UnaryExpr.prems(3) by fastforce
+  have em: "eval_match p [v \<mapsto> e] = 
+        (case eval_match ?m [v \<mapsto> e] of 
+        None \<Rightarrow> None |
+        Some s' \<Rightarrow> eval_match am s')"
+    using eval_match.simps(6) p by blast
+  then show ?case proof (cases "eval_match ?m [v \<mapsto> e]")
+    case None
+    then have "\<not>(is_UnaryExpr e) \<or> (\<exists>op e''. e = UnaryExpr op e'' \<and> op \<noteq> x1)"
+      apply (cases e; auto)
+      using \<open>a \<noteq> v\<close> by force
+    then have "match_tree (UnaryExpr x1 e1) e = None"
+      by (cases e; auto)
+    then show ?thesis
+      using UnaryExpr.prems(1) by auto
+  next
+    case (Some x)
+    then have eval_am: "eval_match p [v \<mapsto> e] = eval_match am x"
+      using em
+      by simp
+    obtain e1' op where e1': "e = UnaryExpr op e1'"
+      using Some
+      by (smt (verit, ccfv_threshold) IRExpr.case_eq_if eval_match.simps(1) is_UnaryExpr_def map_upd_Some_unfold option.distinct(1) option.simps(5))
+    have "x = [v \<mapsto> e, a \<mapsto> e1']"
+      using e1' Some apply simp
+      by (metis fun_upd_triv option.distinct(1) option.inject)
+    obtain asub where "Some asub = match_tree e1 e1'"
+      by (metis UnaryExpr.prems(1) e1' match_tree.simps(1) option.discI)
+    also obtain p' where p': "p' = snd (match_pattern e1 a s')"
+      by simp
+    moreover have "a |\<in>| fst s'"
+      using a fresh_add by simp
+    ultimately obtain asub' where asub': "Some asub' = eval_match p' [a \<mapsto> e1']"
+      using UnaryExpr.IH
+      by blast
+    have subm: "[a \<mapsto> e1'] \<subseteq>\<^sub>m [v \<mapsto> e, a \<mapsto> e1']"
+      by simp
+    have "dom [v \<mapsto> e, a \<mapsto> e1'] - dom [a \<mapsto> e1'] = {v}"
+      by (simp add: \<open>a \<noteq> v\<close>)
+    also have "v |\<in>| fst s'"
+      by (metis UnaryExpr.prems(3) a add_var.simps fresh.simps fst_conv funion_iff prod.collapse)
+    ultimately have "\<forall>v\<in>dom [v \<mapsto> e, a \<mapsto> e1'] - dom [a \<mapsto> e1']. v |\<in>| fst s'"
+      by simp
+    then obtain asub'' where "Some asub'' = eval_match p' [v \<mapsto> e, a \<mapsto> e1']"
+      using \<open>a \<noteq> v\<close> p' asub' subm eval_match_subset_match
+      by blast
+    have "p' = am"
+      by (metis \<open>p' = snd (match_pattern e1 a s')\<close> am snd_eqD)
+    then show ?thesis
+      using eval_am asub'
+      by (metis \<open>Some asub'' = eval_match p' [v \<mapsto> e, a \<mapsto> e1']\<close> \<open>x = [v \<mapsto> e, a \<mapsto> e1']\<close>)
+  qed
+next
+  case (BinaryExpr x1 e11 e12)
+  obtain a s' where a: "(s', a) = fresh STR ''a'' init"
+    by (metis surj_pair)
+  obtain b s'' where b: "(s'', b) = fresh STR ''b'' s'"
+    by (metis surj_pair)
+  obtain am s''' where am: "(s''', am) = (match_pattern e11 a s'')"
+    by (metis surj_pair)
+  obtain bm s'''' where bm: "(s'''', bm) = (match_pattern e12 b s''')"
+    by (metis surj_pair)
+  have p: "p = andthen (match v (BinaryPattern x1 a b)) (andthen am bm)"
+    (is "p = andthen ?m (andthen am bm)")
+    using a am b bm BinaryExpr unfolding match_pattern.simps
+    by (metis (no_types, lifting) case_prod_conv snd_eqD)
+  have "a |\<notin>| fst init"
+    using a using fresh
+    by (metis fresh.simps fst_conv swap_simp)
+  then have "a \<noteq> v"
+    using BinaryExpr.prems(3) by blast
+  have "b |\<notin>| fst s'"
+    using b using fresh
+    by (metis fresh.simps snd_eqD)
+  then have "b \<noteq> v"
+    using BinaryExpr.prems(3)
+    by (metis a add_var.simps fresh.simps funion_iff prod.collapse prod.sel(1))
+  have em: "eval_match p [v \<mapsto> e] = 
+        (case eval_match ?m [v \<mapsto> e] of 
+        None \<Rightarrow> None |
+        Some s' \<Rightarrow> eval_match (am && bm) s')"
+    using eval_match.simps(6) p by blast
+  then show ?case proof (cases "eval_match ?m [v \<mapsto> e]")
+    case None
+    then have "\<not>(is_BinaryExpr e) \<or> (\<exists>op e'' e'''. e = BinaryExpr op e'' e''' \<and> op \<noteq> x1)"
+      apply (cases e; auto)
+      by (simp add: \<open>a \<noteq> v\<close> \<open>b \<noteq> v\<close>)
+    then have "match_tree (BinaryExpr x1 e11 e12) e = None"
+      by (cases e; auto)
+    then show ?thesis
+      using BinaryExpr.prems(1) by force
+  next
+    case (Some x)
+    then have "eval_match p [v \<mapsto> e] = eval_match (am && bm) (x)"
+      using em
+      by simp
+    obtain e1' e2' op where e1': "e = BinaryExpr op e1' e2'"
+      using Some
+      unfolding eval_match.simps
+      by (smt (verit, del_insts) IRExpr.split_sel_asm is_none_code(2) is_none_simps(1) map_upd_Some_unfold option.simps(5))
+    have "x = [v \<mapsto> e, a \<mapsto> e1', b \<mapsto> e2']"
+      using e1' Some apply simp
+      by (metis \<open>b \<noteq> v\<close> dom_eq_singleton_conv fun_upd_idem_iff option.distinct(1) option.sel singletonD)
+    obtain asub where "Some asub = match_tree e11 e1'"
+      using BinaryExpr(3) e1' substitution_union.simps
+      by (metis (no_types, lifting) is_none_code(2) is_none_simps(1) match_tree.simps(2) option.split_sel_asm)
+    also obtain p' where "p' = snd (match_pattern e11 a s')"
+      by simp
+    moreover have "a |\<in>| fst s'"
+      using a fresh_add by blast
+    ultimately obtain asub' where "Some asub' = eval_match p' [a \<mapsto> e11]"
+      by (metis (full_types) BinaryExpr.IH(1) map_upd_nonempty option.inject)
+    obtain bsub where "Some bsub = match_tree e12 e2'"
+      using BinaryExpr(3) e1' substitution_union.simps
+      by (smt (z3) BinaryExpr.IH(1) \<open>Some asub = match_tree e11 e1'\<close> \<open>a |\<in>| fst s'\<close> map_upd_nonempty option.inject)
+    also obtain p'' where "p'' = snd (match_pattern e12 b s'')"
+      by simp
+    moreover have "b |\<in>| fst s''"
+      using b fresh_add by blast
+    ultimately obtain bsub' where "Some bsub' = eval_match p'' [b \<mapsto> e12]"
+      by (metis (mono_tags, lifting) BinaryExpr.IH(2) option.inject)
+    then show ?thesis
+      by (metis (mono_tags, lifting) BinaryExpr.IH(2) \<open>Some bsub = match_tree e12 e2'\<close> \<open>b |\<in>| fst s''\<close> map_upd_nonempty option.sel)
+  qed
+next
+  case (ConditionalExpr e11 e12 e13)
+  then show ?case sorry
+next
+  case (ParameterExpr x1 x2)
+  then show ?case by simp
+next
+  case (LeafExpr x1 x2)
+  then show ?case by simp
+next
+  case (ConstantExpr x)
+  have p: "p = (match v (ConstantPattern x))"
+    by (simp add: ConstantExpr.prems(2))
+  then show ?case proof (cases "eval_match p [v \<mapsto> e]")
+    case None
+    then have "\<not>(is_ConstantExpr e) \<or> (\<exists>x'. e = ConstantExpr x' \<and> x \<noteq> x')"
+      apply (cases e; auto)
+      by (simp add: p)
+    then have "match_tree (ConstantExpr x) e = None"
+      by (cases e; auto)
+    then show ?thesis
+      using ConstantExpr.prems(1) by auto
+  next
+    case (Some a)
+    have e: "e = ConstantExpr x"
+      using Some p apply (subst (asm) p)
+      unfolding eval_match.simps apply simp
+      by (smt (verit) IRExpr.split_sel_asm is_none_code(2) is_none_simps(1))
+    show ?thesis using p e by simp
+    qed
+next
+  case (ConstantVar x)
+  then show ?case sorry
+next
+  case (VariableExpr x1 x2)
+  then show ?case sorry
+qed
+*)
+
 end
