@@ -1,5 +1,6 @@
 theory TermRewrites
   imports Semantics.IRTreeEvalThms Semantics.TreeToGraphThms Snippets.Snipping
+    Fresh_String
 begin
 
 fun expr_at_node :: "IRGraph \<Rightarrow> ID \<Rightarrow> IRExpr"
@@ -72,10 +73,10 @@ fun match_tree :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> Substitution option
       (if op = op' then (match_tree e1 e1') \<uplus> (match_tree e2 e2') else None)" |
   "match_tree (ConditionalExpr b e1 e2) (ConditionalExpr b' e1' e2') = 
       (match_tree b b') \<uplus> ((match_tree e1 e1') \<uplus> (match_tree e2 e2'))" |
-  "match_tree (ParameterExpr i1 s1) (ParameterExpr i2 s2) = 
+  (*"match_tree (ParameterExpr i1 s1) (ParameterExpr i2 s2) = 
       (if i1 = i2 \<and> s1 = s2 then Some EmptySubstitution else None)" |
   "match_tree (LeafExpr n1 s1) (LeafExpr n2 s2) = 
-      (if n1 = n2 \<and> s1 = s2 then Some EmptySubstitution else None)" |
+      (if n1 = n2 \<and> s1 = s2 then Some EmptySubstitution else None)" |*)
   "match_tree (ConstantExpr v1) (ConstantExpr v2) = 
       (if v1 = v2 then Some EmptySubstitution else None)" |
   "match_tree (ConstantVar name) (ConstantExpr v) = 
@@ -174,33 +175,45 @@ fun remove_var :: "VarName \<Rightarrow> Scope \<Rightarrow> Scope" where
 fun add_var :: "VarName \<Rightarrow> Scope \<Rightarrow> Scope" where
   "add_var v (vs, m) = (vs |\<union>| {|v|}, m)"
 
-
+(*
 function fresh_var :: "VarName \<Rightarrow> Scope \<Rightarrow> VarName" where
   "fresh_var var s = 
     (if var |\<in>| (fst s) 
       then fresh_var (var + STR ''z'') (remove_var var s)
       else var)"
   by fastforce+
-(*(* For some reason, by proving that this function terminates the definition of match_pattern
-   no longer terminates. *)
+
 termination
   apply (relation "measure (\<lambda>(v, s). (fcard (fst s)))")
   apply simp
-  using fcard_fminus1_less by force*)
+  using fcard_fminus1_less by force
+*)
+
+(* Borrowed from Fresh_Identifiers.Fresh_String in AFP *)
+fun fresh_var :: "VarName \<Rightarrow> VarName fset \<Rightarrow> VarName" where
+  "fresh_var var s = fresh (fset s) var"
+
 
 fun fresh :: "VarName \<Rightarrow> Scope \<Rightarrow> Scope \<times> VarName" where
-  "fresh var s = (let v = fresh_var var s in (add_var v s, v))"
-
-
+  "fresh var s = (let v = fresh_var var (fst s) in (add_var v s, v))"
+                                
+(*
 lemma fresh [code]:
   "fresh_var var s = 
     (if var |\<in>| (fst s) 
       then fresh_var (var + STR ''z'') (remove_var var s)
       else var)"
   sorry (* This will not be required when termination is proved *)
-
+*)
 
 subsection \<open>Side-Conditions\<close>
+
+datatype NumberCondition =
+  BitNot NumberCondition |
+  BitAnd NumberCondition NumberCondition |
+  UpMask IRExpr |
+  DownMask IRExpr |
+  Constant int64
 
 datatype SideCondition =
   IsConstantExpr IRExpr |
@@ -219,7 +232,15 @@ datatype SideCondition =
   PowerOf2 IRExpr |
   Empty |
   And SideCondition SideCondition |
-  Not SideCondition
+  Not SideCondition |
+  Equals NumberCondition NumberCondition
+
+fun eval_number :: "NumberCondition \<Rightarrow> int64" where
+  "eval_number (Constant n) = n" |
+  "eval_number (BitNot n) = not (eval_number n)" |
+  "eval_number (BitAnd n1 n2) = and (eval_number n1) (eval_number n2)" |
+  "eval_number (UpMask e) = IRExpr_up e" |
+  "eval_number (DownMask e) = IRExpr_down e"
 
 definition wf_stamp :: "IRExpr \<Rightarrow> bool" where
   "wf_stamp e = (\<forall>m p v. ([m, p] \<turnstile> e \<mapsto> v) \<longrightarrow> valid_value v (stamp_expr e))"
@@ -242,25 +263,28 @@ fun eval_condition :: "SideCondition \<Rightarrow> bool" where
   "eval_condition (Empty) = True" |
 
   "eval_condition (And sc1 sc2) = ((eval_condition sc1) \<and> (eval_condition sc2))" |
-  "eval_condition (Not sc) = (\<not>(eval_condition sc))"
+  "eval_condition (Not sc) = (\<not>(eval_condition sc))" |
+
+  "eval_condition (Equals n1 n2) = ((eval_number n1) = (eval_number n2))"
 
 
 subsection \<open>Results\<close>
 
 datatype Result =
   ExpressionResult IRExpr |
-  forZero IRExpr
+  forZero IRExpr |
+  log2 IRExpr
 
 fun result_of :: "Result \<Rightarrow> IRExpr" where
   "result_of (ExpressionResult e) = e" |
-  "result_of (forZero e) = ConstantExpr (IntVal (stp_bits (stamp_expr e)) 0)" 
+  "result_of (forZero e) = ConstantExpr (IntVal (stp_bits (stamp_expr e)) 0)"
 
 subsection \<open>Match Primitives\<close>
 snipbegin \<open>MATCH\<close>
 datatype MATCH =
   match VarName PatternExpr |
   equality VarName VarName (infixl "==" 52) |
-  andthen MATCH MATCH (infixl "&&" 50) |
+  andthen MATCH MATCH (infixr"&&" 50) |
   condition SideCondition |
   noop
 snipend -
@@ -296,31 +320,37 @@ fun register_name where
 
 snipbegin "matchpattern"
 fun match_pattern :: "IRExpr \<Rightarrow> VarName \<Rightarrow> Scope \<Rightarrow> Scope \<times> MATCH" where
-  "match_pattern (UnaryExpr op e) v =
-    match v \<langle>
-      (UnaryPattern op \<langle> fresh STR ''a'')
-    |> descend match_pattern e STR ''a''" |
-  "match_pattern (BinaryExpr op e1 e2) v =
-    match v \<langle> 
-      (BinaryPattern op \<langle> fresh STR ''a'' \<rangle> fresh STR ''b'')
-    |> descend match_pattern e1 STR ''a''
-    |> descend match_pattern e2 STR ''b''" |
-  "match_pattern (ConditionalExpr b e1 e2) v =
-    match v \<langle>
-      (ConditionalPattern \<langle> fresh STR ''a'' \<rangle> fresh STR ''b'' \<rangle> fresh STR ''c'')
-    |> descend match_pattern b STR ''a''
-    |> descend match_pattern e1 STR ''b''
-    |> descend match_pattern e2 STR ''c''" |
   \<comment> \<open>If a variable is reused, generate an equality check, else, generate a noop.\<close>
-  "match_pattern (VariableExpr vn st) v = 
-    (\<lambda>s. case (snd s) vn of 
+  "match_pattern (VariableExpr vn st) v s = 
+    (case (snd s) vn of 
       None \<Rightarrow> (register_name s vn v, noop) |
       Some v' \<Rightarrow> (register_name s vn v, equality v' v))" |
-  "match_pattern (ConstantExpr c) v =
-    (\<lambda>s. (s, match v (ConstantPattern c)))" |
-  "match_pattern (ConstantVar c) v =
-    (\<lambda>s. (s, match v (ConstantVarPattern c)))" |
-  "match_pattern _ v = (\<lambda>s. (s, noop))"
+  "match_pattern (ConstantExpr c) v s =
+    (s, match v (ConstantPattern c))" |
+  "match_pattern (ConstantVar c) v s =
+    (s, match v (ConstantVarPattern c))" |
+  "match_pattern (UnaryExpr op e) v s =
+    (let
+      (s', a) = fresh STR ''a'' s;
+      (s'', am) = match_pattern e a s'
+     in (s'', match v (UnaryPattern op a) && am))" |
+  "match_pattern (BinaryExpr op e1 e2) v s =
+    (let
+      (s', a) = fresh STR ''a'' s;
+      (s'', b) = fresh STR ''b'' s';
+      (s''', am) = match_pattern e1 a s'';
+      (s'''', bm) = match_pattern e2 b s'''
+     in (s'''', match v (BinaryPattern op a b) && am && bm))" |
+  "match_pattern (ConditionalExpr e1 e2 e3) v s =
+    (let
+      (s', a) = fresh STR ''a'' s;
+      (s'', b) = fresh STR ''b'' s';
+      (s''', c) = fresh STR ''c'' s'';
+      (s'''', am) = match_pattern e1 a s''';
+      (s''''', bm) = match_pattern e2 b s'''';
+      (s'''''', cm) = match_pattern e3 b s'''''
+     in (s'''''', match v (ConditionalPattern a b c) && am && bm && cm))" |
+  "match_pattern _ v s = (s, noop)"
 snipend -
 
 definition gen_pattern :: "IRExpr \<Rightarrow> VarName \<Rightarrow> MATCH" where
@@ -410,6 +440,9 @@ datatype Rules =
 snipend -
 
 text \<open>Use the scope of a generated match to replace real variable names with aliases in the rewrite result.\<close>
+class groundable =
+  fixes ground :: "'a \<Rightarrow> Scope \<Rightarrow> 'a"
+
 snipbegin \<open>groundresult\<close>
 fun ground_expr :: "IRExpr \<Rightarrow> Scope \<Rightarrow> IRExpr" where
   "ground_expr (UnaryExpr op e) s = 
@@ -428,6 +461,13 @@ fun ground_result :: "Result \<Rightarrow> Scope \<Rightarrow> Result" where
   "ground_result (forZero e) s = forZero (ground_expr e s)"
 snipend -
 
+fun ground_number :: "NumberCondition \<Rightarrow> Scope \<Rightarrow> NumberCondition" where
+  "ground_number (Constant n) s = (Constant n)" |
+  "ground_number (BitNot n) s = (BitNot (ground_number n s))" |
+  "ground_number (BitAnd n1 n2) s = (BitAnd (ground_number n1 s) (ground_number n2 s))" |
+  "ground_number (UpMask e) s = (UpMask (ground_expr e s))" |
+  "ground_number (DownMask e) s = (DownMask (ground_expr e s))"
+
 fun ground_condition :: "SideCondition \<Rightarrow> Scope \<Rightarrow> SideCondition" where
   "ground_condition (IsConstantExpr p) s = (IsConstantExpr (ground_expr p s))" |
   "ground_condition (IsIntegerStamp p) s = (IsIntegerStamp (ground_expr p s))" |
@@ -445,16 +485,35 @@ fun ground_condition :: "SideCondition \<Rightarrow> Scope \<Rightarrow> SideCon
   "ground_condition (IsBool e) s = (IsBool (ground_expr e s))" |
   "ground_condition (And sc1 sc2) s = And (ground_condition sc1 s) (ground_condition sc2 s)" |
   "ground_condition (Not sc) s = Not (ground_condition sc s)" |
-  "ground_condition (Empty) s = Empty"
+  "ground_condition (Empty) s = Empty" |
+  "ground_condition (Equals n1 n2) s = (Equals (ground_number n1 s) (ground_number n2 s))"
+
+
+instantiation IRExpr :: groundable
+begin
+definition "ground_IRExpr = ground_expr"
+instance by standard
+end
+instantiation Result :: groundable
+begin
+definition "ground_Result = ground_result"
+instance by standard
+end
+instantiation SideCondition :: groundable
+begin
+definition "ground_SideCondition = ground_condition"
+instance by standard
+end
+
 
 snipbegin \<open>generate\<close>
 fun generate :: "IRExpr \<Rightarrow> Result \<Rightarrow> SideCondition option \<Rightarrow> Rules" where
   "generate p r c = 
     (let (s, m) = match_pattern p STR ''e'' ({||}, (\<lambda>x. None))
      in (case c of
-          Some c' \<Rightarrow> (m && condition (ground_condition c' s))
+          Some c' \<Rightarrow> (m && condition (ground c' s))
         | None \<Rightarrow> m)
-       ? (base (ground_result r s)))"
+       ? (base (ground r s)))"
 snipend -
 
 subsubsection \<open>Rules Semantics\<close>
@@ -529,8 +588,7 @@ inductive eval_rules :: "Rules \<Rightarrow> Subst \<Rightarrow> IRExpr option \
    \<Longrightarrow> eval_rules (choice rules) u (Some r)" |
   "\<lbrakk>\<forall> rule \<in> set rules. eval_rules rule u None\<rbrakk>
    \<Longrightarrow> eval_rules (choice rules) u None" |
-  "\<lbrakk>rules = []\<rbrakk>
-   \<Longrightarrow> eval_rules (choice rules) u None" |
+  "eval_rules (choice []) u None" |
 
   \<comment> \<open>Evaluate sequential\<close>
   "\<lbrakk>eval_rules r1 u (Some e');
@@ -556,7 +614,8 @@ text \<open>
 \induct{@{thm[mode=Rule] eval_rules.intros(7) [no_vars]}}{evalrules:choice-none}
 \induct{@{thm[mode=Rule] eval_rules.intros(8) [no_vars]}}{evalrules:choice-empty}
 \induct{@{thm[mode=Rule] eval_rules.intros(9) [no_vars]}}{evalrules:seq-some}
-\induct{@{thm[mode=Rule] eval_rules.intros(10) [no_vars]}}{evalrules:seq-none}
+\induct{@{thm[mode=Rule] eval_rules.intros(10) [no_vars]}}{evalrules:seq-noentry}
+\induct{@{thm[mode=Rule] eval_rules.intros(11) [no_vars]}}{evalrules:seq-none}
 \<close>
 snipend -
 
@@ -1908,10 +1967,12 @@ datatype Expression =
   Constructor ClassName "Expression list" ("new _(_)") |
   InstanceOf Expression ClassName VariableName ("_ instanceof _ _") |
   Equal Expression Expression (infix "==" 58) |
+  Cast ClassName Expression |
   Less Expression Expression |
   Negate Expression |
   And Expression Expression |
   BitAnd Expression Expression |
+  BitNot Expression |
   Unsupported string
 
 datatype Statement =
@@ -1956,6 +2017,8 @@ fun generate_expression :: "Expression \<Rightarrow> string" where
     (generate_expression e) @ '' instanceof '' @ cn @ '' '' @ (String.explode var)" |
   "generate_expression (Equal e1 e2) =
     (generate_expression e1) @ '' == '' @ (generate_expression e2)" |
+  "generate_expression (Cast c e) =
+    ''(('' @ c @ '') '' @ (generate_expression e) @ '')''" |
   "generate_expression (Less e1 e2) =
     (generate_expression e1) @ '' < '' @ (generate_expression e2)" |
   "generate_expression (Negate e) =
@@ -1963,7 +2026,9 @@ fun generate_expression :: "Expression \<Rightarrow> string" where
   "generate_expression (And e1 e2) =
     (generate_expression e1) @ '' && '' @ (generate_expression e2)" |
   "generate_expression (BitAnd e1 e2) =
-    (generate_expression e1) @ '' & '' @ (generate_expression e2)" |
+    ''('' @ (generate_expression e1) @ '' & '' @ (generate_expression e2) @ '')''" |
+  "generate_expression (BitNot e) =
+    ''~'' @ (generate_expression e)" |
   "generate_expression (Unsupported x) = x"
 
 fun indent :: "nat \<Rightarrow> string" where
@@ -2034,7 +2099,7 @@ fun construct_node :: "IRExpr \<Rightarrow> Expression" where
   "construct_node (ConditionalExpr e1 e2 e3) =
     new ''ConditionalNode''([construct_node e1, construct_node e2, construct_node e3])" |
   "construct_node (ConstantExpr val) =
-    new ''ConstantNode''([generate_value val])" |
+    (Ref STR ''ConstantNode'').''forInt''([generate_value val])" |
   "construct_node (ConstantVar var) =
     new ''ConstantNode''([Ref var])" |
   "construct_node (VariableExpr v s) = Ref v"
@@ -2045,20 +2110,27 @@ fun generate_result :: "Result \<Rightarrow> Expression" where
 
 fun export_stamp :: "Stamp \<Rightarrow> Expression" where
   "export_stamp (IntegerStamp bits lower higher) =
-    new ''IntegerStamp'' 
+    (Ref STR ''IntegerStamp'').''create'' 
       ([IntegerConstant bits, IntegerConstant lower,
        IntegerConstant higher])" |
   "export_stamp _ =
     Unsupported ''unsupported Stamp''"
 
 definition stampOf :: "Expression \<Rightarrow> Expression" where
-  "stampOf e = (e.''stamp''([Ref STR ''view'']))"
+  "stampOf e = Cast ''IntegerStamp'' (e.''stamp''([Ref STR ''view'']))"
 
 definition upMask :: "Expression \<Rightarrow> Expression" where
-  "upMask e = ((stampOf e).''upMask''([]))"
+  "upMask e = ((stampOf e).''mayBeSet''([]))"
 
 definition downMask :: "Expression \<Rightarrow> Expression" where
-  "downMask e = ((stampOf e).''downMask''([]))"
+  "downMask e = ((stampOf e).''mustBeSet''([]))"
+
+fun generate_number :: "NumberCondition \<Rightarrow> Expression" where
+  "generate_number (Constant v) = IntegerConstant (sint v)" |
+  "generate_number (NumberCondition.BitNot v) = BitNot (generate_number v)" |
+  "generate_number (NumberCondition.BitAnd v1 v2) = BitAnd (generate_number v1) (generate_number v2)" |
+  "generate_number (UpMask e) = upMask (construct_node e)" |
+  "generate_number (DownMask e) = downMask (construct_node e)"
 
 fun generate_condition :: "SideCondition \<Rightarrow> Expression" where
   "generate_condition (IsConstantExpr e) = ((construct_node e) instanceof ''ConstantNode'' STR ''t'')" |
@@ -2083,9 +2155,10 @@ fun generate_condition :: "SideCondition \<Rightarrow> Expression" where
   "generate_condition (PowerOf2 e) =
     MethodCall (Ref STR ''CodeUtil'') ''isPowerOf2'' [construct_node e]" |
   "generate_condition (IsBool e) =
-    Equal (MethodCall (construct_node e) ''upMask'' []) (IntegerConstant 1)" |
+    Equal (upMask (construct_node e)) (IntegerConstant 1)" |
   "generate_condition (Not sc) = Negate (generate_condition sc)" |
   "generate_condition (SideCondition.And sc1 sc2) = And (generate_condition sc1) (generate_condition sc2)" |
+  "generate_condition (Equals n1 n2) = Equal (generate_number n1) (generate_number n2)" |
   "generate_condition (Empty) = TrueValue"
 
 fun match_body :: "VarName \<Rightarrow> PatternExpr \<Rightarrow> Statement \<Rightarrow> Statement" where
@@ -2111,7 +2184,7 @@ fun match_body :: "VarName \<Rightarrow> PatternExpr \<Rightarrow> Statement \<R
   "match_body v (VariablePattern var) s =
     Return (Unsupported ''export_assignments for VariablePattern'')" 
 
-function (sequential) generate_match :: "MATCH \<Rightarrow> Statement \<Rightarrow> Statement" where
+fun generate_match :: "MATCH \<Rightarrow> Statement \<Rightarrow> Statement" where
   "generate_match (match v p) r  = 
     if ((Ref v) instanceof (class_name p) (v + STR ''c'')) {
       (match_body (v + STR ''c'') p r)
@@ -2127,15 +2200,10 @@ function (sequential) generate_match :: "MATCH \<Rightarrow> Statement \<Rightar
       r
     }" |
   "generate_match noop r = r"
-  apply pat_completeness+
-  by simp+
 
 fun size_condition :: "(MATCH \<times> Statement) \<Rightarrow> nat" where
   "size_condition ((condition c), s) = size (condition c) + size c" |
   "size_condition (m, s) = size m"
-
-termination generate_match
-  apply (relation "measures [size_condition]") apply simp apply simp sorry
 
 fun generate_rules :: "VarName option \<Rightarrow> Rules \<Rightarrow> Statement" where
   "generate_rules None (base e) = Return (generate_result e)" |
@@ -2186,8 +2254,8 @@ definition AddLeftNegateToSub where
 corollary
   "NestedNot =
    (MATCH.match STR ''e'' (UnaryPattern UnaryNot STR ''a'') &&
-    (MATCH.match STR ''a'' (UnaryPattern UnaryNot STR ''az'') && noop)) ?
-      base (ExpressionResult (VariableExpr STR ''az'' VoidStamp))"
+    (MATCH.match STR ''a'' (UnaryPattern UnaryNot STR ''b'') && noop)) ?
+      base (ExpressionResult (VariableExpr STR ''b'' VoidStamp))"
   by eval
 
 value "
@@ -2202,18 +2270,18 @@ generate
 corollary
   "RedundantSub =
    (MATCH.match STR ''e'' (BinaryPattern BinAdd STR ''a'' STR ''b'') &&
-    (MATCH.match STR ''a'' (BinaryPattern BinSub STR ''az'' STR ''bz'') && noop && noop) &&
-      STR ''bz'' == STR ''b'') ?
-        base (ExpressionResult (VariableExpr STR ''az'' VoidStamp))"
+    (MATCH.match STR ''a'' (BinaryPattern BinSub STR ''c'' STR ''d'') && noop && noop) &&
+      STR ''d'' == STR ''b'') ?
+        base (ExpressionResult (VariableExpr STR ''c'' VoidStamp))"
   by eval
 
 corollary
   "AddLeftNegateToSub =
    (MATCH.match STR ''e'' (BinaryPattern BinAdd STR ''a'' STR ''b'') && noop &&
-    (MATCH.match STR ''b'' (UnaryPattern UnaryNeg STR ''az'') && noop)) ?
+    (MATCH.match STR ''b'' (UnaryPattern UnaryNeg STR ''c'') && noop)) ?
       base (ExpressionResult (BinaryExpr BinSub 
             (VariableExpr STR ''a'' VoidStamp)
-            (VariableExpr STR ''az'' VoidStamp)))"
+            (VariableExpr STR ''c'' VoidStamp)))"
   by eval
 
 
@@ -2305,42 +2373,46 @@ value "combine_conditions (lift_match (eliminate_noop (choice [NestedNot, Redund
 corollary
   "lift_match (RedundantSub else AddLeftNegateToSub) =
   (MATCH.match STR ''e'' (BinaryPattern BinAdd STR ''a'' STR ''b'') ?
-   (MATCH.match STR ''a'' (BinaryPattern BinSub STR ''az'' STR ''bz'') ?
+   (MATCH.match STR ''a'' (BinaryPattern BinSub STR ''c'' STR ''d'') ?
     (noop ?
      (noop ?
-      (STR ''bz'' == STR ''b'' ? base (ExpressionResult (VariableExpr STR ''az'' VoidStamp)))))) else
+      (STR ''d'' == STR ''b'' ? base (ExpressionResult (VariableExpr STR ''c'' VoidStamp)))))) else
    MATCH.match STR ''e'' (BinaryPattern BinAdd STR ''a'' STR ''b'') ?
    (noop ?
-    (MATCH.match STR ''b'' (UnaryPattern UnaryNeg STR ''az'') ?
+    (MATCH.match STR ''b'' (UnaryPattern UnaryNeg STR ''c'') ?
      (noop ?
       (base
         (ExpressionResult (BinaryExpr BinSub (VariableExpr STR ''a'' VoidStamp)
-          (VariableExpr STR ''az'' VoidStamp))))))))"
+          (VariableExpr STR ''c'' VoidStamp))))))))"
   by eval
 
 corollary
   "lift_common (lift_match (RedundantSub else AddLeftNegateToSub)) =
    (MATCH.match STR ''e'' (BinaryPattern BinAdd STR ''a'' STR ''b'') ?
-   (MATCH.match STR ''a'' (BinaryPattern BinSub STR ''az'' STR ''bz'') ?
+   (MATCH.match STR ''a'' (BinaryPattern BinSub STR ''c'' STR ''d'') ?
     (noop ?
-     (STR ''bz'' == STR ''b'' ? (base (ExpressionResult (VariableExpr STR ''az'' VoidStamp))))) else
+     (STR ''d'' == STR ''b'' ? (base (ExpressionResult (VariableExpr STR ''c'' VoidStamp))))) else
     noop ?
-    (MATCH.match STR ''b'' (UnaryPattern UnaryNeg STR ''az'') ?
+    (MATCH.match STR ''b'' (UnaryPattern UnaryNeg STR ''c'') ?
      (noop ?
       (base
         (ExpressionResult (BinaryExpr BinSub (VariableExpr STR ''a'' VoidStamp)
-          (VariableExpr STR ''az'' VoidStamp))))))))"
+          (VariableExpr STR ''c'' VoidStamp))))))))"
   by eval
 
+value "optimized_export (RedundantSub else AddLeftNegateToSub)"
 corollary
   "optimized_export (RedundantSub else AddLeftNegateToSub) =
-   MATCH.match STR ''e'' (BinaryPattern BinAdd STR ''a'' STR ''b'') ?
-    (MATCH.match STR ''a'' (BinaryPattern BinSub STR ''az'' STR ''bz'') ?
-     (STR ''bz'' == STR ''b'' ?
-      base (ExpressionResult (VariableExpr STR ''az'' VoidStamp)))
-    else
-    MATCH.match STR ''b'' (UnaryPattern UnaryNeg STR ''az'') ?
-     base (ExpressionResult (BinaryExpr BinSub (VariableExpr STR ''a'' VoidStamp) (VariableExpr STR ''az'' VoidStamp))))"
+   match STR ''e'' (BinaryPattern BinAdd STR ''a'' STR ''b'') ?
+ (match STR ''a'' (BinaryPattern BinSub STR ''c'' STR ''d'') ?
+  (noop ?
+   (STR ''d'' == STR ''b'' ?
+    base (ExpressionResult (VariableExpr STR ''c'' VoidStamp)))) else
+  match STR ''b'' (UnaryPattern UnaryNeg STR ''c'') ?
+  base
+   (ExpressionResult
+     (BinaryExpr BinSub (VariableExpr STR ''a'' VoidStamp)
+       (VariableExpr STR ''c'' VoidStamp))))"
   by eval
 
 subsubsection \<open>Java Generation\<close>
