@@ -92,12 +92,14 @@ session OptimizationDSL in "Optimizations/DSL" = Proofs +
            show_question_marks = false]
   sessions
     Snippets
+    Fresh
+    CodeGen
   theories
     Markup
     Phase
     Canonicalization
     CodeGen
-    CodeGenImpl
+    
   document_files (in "../../latex")
     "root.tex"
     "mathpartir.sty"
@@ -113,7 +115,6 @@ session Canonicalizations in "Optimizations/Canonicalizations" = OptimizationDSL
     AbsPhase
     AddPhase
     AndPhase
-    BinaryNode
     ConditionalPhase
     MulPhase
     NewAnd
