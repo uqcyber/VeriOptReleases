@@ -135,6 +135,7 @@ lemma exp_and_commutative:
   "exp[x & y] \<ge> exp[y & x]"
   by auto 
 
+(*
 text \<open>--- --- New Optimisations - submitted and added into Graal ---\<close>
 lemma OrInverseVal:
   assumes "n = IntVal 32 v"
@@ -947,6 +948,7 @@ optimization XorEqNeg1_64: "exp[BinaryExpr BinIntegerEquals (x \<oplus> y) (cons
                       when (stamp_expr x = IntegerStamp 64 xl xh \<and> wf_stamp x) \<and>
                            (stamp_expr y = IntegerStamp 64 yl yh \<and> wf_stamp y)"
   using expXorEqNeg1_64 apply auto (* termination proof *) sorry
+*)
 
 end
 

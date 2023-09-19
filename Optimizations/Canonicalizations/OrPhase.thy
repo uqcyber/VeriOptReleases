@@ -185,6 +185,7 @@ optimization OrNotOperands: "(~x | ~y) \<longmapsto> ~(x & y)"
    using BinaryExpr UnaryExpr bin_eval.simps(4) intval_not.simps(2) unary_eval.simps(3) 
          val_or_not_operands by fastforce
 
+(*
 optimization OrLeftFallthrough:
   "x | y \<longmapsto> x when ((and (not (IRExpr_down x)) (IRExpr_up y)) = 0)"
   using simple_mask.OrLeftFallthrough by blast
@@ -192,6 +193,7 @@ optimization OrLeftFallthrough:
 optimization OrRightFallthrough:
   "x | y \<longmapsto> y when ((and (not (IRExpr_down y)) (IRExpr_up x)) = 0)"
   using simple_mask.OrRightFallthrough by blast
+*)
 
 
 end (* End of OrPhase *)

@@ -15,73 +15,7 @@ theory ProofStatus
     SubPhase
     TacticSolving
     XorPhase
-  keywords
-    "gencode" :: thy_decl
 begin
-
-definition generate :: "Rules \<Rightarrow> string" where
-  "generate = (generate_statement 0) o export_rules"
-
-ML \<open>
-fun replaceSubstring (original: string, target: string, replacement: string): string =
-    let
-        val targetLength = String.size target
-        val originalLength = String.size original
-
-        fun replaceHelper (pos: int, acc: string): string =
-            if pos + targetLength <= originalLength then
-                let
-                    val currentSubstr = String.substring (original, pos, targetLength)
-                    val nextChar = String.substring (original, pos, 1)
-                    val updatedAcc = if currentSubstr = target then acc ^ replacement else acc ^ nextChar
-                    val jump = if currentSubstr = target then targetLength else 1
-                in
-                    replaceHelper (pos + jump, updatedAcc)
-                end
-            else
-                acc ^ String.extract (original, pos, NONE)
-
-    in
-        replaceHelper (0, "")
-    end
-
-fun gencode thy name term =
-  let
-    val state = Toplevel.theory_toplevel thy;
-    val ctxt = Toplevel.context_of state;
-    val code = (Syntax.check_term ctxt (Syntax.parse_term ctxt term));
-    val export = 
-    ((Const ("ProofStatus.generate", @{typ "Rules \<Rightarrow> string"}))
-      $ code);
-    val value = Code_Evaluation.dynamic_value_strict ctxt export;
-    val content = Pretty.string_of (Syntax.pretty_term ctxt value);
-    val content = replaceSubstring (content, "\<newline>", "\n") (* Replace newlines *)
-    val content = String.substring (content, 2, (String.size content) - 4) (* Strip quotes *)
-
-    val cleaned = YXML.content_of content;
-
-
-    val filename = Path.explode (name^".java");
-    val directory = Path.explode "optimizations";
-    val path = Path.binding (
-                Path.append directory filename,
-                Position.none);
-    val thy' = thy |> Generated_Files.add_files (path, (Bytes.string content));
-
-    val _ = Export.export thy' path [YXML.parse cleaned];
-
-    val _ = writeln (Export.message thy' (Path.basic "optimizations"));
-  in
-    thy'
-  end
-
-val _ =
-  Outer_Syntax.command \<^command_keyword>\<open>gencode\<close>
-    "generate an optimized optimization code"
-    (Parse.path -- Parse.term >>
-      (fn (name, term) => Toplevel.theory (fn state => gencode state name term)))
-\<close>
-
 
 gencode "Test" "choice [ZeroSubtractValue_code]"
 

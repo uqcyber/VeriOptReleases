@@ -100,9 +100,11 @@ optimization DistributeSubtraction: "-(x - y) \<longmapsto> (y - x)"
    using exp_distribute_sub by simp
 
 (* Need to prove exp_negative_shift *)
+(*
 optimization NegativeShift: "-(x >> (const (new_int b y))) \<longmapsto> x >>> (const (new_int b y))
                                    when (stamp_expr x = IntegerStamp b' lo hi \<and> unat y = (b' - 1))"
   using exp_negative_shift by simp 
+*)
 
 end (* End of NegatePhase *)
 

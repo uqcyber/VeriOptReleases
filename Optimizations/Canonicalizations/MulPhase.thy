@@ -412,6 +412,7 @@ lemma ExpIntBecomesIntValArbitrary:
   shows "\<exists>xv. v = IntVal b xv"
   using assms by (simp add: IRTreeEvalThms.valid_value_elims(3))
 
+(*
 optimization MulPower2: "x * y \<longmapsto> x << const (IntVal 64 i) 
                               when (i > 0 \<and> stamp_expr x = IntegerStamp 64 xl xh \<and> wf_stamp x \<and>
                                     64 > i \<and>
@@ -518,6 +519,7 @@ optimization MulPower2Sub1: "x * y \<longmapsto> (x << const (IntVal 64 i)) - x
       by (metis evalDet lhs p(1) p(2) rhs)
   qed
 done
+*)
 
 end (* End of MulPhase *)
 

@@ -381,6 +381,7 @@ lemma stamp_of_default:
   shows "([m, p] \<turnstile> x \<mapsto> v) \<longrightarrow> (\<exists>vv. v = IntVal 32 vv)"
   by (metis assms default_stamp valid_value_elims(3) wf_stamp_def)
 
+(*
 optimization OptimiseIntegerTest: 
      "(((x & (const (IntVal 32 1))) eq (const (IntVal 32 0))) ? 
       (const (IntVal 32 0)) : (const (IntVal 32 1))) \<longmapsto> 
@@ -412,6 +413,7 @@ proof -
     by (metis eval(2) evalDet lhs rhs)
 qed
   done
+*)
 
 (* todo not sure if this is done properly *)
 optimization OptimiseIntegerTest2: 
