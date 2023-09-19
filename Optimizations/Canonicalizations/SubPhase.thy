@@ -189,7 +189,7 @@ lemma SubtractZero_Exp:
   done
 
 lemma ZeroSubtractValue_Exp:
-  assumes "TermRewrites.wf_stamp x"
+  assumes "CodeGen.wf_stamp x"
   assumes "is_IntegerStamp (stamp_expr x)"
   shows "exp[(const IntVal (stp_bits (stamp_expr x)) 0) - x] \<ge> exp[-x]"
   using assms apply auto[1]
@@ -401,11 +401,11 @@ qed
 
 
 lemma valid_bits:
-  assumes "TermRewrites.wf_stamp x"
+  assumes "CodeGen.wf_stamp x"
   assumes "is_IntegerStamp (stamp_expr x)"
   shows "\<forall>m p v. ([m, p] \<turnstile> x \<mapsto> v) \<longrightarrow> (\<exists>w. v = (IntVal (stp_bits (stamp_expr x)) w))"
   using assms
-  by (metis Stamp.collapse(1) TermRewrites.wf_stamp_def valid_int)
+  by (metis Stamp.collapse(1) valid_int)
 
 optimization SubSelfIsZero: "(x - x) \<longmapsto> (forZero x) when 
                       (WellFormed x && IsIntegerStamp x)"

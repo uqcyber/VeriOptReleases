@@ -1,5 +1,8 @@
-theory RewriteTerms
-imports IRTreeEval Stratego.JavaExport "HOL-Library.Monad_Syntax"
+theory CodeGenImpl
+  imports 
+    Semantics.IRTreeEval
+    CodeGen.JavaExport
+    "HOL-Library.Monad_Syntax"
 begin
 
 fun compatible :: "('a, 'b) fmap \<Rightarrow> ('a, 'b) fmap \<Rightarrow> bool" where
@@ -89,7 +92,7 @@ datatype SideCondition =
   And SideCondition SideCondition |
   Not SideCondition
 
-(*
+(* No code generation for for all
 definition wf_stamp :: "IRExpr \<Rightarrow> bool" where
   "wf_stamp e = (\<forall>m p v. ([m, p] \<turnstile> e \<mapsto> v) \<longrightarrow> valid_value v (stamp_expr e))"
 *)
@@ -130,13 +133,6 @@ fun ground_expr :: "IRExpr \<Rightarrow> (string \<rightharpoonup> IRExpr) \<Rig
                 | Some v' \<Rightarrow> v')" |
   "ground_expr e s = e"
 
-(*lemma
-  assumes sub: "a' \<subseteq>\<^sub>m a"
-  assumes e': "ground_expr e a' = Some e'"
-  shows "ground_expr e a' = ground_expr e a"
-  using assms apply (induction e a' arbitrary: a a' rule: ground_expr.induct; auto)
-  sorry
-*)
 
 fun ground_condition :: "SideCondition \<Rightarrow> (string \<rightharpoonup> IRExpr) \<Rightarrow> SideCondition" where
   "ground_condition (IsConstantExpr p) s = (IsConstantExpr (ground_expr p s))" |
@@ -242,15 +238,6 @@ fun class_of_irexpr :: "IRExpr \<Rightarrow> ClassName" where
   "class_of_irexpr (ConstantVar v) = ''ConstantNode''" |
   "class_of_irexpr (VariableExpr v s) = ''ERROR: Variable should not occur on LHS''"
 
-(* https://stackoverflow.com/questions/23864965/string-of-nat-in-isabelle *)
-fun string_of_nat :: "nat \<Rightarrow> string" where
-  "string_of_nat n = (if n < 10 then [char_of (48 + n)] else 
-     string_of_nat (n div 10) @ [char_of (48 + (n mod 10))])"
-
-definition string_of_int :: "int \<Rightarrow> string" where
-  "string_of_int i = (if i < 0 then ''-'' @ string_of_nat (nat (- i)) else 
-     string_of_nat (nat i))"
-
 datatype Expression =
   Ref VariableName |
   IntegerConstant int |
@@ -266,6 +253,7 @@ datatype Expression =
     (infix "==" 58) |
   Less Expression Expression |
   Negate Expression |
+  Add Expression Expression |
   And Expression Expression |
   BitAnd Expression Expression |
   Unsupported string
@@ -287,6 +275,8 @@ fun generate_expression :: "Expression \<Rightarrow> string" where
     (generate_expression e1) @ '' < '' @ (generate_expression e2)" |
   "generate_expression (Negate e) =
     ''!('' @ (generate_expression e) @ '')''" |
+  "generate_expression (Add e1 e2) =
+    ''('' @ (generate_expression e1) @ '' + '' @ (generate_expression e2) @ '')''" |
   "generate_expression (And e1 e2) =
     (generate_expression e1) @ '' && '' @ (generate_expression e2)" |
   "generate_expression (BitAnd e1 e2) =
@@ -312,7 +302,9 @@ fun construct_node :: "IRExpr \<Rightarrow> Expression" where
 
 fun export_result :: "Result \<Rightarrow> Expression" where
   "export_result (ExpressionResult e) = construct_node e" |
-  "export_result (forZero e) = Constructor ''ConstantNode'' [IntegerConstant 0]"
+  "export_result (forZero e) = Constructor ''ConstantNode'' [IntegerConstant 0]" |
+  "export_result (Result.Negate e) = Negate (construct_node e)" |
+  "export_result (Result.Add e1 e2) = Add (construct_node e1) (construct_node e2)"
 
 fun export_stamp :: "Stamp \<Rightarrow> Expression" where
   "export_stamp (IntegerStamp bits lower higher) =
@@ -381,6 +373,10 @@ fun export_assignments :: "VarName \<Rightarrow> IRExpr \<Rightarrow> Expression
   "export_assignments v (VariableExpr v' st) = []" 
 
 
+context Rewritable begin
+termination match_pattern sorry
+end
+
 setup \<open>Locale_Code.open_block\<close>
 interpretation IRExprRewrites : Rewritable
   size_IRExpr
@@ -402,7 +398,8 @@ proof
   assume sub: "a' \<subseteq>\<^sub>m a"
   assume e': "is_ground_condition (ground_condition e a')"
   show "ground_condition e a' = ground_condition e a"
-    using sub e' apply (induction e a' arbitrary: a a' rule: ground_condition.induct; auto)
+    using sub e'
+    apply (induction e a' arbitrary: a a' rule: ground_condition.induct; auto)
     sorry
 next
   fix e :: IRExpr
@@ -426,22 +423,6 @@ qed
 setup \<open>Locale_Code.close_block\<close>
 
 setup \<open>Locale_Code.open_block\<close>
-interpretation IRExprRewrites: CompiledRewrites
-  size_IRExpr
-  "eval_condition_opt"
-  "ground_condition"
-  is_ground_condition
-  result_of
-  ground_result
-  is_ground_result
-  subexprs_IRExpr
-  chain_IRExpr
-  rewrite_IRExpr
-  match_IRExpr
-  varof_IRExpr
-  var_IRExpr
-  by standard
-
 interpretation IRExprRewrites: JavaTarget
   size_IRExpr
   "eval_condition_opt"
@@ -463,19 +444,8 @@ interpretation IRExprRewrites: JavaTarget
   by standard
 setup \<open>Locale_Code.close_block\<close>
 
-definition eval where "eval = IRExprRewrites.eval"
 definition var where "var = var_IRExpr"
-
-type_synonym StrategyRule = "(IRExpr, SideCondition, Result) IRExprRewrites.Strategy"
-
-code_datatype fmap_of_list
-lemma fmlookup_of_list[code]: "fmlookup (fmap_of_list m) = map_of m"
-  by (simp add: fmlookup_of_list)
-
-export_code "eval" checking SML
-
 definition join where "join = IRExprRewrites.join"
-(*definition compile' where "compile' = IRExprRewrites.compile'"*)
 definition generate where "generate = IRExprRewrites.generate"
 definition generate_with_condition where "generate_with_condition = IRExprRewrites.generate_with_condition"
 
@@ -483,73 +453,6 @@ definition match_pattern where "match_pattern = IRExprRewrites.match_pattern"
 definition optimized_export where "optimized_export = IRExprRewrites.optimized_export"
 
 export_code "generate_with_condition" checking SML
-
-(*
-definition Identity :: "StrategyRule" where
-  "Identity = 
-    ((BinaryExpr BinMul (var ''a'') (ConstantExpr (IntVal 32 0)))
-      \<rightarrow> (var ''a''))"
-
-
-definition RedundantAdd :: "StrategyRule" where
-  "RedundantAdd = 
-    ((BinaryExpr BinAdd (var ''b'') (ConstantExpr (IntVal 32 0))) 
-      \<rightarrow> (var ''b''))"
-
-definition RedundantSub :: "StrategyRule" where
-  "RedundantSub = 
-    ((BinaryExpr BinSub (var ''a'') (ConstantExpr (IntVal 32 0)))
-      \<rightarrow> (var ''a''))"
-
-
-definition ShiftConstRight :: "StrategyRule" where
-  "ShiftConstRight = 
-    ((BinaryExpr BinAdd (var ''a'') (var ''b'')) \<rightarrow> (BinaryExpr BinAdd (var ''b'') (var ''a''))
-      where ((var ''a'')!; not (ConstantExpr (IntVal 32 0)?)))"
-
-definition EvalMinus :: "StrategyRule" where
-  "EvalMinus = 
-    ((UnaryExpr UnaryNeg (var ''a'')) \<rightarrow> ((var ''b''))
-      where (condition (IsConstantExpr (var ''a'')); (func (Negate (var ''a''))); (var ''b'')?))"
-
-definition EvalMinus1 :: "StrategyRule" where
-  "EvalMinus1 =
-    (UnaryExpr UnaryNeg (var ''a'')) \<rightarrow> var ''b''
-      where (condition (IsConstantExpr (var ''a'')); (var ''b'') := (func Negate (var ''a'')))"
-
-definition EvalAdd :: "StrategyRule" where
-  "EvalAdd =
-    (BinaryExpr BinAdd (var ''a'') (var ''b'')) \<rightarrow> ((var ''c''))
-      where (
-        condition (IsConstantExpr (var ''a''));
-        condition (IsConstantExpr (var ''b''));
-        (var ''c'') := func (Add (var ''a'') (var ''b''))
-      )"
-
-value "eval (RedundantAdd <+ RedundantSub)
-        ((BinaryExpr BinAdd (ConstantExpr (IntVal 32 10)) (ConstantExpr (IntVal 32 10))), fmempty)"
-
-\<comment> \<open>Successful application\<close>
-value "eval (RedundantAdd <+ RedundantSub)
-        ((BinaryExpr BinAdd (ConstantExpr (IntVal 32 10)) (ConstantExpr (IntVal 32 0))), fmempty)"
-
-\<comment> \<open>Successful application in the second rule\<close>
-value "eval (RedundantSub <+ RedundantAdd)
-        ((BinaryExpr BinAdd (ConstantExpr (IntVal 32 10)) (ConstantExpr (IntVal 32 0))), fmempty)"
-
-value "ShiftConstRight"
-value "eval ShiftConstRight 
-      ((BinaryExpr BinAdd (ConstantExpr (IntVal 32 10)) (ConstantExpr (IntVal 32 0))), fmempty)"
-value "eval ShiftConstRight
-      ((BinaryExpr BinAdd (ConstantExpr (IntVal 32 10))
-                          (BinaryExpr BinAdd (ConstantExpr (IntVal 32 10)) (ConstantExpr (IntVal 32 20)))), fmempty)"
-
-value "eval EvalMinus ((UnaryExpr UnaryNeg (ConstantExpr (IntVal 32 10))), fmempty)"
-value "eval EvalMinus ((UnaryExpr UnaryNeg (BinaryExpr BinAdd (ConstantExpr (IntVal 32 10)) (ConstantExpr (IntVal 32 10)))), fmempty)"
-
-value "eval EvalAdd ((UnaryExpr UnaryNeg (ConstantExpr (IntVal 32 10))), fmempty)"
-value "eval EvalAdd ((BinaryExpr BinAdd (ConstantExpr (IntVal 32 10)) (ConstantExpr (IntVal 32 10))), fmempty)"
-*)
 
 instantiation IRExpr :: full_exhaustive
 begin
@@ -576,12 +479,6 @@ lemma exhaust_IRExpr[code]:
 "full_exhaustive_IRExpr_inst.full_exhaustive_IRExpr f d = None"
   sorry
 
-value "RedundantAdd"
-value "(choice [the (compile' RedundantAdd), the (compile' RedundantSub)])"
-value "(optimized_export (choice [the (compile' RedundantAdd), the (compile' RedundantSub)]))"
-
-
-
 
 text \<open>@{text "x * const 1 \<longrightarrow> x"}\<close>
 definition Identity where
@@ -600,7 +497,7 @@ definition Evaluate where
     (BinaryExpr BinMul
       (ConstantVar STR ''x'')
       (ConstantVar STR ''y''))
-    (ExpressionResult (ConstantVar STR ''x''))"
+    (Result.Add (ConstantVar STR ''x'') (ConstantVar STR ''y''))"
 (* doesn't support constant evaluation *)
 value "Evaluate"
 value "(optimized_export (Evaluate))"
@@ -613,9 +510,9 @@ definition Shift where
       (ConstantVar STR ''y''))
     (ExpressionResult (BinaryExpr BinLeftShift (var ''x'') (ConstantVar STR ''y'')))
     (PowerOf2 (ConstantVar STR ''y''))"
-(* doesn't support constant evaluation *)
-value "Shift"
 
+value "Shift"
+value "(optimized_export (Shift))"
 
 text \<open>@{text "const x * y \<longrightarrow> y * const x when NotConst y"}\<close>
 definition LeftConst where
@@ -625,10 +522,8 @@ definition LeftConst where
       (var ''y''))
     (ExpressionResult (BinaryExpr BinMul (var ''y'') (ConstantVar STR ''x'')))
     (Not (IsConstantExpr (var ''y'')))"
-(* doesn't support constant evaluation *)
-value "LeftConst"
 
-(*no_notation "\<^syntax_const>\<open>_thenM\<close>" (infixl "\<then>" 54)*)
+value "LeftConst"
 
 value "optimized_export (optimized_export (LeftConst else (Evaluate else (Identity else Shift))))"
 

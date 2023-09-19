@@ -198,7 +198,7 @@ fun generate ctxt term =
   let
     val (lhs, rhs, cond) = rewrite_to_term_param ctxt term;
     val generate_term = 
-      (((Const ("TermRewrites.generate", @{typ "IRExpr \<Rightarrow> Result \<Rightarrow> SideCondition option \<Rightarrow> Rules"}))
+      (((Const ("CodeGen.generate", @{typ "IRExpr \<Rightarrow> Result \<Rightarrow> SideCondition option \<Rightarrow> Rules"}))
       $ lhs) $ rhs) $ cond
     val value = Code_Evaluation.dynamic_value_strict ctxt generate_term;
   in              
@@ -229,9 +229,12 @@ fun rewrite_cmd ((bind: binding, options), opt) ctxt =
     val name = Binding.name_of bind;
     val _ = (if valid_name name then () 
              else (warning "Optimization name should be UpperCase not snake_case or camelCase"));
+    
     val intval = case options of [[token]] => Token.content_of token = "intval" | _ => false;
-
     val subgoals = case options of [[token]] => Token.content_of token = "subgoals" | _ => false;
+    
+    val notactic = case options of [[token]] => Token.content_of token = "notactic" | _ => false;
+    
     val raw_term = (Syntax.parse_term ctxt opt);
 
     val rewrite = of_term bind raw_term raw_term;
@@ -294,7 +297,7 @@ fun rewrite_cmd ((bind: binding, options), opt) ctxt =
       ((Method.Source (Token.make_src ("unfold_optimization", Position.start) [])),
         Position.no_range) target);
 
-    val result = (case Seq.hd apply of
+    val result = if notactic then target else (case Seq.hd apply of
        Seq.Result r => r
        | Seq.Error _ => target);
 
@@ -302,7 +305,7 @@ fun rewrite_cmd ((bind: binding, options), opt) ctxt =
       ((Method.Source (Token.make_src ("unfold_size", Position.start) [])),
        Position.no_range) (Proof.defer 1 result));
 
-    val result = (case Seq.hd apply of
+    val result = if notactic then target else (case Seq.hd apply of
        Seq.Result r => r
        | Seq.Error _ => result);
   in

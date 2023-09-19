@@ -5,7 +5,6 @@ theory ProofStatus
     AndPhase
     ConditionalPhase
     MulPhase
-    (*NarrowPhase*)
     NegatePhase
     NewAnd
     NotPhase

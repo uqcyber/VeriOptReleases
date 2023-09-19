@@ -81,7 +81,7 @@ text \<open>Optimisations\<close>
 optimization XorSelfIsFalse: "(x \<oplus> x) \<longmapsto> false when 
                       (WellFormed x && IsStamp x default_stamp)"
   using size_non_const exp_xor_self_is_false apply simp
-  using StampEvalThms.wf_stamp_def TermRewrites.wf_stamp_def exp_xor_self_is_false by auto 
+  using StampEvalThms.wf_stamp_def exp_xor_self_is_false by auto 
 
 optimization XorShiftConstantRight: "(x \<oplus> y) \<longmapsto> y \<oplus> x 
   when IsConstantExpr x && Not (IsConstantExpr y)"

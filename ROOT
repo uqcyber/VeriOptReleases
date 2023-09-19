@@ -7,6 +7,11 @@ session Locale_Code in "Lib/Locale_Code" = "HOL-Library" +
   theories
     Locale_Code
 
+session Fresh in "Lib/Fresh" = "HOL-Library" +
+  theories
+    Fresh
+    Fresh_String
+
 chapter "veriopt"
 
 session CodeGen in CodeGen = Locale_Code +
@@ -25,7 +30,6 @@ session CodeGen in CodeGen = Locale_Code +
   document_files (in "../latex")
     "root.tex"
     "mathpartir.sty"
-
 
 session Graph in Graph = VeriComp +
   description
@@ -64,7 +68,6 @@ session Semantics in Semantics = Graph +
     IRStepThms
     IRTreeEval
     IRTreeEvalThms
-    TermRewrites
     TreeToGraph
     TreeToGraphThms
   document_files (in "../latex")
@@ -93,6 +96,8 @@ session OptimizationDSL in "Optimizations/DSL" = Proofs +
     Markup
     Phase
     Canonicalization
+    CodeGen
+    CodeGenImpl
   document_files (in "../../latex")
     "root.tex"
     "mathpartir.sty"

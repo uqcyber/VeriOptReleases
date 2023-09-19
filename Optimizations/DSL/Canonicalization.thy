@@ -4,8 +4,8 @@ theory Canonicalization
   imports
     Markup
     Phase
+    CodeGen
     "HOL-Eisbach.Eisbach"
-    Semantics.TermRewrites
   keywords
     "phase" :: thy_decl and 
     "terminating" :: quasi_command and

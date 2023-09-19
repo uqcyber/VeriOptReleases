@@ -1,6 +1,9 @@
-theory TermRewrites
-  imports Semantics.IRTreeEvalThms Semantics.TreeToGraphThms Snippets.Snipping
-    Fresh_String
+theory CodeGen
+  imports 
+    Semantics.IRTreeEvalThms
+    Semantics.TreeToGraphThms
+    Snippets.Snipping
+    Fresh.Fresh_String
 begin
 
 fun expr_at_node :: "IRGraph \<Rightarrow> ID \<Rightarrow> IRExpr"
@@ -242,8 +245,8 @@ fun eval_number :: "NumberCondition \<Rightarrow> int64" where
   "eval_number (UpMask e) = IRExpr_up e" |
   "eval_number (DownMask e) = IRExpr_down e"
 
-definition wf_stamp :: "IRExpr \<Rightarrow> bool" where
-  "wf_stamp e = (\<forall>m p v. ([m, p] \<turnstile> e \<mapsto> v) \<longrightarrow> valid_value v (stamp_expr e))"
+abbreviation wf_stamp :: "IRExpr \<Rightarrow> bool" where
+  "wf_stamp e \<equiv> (\<forall>m p v. ([m, p] \<turnstile> e \<mapsto> v) \<longrightarrow> valid_value v (stamp_expr e))"
 fun eval_condition :: "SideCondition \<Rightarrow> bool" where
   "eval_condition (IsConstantExpr e) = is_ConstantExpr e" |
   "eval_condition (IsIntegerStamp e) = is_IntegerStamp (stamp_expr e)" |
@@ -2499,7 +2502,8 @@ value "LeftConst"
 value "(optimized_export (optimized_export (LeftConst \<then> (optimized_export (Evaluate else (Identity else Shift))))))"
 value "export_rules (optimized_export (optimized_export (LeftConst \<then> (optimized_export (Evaluate else (Identity else Shift))))))"
 
-
+no_notation equality (infixl "==" 52)
+no_notation andthen (infixr"&&" 50)
 
 section "Sound Lowering"
 
@@ -2510,7 +2514,7 @@ lemma fresh:
   by (metis finite_fset fmember.rep_eq)
 
 lemma fresh_add:
-  assumes "(s', v') = TermRewrites.fresh v s"
+  assumes "(s', v') = fresh v s"
   shows "v' |\<in>| fst s'"
   using assms unfolding fresh.simps
   by (metis Pair_inject add_var.simps finsertCI funion_iff prod.collapse)

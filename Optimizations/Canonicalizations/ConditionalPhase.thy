@@ -61,13 +61,13 @@ optimization ConditionalEqualBranches: "(e ? x : x) \<longmapsto> x" .
 optimization ConditionBoundsX: "((u < v) ? x : y) \<longmapsto> x 
     when (StampUnder u v && WellFormed u && WellFormed v)"
   using stamp_under_defn
-  by (smt (verit, ccfv_SIG) BinaryExprE ConditionalExprE StampEvalThms.wf_stamp_def TermRewrites.wf_stamp_def le_expr_def)
+  by (smt (verit, ccfv_SIG) BinaryExprE ConditionalExprE StampEvalThms.wf_stamp_def le_expr_def)
 (* by fastforce *)
 
 optimization ConditionBoundsY: "((u < v) ? x : y) \<longmapsto> y 
     when (StampUnder v u && WellFormed u && WellFormed v)"
   using stamp_under_defn_inverse
-  by (smt (verit, ccfv_threshold) BinaryExprE ConditionalExprE StampEvalThms.wf_stamp_def TermRewrites.wf_stamp_def le_expr_def)
+  by (smt (verit, ccfv_threshold) BinaryExprE ConditionalExprE StampEvalThms.wf_stamp_def le_expr_def)
   (* by fastforce *)
 
 (** Start of new proofs **)
@@ -86,7 +86,7 @@ optimization ConditionalEliminateKnownLess: "((x < y) ? x : y) \<longmapsto> x
                                  when (StampUnder x y &&
                                        WellFormed x && WellFormed y)"
   using stamp_under_defn
-  by (smt (verit, best) BinaryExprE ConditionalExprE StampEvalThms.wf_stamp_def TermRewrites.wf_stamp_def le_expr_def)
+  by (smt (verit, best) BinaryExprE ConditionalExprE StampEvalThms.wf_stamp_def le_expr_def)
   (* by fastforce *)
 
 
@@ -121,18 +121,19 @@ lemma preserveBoolean:
   using assms isBoolean_def apply auto[1]
   by (metis (no_types, lifting) IntVal0 IntVal1 intval_logic_negation.simps(1) logic_negate_def)
 
-optimization ConditionalIntegerEquals1: "exp[BinaryExpr BinIntegerEquals (c ? x : y) (x)] \<longmapsto> c
+optimization ConditionalIntegerEquals1[notactic]: "exp[BinaryExpr BinIntegerEquals (c ? x : y) (x)] \<longmapsto> c
                                           when IsIntegerStamp x && WellFormed x &&
                                                IsIntegerStamp y && WellFormed y &&
                                                AlwaysDistinct x y &&
                                                IsBoolStamp c && WellFormed c"
+  defer apply simp
   apply (metis Canonicalization.cond_size add_lessD1 size_binary_lhs) apply auto[1]
   subgoal premises p for m p cExpr xv cond
   proof -
     obtain cond where cond: "[m,p] \<turnstile> c \<mapsto> cond"
       using p by blast
     then have cRange: "cond = IntVal 32 0 \<or> cond = IntVal 32 1"
-      using p(6,7) unfolding TermRewrites.wf_stamp_def sorry
+      using p(6,7) sorry
     then obtain yv where yVal: "[m,p] \<turnstile> y \<mapsto> yv"
       using p by auto
     obtain xvv b where xvv: "xv = IntVal b xvv"
@@ -140,7 +141,7 @@ optimization ConditionalIntegerEquals1: "exp[BinaryExpr BinIntegerEquals (c ? x 
     obtain yvv where yvv: "yv = IntVal b yvv"
       using xvv yVal sorry
     have yxDiff: "xvv \<noteq> yvv"
-      using xvv yvv yVal p(8) TermRewrites.wf_stamp_def p sorry
+      using xvv yvv yVal p(8)  p sorry
     have eqEvalFalse: "intval_equals yv xv = (IntVal 32 0)"
       unfolding xvv yvv apply auto[1] by (metis (mono_tags) bool_to_val.simps(2) yxDiff)
     then have valEvalSame: "cond = intval_equals val[cond ? xv : yv] xv"
@@ -190,11 +191,12 @@ proof -
     using notEval by auto
 qed
 
-optimization ConditionalIntegerEquals2: "exp[BinaryExpr BinIntegerEquals (c ? x : y) (y)] \<longmapsto> (!c)
+optimization ConditionalIntegerEquals2[notactic]: "exp[BinaryExpr BinIntegerEquals (c ? x : y) (y)] \<longmapsto> (!c)
                                           when IsIntegerStamp x && WellFormed x &&
                                                IsIntegerStamp y && WellFormed y &&
                                                AlwaysDistinct x y &&
                                                IsBoolStamp c"
+  defer apply simp
   apply (smt (verit) not_add_less1 max_less_iff_conj max.absorb3 linorder_less_linear add_2_eq_Suc'
          add_less_cancel_right size_binary_lhs add_lessD1 Canonicalization.cond_size)
   apply auto[1]
@@ -251,16 +253,16 @@ optimization ConditionalIntegerEquals2: "exp[BinaryExpr BinIntegerEquals (c ? x 
   done
 
 lemma IsBoolStamp_def:
-  assumes "stamp_expr e = (IntegerStamp 32 0 1) \<and> TermRewrites.wf_stamp e"
+  assumes "stamp_expr e = (IntegerStamp 32 0 1) \<and> CodeGen.wf_stamp e"
   assumes "[m, p] \<turnstile> e \<mapsto> v"
   shows "v = IntVal 32 0 \<or> v = IntVal 32 1"
 proof -
   obtain b v' where vdef: "v = IntVal b v'"
-    by (metis TermRewrites.wf_stamp_def assms(1) assms(2) valid_int)
+    by (metis assms(1) assms(2) valid_int)
   have b: "b = 32"
-    by (metis TermRewrites.wf_stamp_def assms(1) assms(2) valid_int_same_bits vdef)
+    by (metis assms(1) assms(2) valid_int_same_bits vdef)
   then have "0 \<le> int_signed_value b v' \<and> int_signed_value b v' \<le> 1"
-    by (metis TermRewrites.wf_stamp_def assms(1) assms(2) valid_int_signed_range vdef)
+    by (metis assms(1) assms(2) valid_int_signed_range vdef)
   then have "0 \<le> v' \<and> v' \<le> 1"
     unfolding int_signed_value.simps sorry
   then show ?thesis
@@ -283,7 +285,7 @@ optimization ConditionalExtractCondition2: "exp[(c ? false : true)] \<longmapsto
       sorry
     then have cRange: "cond = IntVal 32 0 \<or> cond = IntVal 32 1"
       using isBoolean_def cond p(1)
-      using IsBoolStamp_def p(2) by presburger
+      using IsBoolStamp_def p(2) by metis
     then have cExprRange: "cExpr = IntVal 32 0 \<or> cExpr = IntVal 32 1"
       by (metis (full_types) ConstantExprE p(5))
     then have condTrue: "cond = IntVal 32 1 \<Longrightarrow> cExpr = IntVal 32 0"
@@ -347,7 +349,7 @@ optimization NormalizeX: "((x eq const (IntVal 32 0)) ?
                         else ConstantExpr (IntVal 32 1) \<mapsto> v"
          using evalDet p(3,4,5,6,7) xa by blast
        then have xaRange: "xa = IntVal 32 0 \<or> xa = IntVal 32 1"
-         using isBoolean_def p(2,3) xa unfolding TermRewrites.wf_stamp_def sorry
+         using isBoolean_def p(2,3) xa sorry
       then have 6: "v = xa"
         using eval xaRange by auto
       then show ?thesis

@@ -3,7 +3,7 @@ section \<open>Optization DSL\<close> (* first theory in list, not related to fi
 subsection \<open>Markup\<close>
 
 theory Markup
-  imports Semantics.TermRewrites Snippets.Snipping
+  imports CodeGen Snippets.Snipping
 begin
 
 datatype ('a, 'b) Rewrite =

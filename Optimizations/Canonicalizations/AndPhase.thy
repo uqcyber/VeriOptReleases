@@ -230,21 +230,18 @@ optimization AndNots: "(~x) & (~y) \<longmapsto> ~(x | y)"
   using exp_and_nots by blast
 
 (* Need to prove exp_sign_extend*)
+(*
 optimization AndSignExtend: "BinaryExpr BinAnd (UnaryExpr (UnarySignExtend In Out) (x)) 
                                                (const (new_int b e))
                               \<longmapsto> (UnaryExpr (UnaryZeroExtend In Out) (x))
                                   when (e = (1 << In) - 1)"
    using exp_sign_extend by simp 
-
-lemma wf_stamp_eq:
-  "TermRewrites.wf_stamp = wf_stamp"
-  using StampEvalThms.wf_stamp_def TermRewrites.wf_stamp_def by presburger
+*)
 
 optimization AndNeutral: "(x & ~y) \<longmapsto> x 
    when (WellFormed x && IsIntegerStamp x && IsConstantValue y x 0)"
   using exp_and_neutral
-  by (metis Stamp.collapse(1) wf_stamp_eq)
-
+  by (metis Stamp.collapse(1) StampEvalThms.wf_stamp_def)
 
 optimization AndRightFallThrough: "(x & y) \<longmapsto> y
   when (Equals (NumberCondition.BitAnd (NumberCondition.BitNot (DownMask x)) (UpMask y)) (Constant 0))"
