@@ -4,6 +4,7 @@ theory CodeGen
     Semantics.TreeToGraphThms
     Snippets.Snipping
     Fresh.Fresh_String
+    "HOL-Library.Monad_Syntax"
 begin
 
 fun expr_at_node :: "IRGraph \<Rightarrow> ID \<Rightarrow> IRExpr"
@@ -216,7 +217,7 @@ datatype NumberCondition =
   BitAnd NumberCondition NumberCondition |
   UpMask IRExpr |
   DownMask IRExpr |
-  Constant int64
+  Const int64
 
 datatype SideCondition =
   IsConstantExpr IRExpr |
@@ -239,7 +240,7 @@ datatype SideCondition =
   Equals NumberCondition NumberCondition
 
 fun eval_number :: "NumberCondition \<Rightarrow> int64" where
-  "eval_number (Constant n) = n" |
+  "eval_number (Const n) = n" |
   "eval_number (BitNot n) = not (eval_number n)" |
   "eval_number (BitAnd n1 n2) = and (eval_number n1) (eval_number n2)" |
   "eval_number (UpMask e) = IRExpr_up e" |
@@ -274,12 +275,27 @@ fun eval_condition :: "SideCondition \<Rightarrow> bool" where
 subsection \<open>Results\<close>
 
 datatype Result =
-  ExpressionResult IRExpr |
+  Construct IRExpr |
+  Constant IRExpr |
   forZero IRExpr |
   log2 IRExpr
 
+fun eval_const_expr :: "IRExpr \<Rightarrow> Value option" where
+  "eval_const_expr (ConstantExpr c) = Some c" |
+  "eval_const_expr (BinaryExpr op x y) = do {
+    x' <- eval_const_expr x;
+    y' <- eval_const_expr y;
+    Some (bin_eval op x' y')
+  }" |
+  "eval_const_expr (UnaryExpr op x) = do {
+    x' <- eval_const_expr x;
+    Some (unary_eval op x')
+  }" |
+  "eval_const_expr _ = None"
+
 fun result_of :: "Result \<Rightarrow> IRExpr" where
-  "result_of (ExpressionResult e) = e" |
+  "result_of (Construct e) = e" |
+  "result_of (Constant e) = ConstantExpr (the (eval_const_expr e))" |
   "result_of (forZero e) = ConstantExpr (IntVal (stp_bits (stamp_expr e)) 0)"
 
 subsection \<open>Match Primitives\<close>
@@ -460,12 +476,13 @@ fun ground_expr :: "IRExpr \<Rightarrow> Scope \<Rightarrow> IRExpr" where
   "ground_expr e s = e"
 
 fun ground_result :: "Result \<Rightarrow> Scope \<Rightarrow> Result" where
-  "ground_result (ExpressionResult e) s = ExpressionResult (ground_expr e s)" |
+  "ground_result (Construct e) s = Construct (ground_expr e s)" |
+  "ground_result (Constant e) s = Constant (ground_expr e s)" |
   "ground_result (forZero e) s = forZero (ground_expr e s)"
 snipend -
 
 fun ground_number :: "NumberCondition \<Rightarrow> Scope \<Rightarrow> NumberCondition" where
-  "ground_number (Constant n) s = (Constant n)" |
+  "ground_number (Const n) s = (Const n)" |
   "ground_number (BitNot n) s = (BitNot (ground_number n s))" |
   "ground_number (BitAnd n1 n2) s = (BitAnd (ground_number n1 s) (ground_number n2 s))" |
   "ground_number (UpMask e) s = (UpMask (ground_expr e s))" |
@@ -541,7 +558,10 @@ fun eval_expr :: "IRExpr \<Rightarrow> Subst \<Rightarrow> IRExpr option" where
   "eval_expr e u = Some e"
 
 fun eval_result :: "Result \<Rightarrow> Subst \<Rightarrow> IRExpr option" where
-  "eval_result (ExpressionResult e) s = (eval_expr e s)" |
+  "eval_result (Construct e) s = (eval_expr e s)" |
+  "eval_result (Constant e) s = (case eval_const_expr e of
+    None \<Rightarrow> None |
+    Some r \<Rightarrow> Some (ConstantExpr r))" |
   "eval_result (forZero e) s = (case eval_expr e s of
     None \<Rightarrow> None |
     Some r \<Rightarrow> Some (ConstantExpr (IntVal (stp_bits (stamp_expr r)) 0)))"
@@ -2107,8 +2127,14 @@ fun construct_node :: "IRExpr \<Rightarrow> Expression" where
     new ''ConstantNode''([Ref var])" |
   "construct_node (VariableExpr v s) = Ref v"
 
+fun evaluate_expression :: "IRExpr \<Rightarrow> Expression" where
+  "evaluate_expression (UnaryExpr UnaryAbs e) = (Ref STR ''Math'').''abs''([evaluate_expression e])" |
+  "evaluate_expression (BinaryExpr BinAnd e1 e2) = BitAnd (evaluate_expression e1) (evaluate_expression e2)" |
+  "evaluate_expression (ConstantExpr c) = construct_node (ConstantExpr c)"
+
 fun generate_result :: "Result \<Rightarrow> Expression" where
-  "generate_result (ExpressionResult e) = construct_node e" |
+  "generate_result (Construct e) = construct_node e" |
+  "generate_result (Constant e) = construct_node e" |
   "generate_result (forZero e) = new ''ConstantNode''([IntegerConstant 0])"
 
 fun export_stamp :: "Stamp \<Rightarrow> Expression" where
@@ -2129,7 +2155,7 @@ definition downMask :: "Expression \<Rightarrow> Expression" where
   "downMask e = ((stampOf e).''mustBeSet''([]))"
 
 fun generate_number :: "NumberCondition \<Rightarrow> Expression" where
-  "generate_number (Constant v) = IntegerConstant (sint v)" |
+  "generate_number (Const v) = IntegerConstant (sint v)" |
   "generate_number (NumberCondition.BitNot v) = BitNot (generate_number v)" |
   "generate_number (NumberCondition.BitAnd v1 v2) = BitAnd (generate_number v1) (generate_number v2)" |
   "generate_number (UpMask e) = upMask (construct_node e)" |
@@ -2233,7 +2259,7 @@ text \<open>@{text "\<not>(\<not>x) \<longrightarrow> x"}\<close>
 definition NestedNot where
   "NestedNot = generate
     (UnaryExpr UnaryNot (UnaryExpr UnaryNot (var ''x'')))
-    (ExpressionResult (var ''x''))
+    (Construct (var ''x''))
     (None)"
 
 text \<open>@{text "(x - y) + y \<longrightarrow> x"}\<close>
@@ -2242,7 +2268,7 @@ definition RedundantSub where
     (BinaryExpr BinAdd
       (BinaryExpr BinSub (var ''x'') (var ''y''))
       (var ''y''))
-    (ExpressionResult (var ''x''))
+    (Construct (var ''x''))
     (None)"
 
 text \<open>@{text "x + -e \<longmapsto> x - e"}\<close>
@@ -2251,14 +2277,14 @@ definition AddLeftNegateToSub where
     (BinaryExpr BinAdd
       (var ''x'')
       (UnaryExpr UnaryNeg (var ''e'')))
-    (ExpressionResult (BinaryExpr BinSub (var ''x'') (var ''e'')))
+    (Construct (BinaryExpr BinSub (var ''x'') (var ''e'')))
     (None)"
 
 corollary
   "NestedNot =
    (MATCH.match STR ''e'' (UnaryPattern UnaryNot STR ''a'') &&
     (MATCH.match STR ''a'' (UnaryPattern UnaryNot STR ''b'') && noop)) ?
-      base (ExpressionResult (VariableExpr STR ''b'' VoidStamp))"
+      base (Construct (VariableExpr STR ''b'' VoidStamp))"
   by eval
 
 value "
@@ -2266,7 +2292,7 @@ generate
     (BinaryExpr BinAdd
       (var ''x'')
       (var ''x''))
-    (ExpressionResult (BinaryExpr BinSub (var ''x'') (var ''e'')))
+    (Construct (BinaryExpr BinSub (var ''x'') (var ''e'')))
     (None)
 "
 
@@ -2275,14 +2301,14 @@ corollary
    (MATCH.match STR ''e'' (BinaryPattern BinAdd STR ''a'' STR ''b'') &&
     (MATCH.match STR ''a'' (BinaryPattern BinSub STR ''c'' STR ''d'') && noop && noop) &&
       STR ''d'' == STR ''b'') ?
-        base (ExpressionResult (VariableExpr STR ''c'' VoidStamp))"
+        base (Construct (VariableExpr STR ''c'' VoidStamp))"
   by eval
 
 corollary
   "AddLeftNegateToSub =
    (MATCH.match STR ''e'' (BinaryPattern BinAdd STR ''a'' STR ''b'') && noop &&
     (MATCH.match STR ''b'' (UnaryPattern UnaryNeg STR ''c'') && noop)) ?
-      base (ExpressionResult (BinaryExpr BinSub 
+      base (Construct (BinaryExpr BinSub 
             (VariableExpr STR ''a'' VoidStamp)
             (VariableExpr STR ''c'' VoidStamp)))"
   by eval
@@ -2379,13 +2405,13 @@ corollary
    (MATCH.match STR ''a'' (BinaryPattern BinSub STR ''c'' STR ''d'') ?
     (noop ?
      (noop ?
-      (STR ''d'' == STR ''b'' ? base (ExpressionResult (VariableExpr STR ''c'' VoidStamp)))))) else
+      (STR ''d'' == STR ''b'' ? base (Construct (VariableExpr STR ''c'' VoidStamp)))))) else
    MATCH.match STR ''e'' (BinaryPattern BinAdd STR ''a'' STR ''b'') ?
    (noop ?
     (MATCH.match STR ''b'' (UnaryPattern UnaryNeg STR ''c'') ?
      (noop ?
       (base
-        (ExpressionResult (BinaryExpr BinSub (VariableExpr STR ''a'' VoidStamp)
+        (Construct (BinaryExpr BinSub (VariableExpr STR ''a'' VoidStamp)
           (VariableExpr STR ''c'' VoidStamp))))))))"
   by eval
 
@@ -2394,12 +2420,12 @@ corollary
    (MATCH.match STR ''e'' (BinaryPattern BinAdd STR ''a'' STR ''b'') ?
    (MATCH.match STR ''a'' (BinaryPattern BinSub STR ''c'' STR ''d'') ?
     (noop ?
-     (STR ''d'' == STR ''b'' ? (base (ExpressionResult (VariableExpr STR ''c'' VoidStamp))))) else
+     (STR ''d'' == STR ''b'' ? (base (Construct (VariableExpr STR ''c'' VoidStamp))))) else
     noop ?
     (MATCH.match STR ''b'' (UnaryPattern UnaryNeg STR ''c'') ?
      (noop ?
       (base
-        (ExpressionResult (BinaryExpr BinSub (VariableExpr STR ''a'' VoidStamp)
+        (Construct (BinaryExpr BinSub (VariableExpr STR ''a'' VoidStamp)
           (VariableExpr STR ''c'' VoidStamp))))))))"
   by eval
 
@@ -2410,10 +2436,10 @@ corollary
  (match STR ''a'' (BinaryPattern BinSub STR ''c'' STR ''d'') ?
   (noop ?
    (STR ''d'' == STR ''b'' ?
-    base (ExpressionResult (VariableExpr STR ''c'' VoidStamp)))) else
+    base (Construct (VariableExpr STR ''c'' VoidStamp)))) else
   match STR ''b'' (UnaryPattern UnaryNeg STR ''c'') ?
   base
-   (ExpressionResult
+   (Construct
      (BinaryExpr BinSub (VariableExpr STR ''a'' VoidStamp)
        (VariableExpr STR ''c'' VoidStamp))))"
   by eval
@@ -2457,7 +2483,7 @@ definition Identity where
     (BinaryExpr BinMul
       (var ''x'')
       (ConstantExpr (IntVal 32 1)))
-    (ExpressionResult (var ''x''))
+    (Construct (var ''x''))
     (None)"
 
 value "Identity"
@@ -2469,7 +2495,7 @@ definition Evaluate where
     (BinaryExpr BinMul
       (ConstantVar STR ''x'')
       (ConstantVar STR ''y''))
-    (ExpressionResult (ConstantVar STR ''x''))
+    (Construct (ConstantVar STR ''x''))
     (None)"
 (* doesn't support constant evaluation *)
 value "Evaluate"
@@ -2481,7 +2507,7 @@ definition Shift where
     (BinaryExpr BinMul
       (var ''x'')
       (ConstantVar STR ''y''))
-    (ExpressionResult (BinaryExpr BinLeftShift (var ''x'') (ConstantVar STR ''y'')))
+    (Construct (BinaryExpr BinLeftShift (var ''x'') (ConstantVar STR ''y'')))
     (Some (PowerOf2 (ConstantVar STR ''y'')))"
 (* doesn't support constant evaluation *)
 value "Shift"
@@ -2493,7 +2519,7 @@ definition LeftConst where
     (BinaryExpr BinMul
       (ConstantVar STR ''x'')
       (var ''y''))
-    (ExpressionResult (BinaryExpr BinMul (var ''y'') (ConstantVar STR ''x'')))
+    (Construct (BinaryExpr BinMul (var ''y'') (ConstantVar STR ''x'')))
     (Some (Not (IsConstantExpr (var ''y''))))"
 (* doesn't support constant evaluation *)
 value "LeftConst"

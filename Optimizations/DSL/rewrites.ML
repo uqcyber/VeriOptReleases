@@ -40,7 +40,7 @@ fun result rhs ctxt =
   in
   case type_of (Syntax.check_term (Context.proof_of (Context_Position.set_visible_generic false (Context.Proof ctxt))) rhs) of
     @{typ Result} => rhs |
-    _ => @{term "ExpressionResult"} $rhs
+    _ => @{term "Construct"} $rhs
   end
 
 fun to_term rewrite ctxt = 

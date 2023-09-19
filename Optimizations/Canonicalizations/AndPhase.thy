@@ -244,11 +244,11 @@ optimization AndNeutral: "(x & ~y) \<longmapsto> x
   by (metis Stamp.collapse(1) StampEvalThms.wf_stamp_def)
 
 optimization AndRightFallThrough: "(x & y) \<longmapsto> y
-  when (Equals (NumberCondition.BitAnd (NumberCondition.BitNot (DownMask x)) (UpMask y)) (Constant 0))"
+  when (Equals (NumberCondition.BitAnd (NumberCondition.BitNot (DownMask x)) (UpMask y)) (Const 0))"
   by (simp add: IRExpr_down_def IRExpr_up_def)
 
 optimization AndLeftFallThrough: "(x & y) \<longmapsto> x
-   when (Equals (NumberCondition.BitAnd (NumberCondition.BitNot (DownMask y)) (UpMask x)) (Constant 0))"
+   when (Equals (NumberCondition.BitAnd (NumberCondition.BitNot (DownMask y)) (UpMask x)) (Const 0))"
   by (simp add: IRExpr_down_def IRExpr_up_def)
 
 value "export_rules AndRightFallThrough_code"
