@@ -31,8 +31,7 @@ session Graph in Graph = VeriComp +
   description
     "GraalVM Intermediate Representation encoding"
   options [document = pdf, document_output = "output",
-           show_question_marks = false,
-           quick_and_dirty] (* Temporary sorry in Class for termination proof *)
+           show_question_marks = false]
   theories
     JavaWords
     JavaLong
@@ -54,8 +53,7 @@ session Semantics in Semantics = Graph +
   description
     "Semantics of the GraalVM IR"
   options [document = pdf, document_output = "output",
-           show_question_marks = false,
-           quick_and_dirty] (* IRStepObj imports Class, which is temporarily sorry'd *)
+           show_question_marks = false]
   sessions
     "HOL-Eisbach"
     Snippets
