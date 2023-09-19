@@ -123,6 +123,10 @@ fun is_ground_transformer :: "Transformer \<Rightarrow> bool" where
   "is_ground_transformer (Plus e1 e2) = (is_Variable e1 \<or> is_Variable e2)" |
   "is_ground_transformer (Result e) = is_Variable e"
 
+context CompiledRewrites begin
+termination match_pattern sorry
+end
+
 setup \<open>Locale_Code.open_block\<close>
 interpretation Arithmetic: CompiledRewrites
   size_Arithmetic
@@ -316,12 +320,16 @@ text \<open>@{value "eval EvalAdd ((Add (Number 10) (Number 10)), fmempty)"}\<cl
 subsubsection \<open>Example: Match Pattern\<close>
 
 
+
 definition "join = Arithmetic.join"
 definition "generate = Arithmetic.generate"
 definition "match_pattern = Arithmetic.match_pattern"
 definition "optimized_export = Arithmetic.optimized_export"
 
 export_code "optimized_export" checking SML
+
+
+export_code "match_pattern" checking SML
 
 value "match_pattern
 (Sub (Add (Variable ''x'') (Variable ''y'')) (Variable ''y''))

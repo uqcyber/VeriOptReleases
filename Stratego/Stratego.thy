@@ -47,7 +47,6 @@ locale Rewritable =
   fixes ground_condition :: "'b \<Rightarrow> (string \<rightharpoonup> 'a) \<Rightarrow> 'b option"
 
   fixes transform :: "'c \<Rightarrow> 'a \<Rightarrow> 'a option"*)
-
   assumes "a' \<subseteq>\<^sub>m a \<Longrightarrow> is_ground_condition (ground_condition c a') \<Longrightarrow> ground_condition c a' = ground_condition c a"
   assumes shrinks: "\<forall>e' \<in> set (subexprs e). size e > size e'"
   assumes "map f (subexprs e) = subexprs (snd (chain (\<lambda>e a. (plus a 1, f e)) e 0))"

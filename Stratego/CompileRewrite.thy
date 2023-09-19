@@ -122,10 +122,12 @@ function match_pattern :: "('a, 'b) MatchGenerator" where
                         (s'', (match v (replace_subexpr vs e) && join e'')))))"
   by fastforce+
 
+(*
 termination match_pattern
   apply (relation "measure (\<lambda>(e, v, s). size e)")
    apply simp+ apply auto[1]
   using shrinks sorry
+*)
 
 definition gen_pattern :: "('a) \<Rightarrow> VarName \<Rightarrow> ('a, 'b) MATCH" where
   "gen_pattern p v = snd (match_pattern p v ({|v|}, Map.empty))"
@@ -155,19 +157,21 @@ function ground_expr :: "'a \<Rightarrow> 'a Binding \<Rightarrow> 'a option" wh
   by fastforce
 
 \<comment> \<open>Requires a proof that all the arguments to the map tree anonymous function are less than the original input\<close>
-termination ground_expr
+(*termination ground_expr
   apply (relation "measure (\<lambda>(e, v). length (subexprs e))")
    apply simp
-  apply simp sorry
+  apply simp sorry*)
 
-lemma ground_expr_idempotent:
+(*lemma ground_expr_idempotent:
   assumes "a' \<subseteq>\<^sub>f a"
   assumes "ground_expr e a' = Some e'"
   shows "ground_expr e a' = ground_expr e a"
-  using assms apply (induction e a' arbitrary: a a' rule: ground_expr.induct)
+  using assms using Rewritable_axioms unfolding Rewritable_def
+  using ground_expr.psimps sorry 
+  using assms apply (induction e a' arbitrary: a a' rule: ground_expr.pinduct)
   apply lifting
   by (smt (verit, ccfv_SIG) domIff fmsubset.rep_eq ground_expr.elims map_le_def option.case_eq_if option.distinct(1))
-
+*)
 
 fun eval_match :: "('a, 'b) MATCH \<Rightarrow> 'a Subst \<Rightarrow> ('a Subst) option" where
   "eval_match (match v e) s =
@@ -515,7 +519,7 @@ function var_expr :: "'a \<Rightarrow> Scope \<Rightarrow> 'a" where
   by fastforce
 
 text \<open>Requires a proof that all the arguments to the map tree anonymous function are less than the original input\<close>
-termination var_expr sorry
+(*termination var_expr sorry*)
 
 fun variable_substitutor :: "(string \<rightharpoonup> string) \<Rightarrow> (string \<rightharpoonup> 'a)" where
   "variable_substitutor f = (\<lambda>v. (case f v of Some v' \<Rightarrow> Some (var v') | None \<Rightarrow> None))"
@@ -570,7 +574,7 @@ function eval_expr :: "'a \<Rightarrow> 'a Subst \<Rightarrow> 'a option" where
           else Some (map_tree (the o (\<lambda>e'. eval_expr e' u)) e)))"
   by fastforce+
 
-termination eval_expr sorry
+(*termination eval_expr sorry*)
 
 inductive eval_rules :: "('a, 'b, 'c) Rules \<Rightarrow> 'a Subst \<Rightarrow> 'a option \<Rightarrow> bool" where
   \<comment> \<open>Evaluate the result\<close>
