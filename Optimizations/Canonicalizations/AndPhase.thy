@@ -247,12 +247,15 @@ optimization AndNeutral: "(x & ~y) \<longmapsto> x
 
 
 optimization AndRightFallThrough: "(x & y) \<longmapsto> y
-                                when (((and (not (IRExpr_down x)) (IRExpr_up y)) = 0))"
+  when (Equals (NumberCondition.BitAnd (NumberCondition.BitNot (DownMask x)) (UpMask y)) (Constant 0))"
   by (simp add: IRExpr_down_def IRExpr_up_def)
 
 optimization AndLeftFallThrough: "(x & y) \<longmapsto> x
-                                when (((and (not (IRExpr_down y)) (IRExpr_up x)) = 0))"
-   by (simp add: IRExpr_down_def IRExpr_up_def) 
+   when (Equals (NumberCondition.BitAnd (NumberCondition.BitNot (DownMask y)) (UpMask x)) (Constant 0))"
+  by (simp add: IRExpr_down_def IRExpr_up_def)
+
+value "export_rules AndRightFallThrough_code"
+value "export_rules AndLeftFallThrough_code"
 
 end (* End of AndPhase *)
 

@@ -114,7 +114,7 @@ gencode "PaperStategy" "(optimized_export
 gencode "PaperNoOpt" "(
   (choice [Identity, Evaluate, Shift, LeftConst]))"
 
-gencode "AllOpts" "(optimized_export
+gencode "AllOpts" "(
   (choice [
   EliminateRedundantFalse_code,
   DistributeSub_code,
@@ -160,7 +160,9 @@ gencode "AllOpts" "(optimized_export
   AddNeutral_code,
   AddShiftConstantRight_code,
   AbsNegate_code,
-  AbsIdempotence_code
+  AbsIdempotence_code,
+  AndRightFallThrough_code,
+  AndLeftFallThrough_code
   ]))"
 
 declare [[show_types=false]]
