@@ -1,9 +1,8 @@
 section \<open>Match Patterns\<close>
 
-theory CompileRewrite
+theory MatchPattern
   imports
-    Stratego
-    (*VeriComp.Compiler*)
+    Rewritable
 begin
 
 setup_lifting type_definition_fmap
@@ -61,12 +60,8 @@ datatype ('e, 'cond, 'r) Rules =
   seq "('e, 'cond, 'r) Rules" "('e, 'cond, 'r) Rules" (infixl "\<then>" 49) |
   choice "(('e, 'cond, 'r) Rules) list"
 
-locale CompiledRewrites = Rewritable
+context Rewritable
 begin
-
-notation plus (infixl "+" 65)
-notation less ("(_/ < _)"  [51, 51] 50)
-
 fun map_tree :: "('a \<Rightarrow> 'a) \<Rightarrow> 'a \<Rightarrow> 'a" where
   "map_tree f xs = snd (chain (\<lambda>e a. (plus a 1, f e)) xs (0::nat))"
 
@@ -89,6 +84,12 @@ fun replace_subexprs :: "Scope \<Rightarrow> ('a) \<Rightarrow> (Scope \<times> 
   "replace_subexprs s e =
     (let (n, e') = chain (\<lambda>e n. (plus n 1, var (snd (nth_fresh ''a'' s n)))) e 0
       in (fst (nth_fresh ''a'' s n), e'))"
+
+fun chain_list :: "'x \<Rightarrow> ('y \<Rightarrow> 'x \<Rightarrow> ('x \<times> 'z)) \<Rightarrow> 'y list \<Rightarrow> ('x \<times> 'z list)" where
+  "chain_list a f [] = (a, [])" |
+  "chain_list a f (x # xs) =
+    (let (a', x') = f x a in
+    (let (a'', xs') = (chain_list a' f xs) in (a'', x' # xs')))"
 
 fun expression_vars :: "Scope \<Rightarrow> ('a) \<Rightarrow> (Scope \<times> string list)" where
   "expression_vars s e = 
@@ -122,12 +123,8 @@ function match_pattern :: "('a, 'b) MatchGenerator" where
                         (s'', (match v (replace_subexpr vs e) && join e'')))))"
   by fastforce+
 
-(*
-termination match_pattern
-  apply (relation "measure (\<lambda>(e, v, s). size e)")
-   apply simp+ apply auto[1]
-  using shrinks sorry
-*)
+\<comment> \<open>Termination requires a proof that all the arguments to the map tree anonymous function are less than the original input\<close>
+
 
 definition gen_pattern :: "('a) \<Rightarrow> VarName \<Rightarrow> ('a, 'b) MATCH" where
   "gen_pattern p v = snd (match_pattern p v ({|v|}, Map.empty))"
@@ -147,31 +144,7 @@ fun unify :: "string list \<Rightarrow> 'a list \<Rightarrow> 'a Subst \<Rightar
            else unify vs es (s(v \<mapsto> e))))" |
   "unify _ _ s = None"
 
-function ground_expr :: "'a \<Rightarrow> 'a Binding \<Rightarrow> 'a option" where
-  "ground_expr e s =
-    (case varof e of
-      Some v \<Rightarrow>(case fmlookup s v of None \<Rightarrow> None
-                | Some v' \<Rightarrow> Some v') |
-      None \<Rightarrow> maybe_map_tree (\<lambda>e'. ground_expr e' s) e)"
-  apply auto[1]
-  by fastforce
 
-\<comment> \<open>Requires a proof that all the arguments to the map tree anonymous function are less than the original input\<close>
-(*termination ground_expr
-  apply (relation "measure (\<lambda>(e, v). length (subexprs e))")
-   apply simp
-  apply simp sorry*)
-
-(*lemma ground_expr_idempotent:
-  assumes "a' \<subseteq>\<^sub>f a"
-  assumes "ground_expr e a' = Some e'"
-  shows "ground_expr e a' = ground_expr e a"
-  using assms using Rewritable_axioms unfolding Rewritable_def
-  using ground_expr.psimps sorry 
-  using assms apply (induction e a' arbitrary: a a' rule: ground_expr.pinduct)
-  apply lifting
-  by (smt (verit, ccfv_SIG) domIff fmsubset.rep_eq ground_expr.elims map_le_def option.case_eq_if option.distinct(1))
-*)
 
 fun eval_match :: "('a, 'b) MATCH \<Rightarrow> 'a Subst \<Rightarrow> ('a Subst) option" where
   "eval_match (match v e) s =
@@ -541,7 +514,7 @@ subsubsection \<open>Semantics\<close>
 
 fun match_entry_var :: "('ex, 'cond) MATCH \<Rightarrow> VarName option" where
   "match_entry_var (match v p) = Some v" |
-  "match_entry_var (v1 == v2) = None" |
+  "match_entry_var (equality v1 v2) = None" |
   "match_entry_var (m1 && m2) = (case match_entry_var m1 of Some v \<Rightarrow> Some v | None \<Rightarrow> match_entry_var m2)" |
   "match_entry_var (cond c) = None" |
   "match_entry_var noop = None"
@@ -663,7 +636,7 @@ lemma chain_equiv:
   "eval_rules (m1 ? (m2 ? r)) u e = eval_rules ((m1 && m2) ? r) u e"
   using condE apply auto[1]
    apply (smt (verit, best) condE eval_match.simps(3) eval_rules.intros(2) eval_rules.intros(3) option.simps(4) option.simps(5))
-  by (metis (no_types, lifting) condE eval_match.simps(3) eval_rules.intros(2) eval_rules.intros(3) is_none_code(2) is_none_simps(1) option.case_eq_if option.collapse)
+  by (metis (no_types, lifting) eval_match.simps(3) eval_rules.intros(2) eval_rules.intros(3) is_none_code(2) is_none_simps(1) option.case_eq_if option.collapse)
 
 lemma eval_choice: "{e. eval_rules (choice rules) u e \<and> e \<noteq> None} = {e | e r . r \<in> set rules \<and> eval_rules r u e \<and> e \<noteq> None}"
   using choiceE eval_rules.intros(6) by fastforce
@@ -1641,184 +1614,6 @@ lemma optimized_export_valid:
 
 thm_oracles optimized_export_valid
 
-subsection \<open>Compiling Match Patterns\<close>
-
-(*value "optimized_export
-(generate
-(Add (Sub (Variable ''x'') (Variable ''y'')) (Variable ''y''))
-(Variable ''x'')
-((Variable ''y''), \<lambda>x. True))"*)
-
-definition gen_rewrite :: "('a) \<Rightarrow> 'c \<Rightarrow> VarName \<Rightarrow> ('a, 'b, 'c) Rules" where
-  "gen_rewrite p r v = (
-    let (s, lhs) = (match_pattern p v ({|v|}, Map.empty)) in lhs? base (ground_result r (variable_substitutor (snd s))))"
-
-(*
-fun compile' :: "('a, 'b, 'c) Strategy \<Rightarrow> ('a, 'b, 'c) Rules option" where
-  "compile' (s1 \<rightarrow> s2) = Some (gen_rewrite s1 s2 ''e'')" |
-  "compile' _ = None"(* |
-  "compile (s1?; (v1?; s3; v2!); s2!) = ((gen_pattern s1 ''e'') ? base s2)"*)
-
-fun compile :: "(('a, 'b, 'c) Strategy \<times> 'a) \<Rightarrow> (('a, 'b) Rules \<times> 'a) option" where
-  "compile ((s1 \<rightarrow> s2), t) = Some ((gen_rewrite s1 s2 ''e''), t)" |
-  "compile _ = None"
-*)
-
-(*fun compile :: "'a::Rewritable Strategy \<Rightarrow> Scope \<Rightarrow> 'a Rules" where
-  "compile (id; r) s = noop? compile r s" |
-  (*"compile (fail; s) = match ''x'' (var ''x'')? compile s"*)
-  "compile (m?; r) s = 
-    (let (s, lhs) = (match_pattern m ''e'' s) in
-     lhs? compile r s)" |
-  "compile (r!) s = base (ground_expr r s)" |
-  "compile ((v1?; x; v2!); r) s = (if v1 = v2 then (condition x)? compile r s else noop)"*)
-
 end
-
-(*
-value "eval (RedundantAdd <+ RedundantSub) ((Add (Number 10) (Number 0)), fmempty)"
-
-inductive loadStrategy :: "('a::Rewritable Strategy \<times> 'a) \<Rightarrow> ('a Strategy \<times> 'a State \<times> bool) \<Rightarrow> bool" where
-  "loadStrategy (s, t) (s, (t, fmempty), False)"
-inductive stepStrategy :: "('a::Rewritable Strategy \<times> 'a State \<times> bool) => ('a Strategy \<times> 'a State \<times> bool) \<Rightarrow> bool" where
-  "\<lbrakk>eval s state = (state', b');
-    snd state = fmempty\<rbrakk> \<Longrightarrow>
-   stepStrategy (s, state, b) (s, state', b')"
-fun isStrategyTerm :: "('a Strategy \<times> 'a State \<times> bool) \<Rightarrow> bool" where
-  "isStrategyTerm (s, state, m) = (snd state \<noteq> fmempty)"
-
-inductive loadRules :: "('a::Rewritable Rules \<times> 'a) \<Rightarrow> ('a::Rewritable Rules \<times> 'a Subst \<times> 'a option \<times> bool) \<Rightarrow> bool" where
-  "loadRules (r, t) (r, Map.empty(''e'' \<mapsto> t), None, False)"
-inductive stepRules :: "('a::Rewritable Rules \<times> 'a Subst \<times> 'a option \<times> bool) => ('a::Rewritable Rules \<times> 'a Subst \<times> 'a option \<times> bool) \<Rightarrow> bool" where
-  "\<lbrakk>eval_rules r u e'\<rbrakk> \<Longrightarrow>
-   stepRules (r, u, e, False) (r, u, e', True)"
-fun isRulesTerm :: "('a::Rewritable Rules \<times> 'a Subst \<times> 'a option \<times> bool) \<Rightarrow> bool" where
-  "isRulesTerm (r, u, e, f) = f"
-
-fun compatible :: "'a::Rewritable Strategy \<Rightarrow> 'a Rules \<Rightarrow> bool" where
-  "compatible (s1 \<rightarrow> s2) r = (r = (gen_rewrite s1 s2 ''e''))" |
-  "compatible _ _ = False"
-
-inductive match :: "('a::Rewritable Strategy \<times> 'a State \<times> bool) => ('a::Rewritable Rules \<times> 'a Subst \<times> 'a option \<times> bool) \<Rightarrow> bool" where
-  NotRun:  
-  "\<lbrakk>snd state = fmempty \<and> Some (fst state) = subst ''e'' \<and> compatible s r\<rbrakk>
-    \<Longrightarrow> match (s, state, m) (r, subst, None, False)" |
-  Succeed:
-  "\<lbrakk>snd state \<noteq> fmempty \<and> fst state = out \<and> compatible s r\<rbrakk>
-    \<Longrightarrow> match (s, state, True) (r, subst, Some out, True)" |
-  Fail:
-  "\<lbrakk>snd state \<noteq> fmempty \<and> compatible s r\<rbrakk>
-    \<Longrightarrow> match (s, state, False) (r, subst, None, True)"
-(*fun compile :: "(IRGraph \<times> Params) \<Rightarrow> (IRGraph \<times> Params) option" where
-  "compile (g, p) = Some (g, p)"*)
-
-(*theorem stepDet:
-   "(g, p \<turnstile> (nid,m,h) \<rightarrow> next) \<Longrightarrow>
-   (\<forall> next'. ((g, p \<turnstile> (nid,m,h) \<rightarrow> next') \<longrightarrow> next = next'))"
-proof (induction rule: "step.induct")*)
-
-(* FALSE: eval_rules is nondet
-lemma stepRulesDet:
-  "stepRules x y \<Longrightarrow> \<forall>z. stepRules x z \<longrightarrow> y = z"
-  apply (induction rule: "stepRules.induct")
-  using stepRules.simps
-*)
-
-lemma compile_correct:
-  assumes "eval (s1 \<rightarrow> s2) (e, fmempty) = ((e', b), True)"
-  shows "eval_rules (gen_rewrite s1 s2 ''e'') [''e'' \<mapsto> e] (Some e')"
-proof -
-  obtain u' suc where s1: "eval (s1?) (e, fmempty) = (u', suc)"
-    by fastforce
-  then have "suc = True"
-    using assms prod.inject by fastforce
-  have "eval (s1 \<rightarrow> s2) (e, fmempty) = (let (u', suc) = eval (s1?) (e, fmempty) in
-        if suc then eval (s2!) u' else eval fail u')"
-    by simp
-  then have "eval (s1 \<rightarrow> s2) (e, fmempty) = eval (s2!) u'"
-    using assms
-    by (smt (verit, best) Pair_inject s1 eval.simps(5) old.prod.case)
-  have "Stratego.match s1 e = Some b"
-    using s1 sorry
-  then show ?thesis sorry
-qed
-
-lemma preserves_step:
-  assumes "compatible s r"
-  assumes "snd state = fmempty"
-  assumes "Some (fst state) = subst ''e''"
-  assumes "stepRules (r, subst, None, False) s2'"
-  shows "(\<exists>s1'. stepStrategy\<^sup>+\<^sup>+ (s, state, m) s1' \<and> CompileRewrite.match s1' s2')"
-proof -
-  obtain e' where eRule: "s2' = (r, subst, e', True)"
-    using eval_always_result stepRules.intros
-    by (smt (verit, ccfv_threshold) assms(4) fst_conv snd_conv stepRules.simps)
-  then have "eval_rules r subst e'"
-    using assms(4) stepRules.cases by fastforce
-  obtain state' b' where eStrat: "stepStrategy (s, state, m) (s, state', b')"
-    by (metis assms(2) prod.collapse stepStrategy.intros)
-  then have "eval s state = (state', b')"
-    by (simp add: stepStrategy.simps)
-  then have compat: "compatible s r"
-    using assms(1) by simp
-  then obtain s1 s2 where stype: "s = (s1 \<rightarrow> s2)"
-    by (meson CompileRewrite.compatible.elims(2))
-  then have "r = (gen_rewrite s1 s2 ''e'')"
-    using compat by auto
-  then have "match (s, state', b') (r, subst, e', True)"
-    using stype apply (induction s) apply simp+
-    using compile_correct sorry
-  also have "stepStrategy\<^sup>+\<^sup>+ (s, state, m) (s, state', b')"
-    by (simp add: eStrat tranclp.r_into_trancl)
-  then show ?thesis using calculation eRule assms(3)
-    by blast
-  qed
-
-(*"\<lbrakk>eval s state = (state', b');
-    snd state = fmempty\<rbrakk> \<Longrightarrow>
-   stepStrategy (s, state, b) (s, state', b')"*)
-
-interpretation compile_valid:
-  compiler stepStrategy stepRules isStrategyTerm isRulesTerm
-    loadStrategy loadRules
-    "\<lambda>_ _. False" "\<lambda>_. match" compile
-  apply standard
-  using finished_def stepStrategy.cases apply fastforce
-  using finished_def stepRules.cases apply fastforce
-     apply simp
-  using isRulesTerm.simps match.cases apply fastforce
-  subgoal for _ s2 s1 s2'
-    apply (induction rule: match.induct)
-      defer
-      apply (simp add: stepRules.simps)
-     apply (simp add: stepRules.simps)
-    using preserves_step by blast
-  subgoal premises p for p1 p2 s1
-  proof -
-    obtain lhs rhs t where "p1 = (lhs \<rightarrow> rhs, t)"
-      using p(1) apply (cases "compile p1")
-       apply simp sorry
-    then have "p2 = ((gen_rewrite lhs rhs ''e''), t)"
-      using p(1) by simp
-    have loadS: "loadStrategy p1 (lhs \<rightarrow> rhs, (t, fmempty), False)"
-      by (simp add: \<open>p1 = (lhs \<rightarrow> rhs, t)\<close> loadStrategy.intros)
-    have loadR: "loadRules p2 ((gen_rewrite lhs rhs ''e''), Map.empty(''e'' \<mapsto> t), None, False)"
-      using \<open>p2 = (gen_rewrite lhs rhs ''e'', t)\<close> loadRules.intros by blast
-    then have "match (lhs \<rightarrow> rhs, (t, fmempty), False) ((gen_rewrite lhs rhs ''e''), [''e'' \<mapsto> t], None, False)"
-    proof -
-      have "snd (t, fmempty) = fmempty"
-        by simp
-      also have "Some (fst (t, fmempty)) = [''e'' \<mapsto> t] ''e''"
-        by simp
-      then show ?thesis
-        using match.NotRun
-        using calculation
-        using CompileRewrite.compatible.simps(1) by blast
-    qed
-    then show ?thesis using p
-      by (metis \<open>p2 = (gen_rewrite lhs rhs ''e'', t)\<close> loadRules.simps loadS prod.inject)
-  qed
-  done
-*)
 
 end

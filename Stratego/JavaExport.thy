@@ -1,5 +1,5 @@
 theory JavaExport
-  imports CompileRewrite
+  imports MatchPattern
 begin
 
 class JavaStatement =
@@ -25,12 +25,7 @@ datatype 'a BaseExpressions =
     ("_ instanceof _ _")|
   Equal "'a BaseExpressions" "'a BaseExpressions" 
     (infix "==" 58)|
-  ConditionExpression 'a (* |
-  Less Expression Expression |
-  Negate Expression |
-  And Expression Expression |
-  BitAnd Expression Expression |
-  Unsupported string*)
+  ConditionExpression 'a
 
 datatype ('a) Statement =
   Assignment VariableName "'a::JavaExpression" (infix ":=" 56) |
@@ -95,7 +90,7 @@ instance ..
 end
  
 
-locale JavaTarget = CompiledRewrites +
+locale JavaTarget = Rewritable +
   fixes class_of_term :: "'a \<Rightarrow> string"
   and generate_condition :: "'b \<Rightarrow> 'e::JavaExpression"
   and generate_result :: "'c \<Rightarrow> 'e::JavaExpression"
@@ -118,7 +113,7 @@ fun export_match :: "('a, 'b) MATCH \<Rightarrow> ('e BaseExpressions) Statement
   "export_match (andthen m1 m2) r = 
     export_match m1 (export_match m2 r)" |
   "export_match (equality v1 v2) r = 
-    if ((Ref v1) == (Ref v2)) {
+    if (Equal (Ref v1) (Ref v2)) {
       r
     }" |
   "export_match (cond sc) r = 
