@@ -71,13 +71,20 @@ fun chain_Arithmetic :: "(Arithmetic \<Rightarrow> nat \<Rightarrow> (nat \<time
 
 datatype ArithmeticCondition =
   IsSub Arithmetic |
-  IsNumber Arithmetic
+  IsNumber Arithmetic |
+  And ArithmeticCondition ArithmeticCondition
 
 fun eval_condition :: "ArithmeticCondition \<Rightarrow> bool option" where
   "eval_condition (IsSub (Sub x y)) = Some True" |
   "eval_condition (IsNumber (Number v)) = Some True" |
   "eval_condition (IsSub (Variable v)) = None" |
   "eval_condition (IsNumber (Variable v)) = None" |
+  "eval_condition (And c1 c2) = 
+    (case (eval_condition c1, eval_condition c2) of
+        (Some True, Some True) => Some True |
+        (None, _) \<Rightarrow> None |
+        (_, None) \<Rightarrow> None |
+        _ => Some False)" |
   "eval_condition _ = Some False"
 
 fun ground_condition :: "ArithmeticCondition \<Rightarrow> (string \<rightharpoonup> Arithmetic) \<Rightarrow> ArithmeticCondition" where
@@ -87,11 +94,15 @@ fun ground_condition :: "ArithmeticCondition \<Rightarrow> (string \<rightharpoo
   "ground_condition (IsNumber (Variable v)) f = (case f v of 
                                               Some v' \<Rightarrow> (IsNumber v') |
                                               None \<Rightarrow> (IsNumber (Variable v)))" |
+  "ground_condition (And c1 c2) f = 
+    And (ground_condition c1 f) (ground_condition c2 f)" |
   "ground_condition e f = e"
 
 fun is_ground_condition :: "ArithmeticCondition \<Rightarrow> bool" where
   "is_ground_condition (IsSub e) = (\<not>(is_Variable e))" |
-  "is_ground_condition (IsNumber e) = (\<not>(is_Variable e))"
+  "is_ground_condition (IsNumber e) = (\<not>(is_Variable e))" |
+  "is_ground_condition (And c1 c2) = 
+        (is_ground_condition c1 \<and> is_ground_condition c2)"
 
 datatype Transformer =
   UnaryMinus Arithmetic |

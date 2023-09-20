@@ -70,22 +70,34 @@ next
   fix c :: "ArithmeticCondition"
   have lhs: "eval_condition c = None \<Longrightarrow> (\<not> is_ground_condition c)"
   subgoal premises e
-  proof (cases c)
+  using e proof (induction c)
     case (IsSub x1)
-    then show ?thesis using e by (cases x1; auto) 
+    then show ?case by (cases x1; auto)
   next
     case (IsNumber x2)
-    then show ?thesis using e by (cases x2; auto)
+    then show ?case by (cases x2; auto)
+  next
+    case (And x1 x2)
+    from And(3) have "eval_condition x1 = None \<or> eval_condition x2 = None"
+      unfolding eval_condition.simps
+      by (smt (verit, best) case_prod_conv option.case_eq_if option.discI)
+    then show ?case
+      using And.IH(1) And.IH(2) is_ground_condition.simps(3) by blast
   qed
   done
   have rhs: "(\<not> is_ground_condition c) \<Longrightarrow> eval_condition c = None"
   subgoal premises e
-  proof (cases c)
+  using e proof (induction c)
     case (IsSub x1)
-    then show ?thesis using e by (cases x1; auto) 
+    then show ?case using e by (cases x1; auto) 
   next
     case (IsNumber x2)
-    then show ?thesis using e by (cases x2; auto)
+    then show ?case using e by (cases x2; auto)
+  next
+    case (And x1 x2)
+    then show ?case
+      apply (cases "eval_condition x1"; cases "eval_condition x2"; auto)
+      by (simp add: case_bool_if)
   qed
   done
   from lhs rhs show "eval_condition c = None \<equiv> (\<not> is_ground_condition c)"
@@ -99,6 +111,7 @@ subsubsection \<open>Example: Match Pattern\<close>
 
 definition "join = Arithmetic.join"
 definition "generate = Arithmetic.generate"
+definition "generate_with_condition = Arithmetic.generate_with_condition"
 definition "match_pattern = Arithmetic.match_pattern"
 definition "optimized_export = Arithmetic.optimized_export"
 definition "var = var_Arithmetic"
@@ -168,6 +181,18 @@ value "(optimized_export (choice [LeftConst, Evaluate, Identity]))"
 text "@{value[display] \<open>(optimized_export (choice [LeftConst, Evaluate, Identity]))\<close>}"
 value "(optimized_export (optimized_export (choice [LeftConst, Evaluate, Identity])))"
 text "@{value[display] \<open>(optimized_export (optimized_export (choice [LeftConst, Evaluate, Identity])))\<close>}"
+
+
+
+text \<open>Paper Example\<close>
+
+definition ConstFold where
+  "ConstFold = generate_with_condition
+    (Add (var ''x'') (var ''y''))
+    (Plus (var ''x'') (var ''y''))
+    (And (IsNumber (var ''x'')) (IsNumber (var ''y'')))"
+value "ConstFold"
+
 
 
 
