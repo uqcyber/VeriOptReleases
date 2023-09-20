@@ -12,6 +12,17 @@ session Fresh in "Lib/Fresh" = "HOL-Library" +
     Fresh
     Fresh_String
 
+session Snippets = "HOL-Library" +
+  description
+    "Additional commands to enable the generation of LaTeX snippets of theories"
+  options [document = pdf, document_output = "output",
+           show_question_marks = false]
+  theories
+    Snipping
+  document_files (in "./latex")
+    "root.tex"
+    "mathpartir.sty"
+
 chapter "veriopt"
 
 session CodeGen in CodeGen = Locale_Code +
@@ -163,17 +174,6 @@ session Optimizations in Optimizations = OptimizationDSL +
     (*ConditionalEliminationTests*)*)
 
 \<comment>\<open>Documentation sessions\<close>
-
-session Snippets = "HOL-Library" +
-  description
-    "Additional commands to enable the generation of LaTeX snippets of theories"
-  options [document = pdf, document_output = "output",
-           show_question_marks = false]
-  theories
-    Snipping
-  document_files (in "./latex")
-    "root.tex"
-    "mathpartir.sty"
 
 
 session Document in "Papers/Main" = Canonicalizations +

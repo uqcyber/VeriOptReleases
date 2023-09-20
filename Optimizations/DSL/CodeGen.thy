@@ -454,86 +454,83 @@ datatype Rules =
   base Result |
   cond MATCH Rules (infixl "?" 52) |
   else Rules Rules (infixl "else" 50) |
-  seq Rules Rules (infixl "\<then>" 49) |
+  seq Rules Rules (infixl "\<Zsemi>" 49) |
   choice "Rules list"
 snipend -
 
 text \<open>Use the scope of a generated match to replace real variable names with aliases in the rewrite result.\<close>
-class groundable =
-  fixes ground :: "'a \<Rightarrow> Scope \<Rightarrow> 'a"
+class substitutable =
+  fixes substitute :: "'a \<Rightarrow> Scope \<Rightarrow> 'a"
 
-snipbegin \<open>groundresult\<close>
-fun ground_expr :: "IRExpr \<Rightarrow> Scope \<Rightarrow> IRExpr" where
-  "ground_expr (UnaryExpr op e) s = 
-    UnaryExpr op (ground_expr e s)" |
-  "ground_expr (BinaryExpr op e1 e2) s = 
-    BinaryExpr op (ground_expr e1 s) (ground_expr e2 s)" |
-  "ground_expr (ConditionalExpr b e1 e2) s = 
-    ConditionalExpr (ground_expr b s) (ground_expr e1 s) (ground_expr e2 s)" |
-  "ground_expr (VariableExpr vn st) (s, m) = 
+
+snipbegin \<open>groundirexpr\<close>
+instantiation IRExpr :: substitutable begin
+fun substitute_IRExpr :: "IRExpr \<Rightarrow> Scope \<Rightarrow> IRExpr" where
+  "substitute_IRExpr (UnaryExpr op e) s = 
+    UnaryExpr op (substitute_IRExpr e s)" |
+  "substitute_IRExpr (BinaryExpr op e1 e2) s = 
+    BinaryExpr op (substitute_IRExpr e1 s) (substitute_IRExpr e2 s)" |
+  "substitute_IRExpr (ConditionalExpr b e1 e2) s = 
+    ConditionalExpr (substitute_IRExpr b s) (substitute_IRExpr e1 s) (substitute_IRExpr e2 s)" |
+  "substitute_IRExpr (VariableExpr vn st) (s, m) = 
     (case m vn of None \<Rightarrow> VariableExpr vn st 
                 | Some v' \<Rightarrow> VariableExpr v' st)" |
-  "ground_expr e s = e"
-
-fun ground_result :: "Result \<Rightarrow> Scope \<Rightarrow> Result" where
-  "ground_result (Construct e) s = Construct (ground_expr e s)" |
-  "ground_result (Constant e) s = Constant (ground_expr e s)" |
-  "ground_result (forZero e) s = forZero (ground_expr e s)"
+  "substitute_IRExpr e s = e"
+instance by standard
+end
 snipend -
 
-fun ground_number :: "NumberCondition \<Rightarrow> Scope \<Rightarrow> NumberCondition" where
-  "ground_number (Const n) s = (Const n)" |
-  "ground_number (BitNot n) s = (BitNot (ground_number n s))" |
-  "ground_number (BitAnd n1 n2) s = (BitAnd (ground_number n1 s) (ground_number n2 s))" |
-  "ground_number (UpMask e) s = (UpMask (ground_expr e s))" |
-  "ground_number (DownMask e) s = (DownMask (ground_expr e s))"
-
-fun ground_condition :: "SideCondition \<Rightarrow> Scope \<Rightarrow> SideCondition" where
-  "ground_condition (IsConstantExpr p) s = (IsConstantExpr (ground_expr p s))" |
-  "ground_condition (IsIntegerStamp p) s = (IsIntegerStamp (ground_expr p s))" |
-  "ground_condition (IsBoolStamp p) s = (IsBoolStamp (ground_expr p s))" |
-  "ground_condition (WellFormed st) s = (WellFormed st)" |
-  "ground_condition (IsStamp e st) s = (IsStamp (ground_expr e s) st)" |
-  "ground_condition (IsConstantValue e s' v) s = (IsConstantValue (ground_expr e s) (ground_expr s' s) v)" |
-  "ground_condition (AlwaysDistinct e1 e2) s = (AlwaysDistinct (ground_expr e1 s) (ground_expr e2 s))" |
-  "ground_condition (NeverDistinct e1 e2) s = (NeverDistinct (ground_expr e1 s) (ground_expr e2 s))" |  
-  "ground_condition (StampUnder e1 e2) s = (StampUnder (ground_expr e1 s) (ground_expr e2 s))" |
-  "ground_condition (UpMaskEquals e m) s = (UpMaskEquals (ground_expr e s) m)" |
-  "ground_condition (DownMaskEquals e m) s = (DownMaskEquals (ground_expr e s) m)" |
-  "ground_condition (UpMaskCancels e1 e2) s = (UpMaskCancels (ground_expr e1 s) (ground_expr e2 s))" |
-  "ground_condition (PowerOf2 e) s = (PowerOf2 (ground_expr e s))" |
-  "ground_condition (IsBool e) s = (IsBool (ground_expr e s))" |
-  "ground_condition (And sc1 sc2) s = And (ground_condition sc1 s) (ground_condition sc2 s)" |
-  "ground_condition (Not sc) s = Not (ground_condition sc s)" |
-  "ground_condition (Empty) s = Empty" |
-  "ground_condition (Equals n1 n2) s = (Equals (ground_number n1 s) (ground_number n2 s))"
-
-
-instantiation IRExpr :: groundable
-begin
-definition "ground_IRExpr = ground_expr"
+snipbegin \<open>groundresult\<close>
+instantiation Result :: substitutable begin
+fun substitute_Result :: "Result \<Rightarrow> Scope \<Rightarrow> Result" where
+  "substitute_Result (Construct e) s = Construct (substitute e s)" |
+  "substitute_Result (Constant e) s = Constant (substitute e s)" |
+  "substitute_Result (forZero e) s = forZero (substitute e s)"
 instance by standard
 end
-instantiation Result :: groundable
-begin
-definition "ground_Result = ground_result"
-instance by standard
-end
-instantiation SideCondition :: groundable
-begin
-definition "ground_SideCondition = ground_condition"
+snipend -
+
+instantiation NumberCondition :: substitutable begin
+fun substitute_NumberCondition :: "NumberCondition \<Rightarrow> Scope \<Rightarrow> NumberCondition" where
+  "substitute_NumberCondition (Const n) s = (Const n)" |
+  "substitute_NumberCondition (BitNot n) s = (BitNot (substitute_NumberCondition n s))" |
+  "substitute_NumberCondition (BitAnd n1 n2) s = (BitAnd (substitute_NumberCondition n1 s) (substitute_NumberCondition n2 s))" |
+  "substitute_NumberCondition (UpMask e) s = (UpMask (substitute e s))" |
+  "substitute_NumberCondition (DownMask e) s = (DownMask (substitute e s))"
 instance by standard
 end
 
+instantiation SideCondition :: substitutable begin
+fun substitute_SideCondition :: "SideCondition \<Rightarrow> Scope \<Rightarrow> SideCondition" where
+  "substitute_SideCondition (IsConstantExpr p) s = (IsConstantExpr (substitute p s))" |
+  "substitute_SideCondition (IsIntegerStamp p) s = (IsIntegerStamp (substitute p s))" |
+  "substitute_SideCondition (IsBoolStamp p) s = (IsBoolStamp (substitute p s))" |
+  "substitute_SideCondition (WellFormed st) s = (WellFormed st)" |
+  "substitute_SideCondition (IsStamp e st) s = (IsStamp (substitute e s) st)" |
+  "substitute_SideCondition (IsConstantValue e s' v) s = (IsConstantValue (substitute e s) (substitute s' s) v)" |
+  "substitute_SideCondition (AlwaysDistinct e1 e2) s = (AlwaysDistinct (substitute e1 s) (substitute e2 s))" |
+  "substitute_SideCondition (NeverDistinct e1 e2) s = (NeverDistinct (substitute e1 s) (substitute e2 s))" |  
+  "substitute_SideCondition (StampUnder e1 e2) s = (StampUnder (substitute e1 s) (substitute e2 s))" |
+  "substitute_SideCondition (UpMaskEquals e m) s = (UpMaskEquals (substitute e s) m)" |
+  "substitute_SideCondition (DownMaskEquals e m) s = (DownMaskEquals (substitute e s) m)" |
+  "substitute_SideCondition (UpMaskCancels e1 e2) s = (UpMaskCancels (substitute e1 s) (substitute e2 s))" |
+  "substitute_SideCondition (PowerOf2 e) s = (PowerOf2 (substitute e s))" |
+  "substitute_SideCondition (IsBool e) s = (IsBool (substitute e s))" |
+  "substitute_SideCondition (And sc1 sc2) s = And (substitute_SideCondition sc1 s) (substitute_SideCondition sc2 s)" |
+  "substitute_SideCondition (Not sc) s = Not (substitute_SideCondition sc s)" |
+  "substitute_SideCondition (Empty) s = Empty" |
+  "substitute_SideCondition (Equals n1 n2) s = (Equals (substitute n1 s) (substitute n2 s))"
+instance by standard
+end
 
 snipbegin \<open>generate\<close>
 fun generate :: "IRExpr \<Rightarrow> Result \<Rightarrow> SideCondition option \<Rightarrow> Rules" where
   "generate p r c = 
     (let (s, m) = match_pattern p STR ''e'' ({||}, (\<lambda>x. None))
      in (case c of
-          Some c' \<Rightarrow> (m && condition (ground c' s))
+          Some c' \<Rightarrow> (m && condition (substitute c' s))
         | None \<Rightarrow> m)
-       ? (base (ground r s)))"
+       ? (base (substitute r s)))"
 snipend -
 
 subsubsection \<open>Rules Semantics\<close>
@@ -585,7 +582,7 @@ fun entry_var :: "Rules \<Rightarrow> VarName option" where
   "entry_var (base e) = None" |
   "entry_var (r1 else r2) = (case entry_var r1 of Some v \<Rightarrow> Some v | None \<Rightarrow> entry_var r2)" |
   "entry_var (choice xs) = find (\<lambda>_.True) (map_filter entry_var xs)" |
-  "entry_var (r1 \<then> r2) = (case entry_var r1 of Some v \<Rightarrow> Some v | None \<Rightarrow> entry_var r2)"
+  "entry_var (r1 \<Zsemi> r2) = (case entry_var r1 of Some v \<Rightarrow> Some v | None \<Rightarrow> entry_var r2)"
 
 inductive eval_rules :: "Rules \<Rightarrow> Subst \<Rightarrow> IRExpr option \<Rightarrow> bool" where
   \<comment> \<open>Evaluate the result\<close>
@@ -617,13 +614,13 @@ inductive eval_rules :: "Rules \<Rightarrow> Subst \<Rightarrow> IRExpr option \
   "\<lbrakk>eval_rules r1 u (Some e');
     entry_var r2 = Some v;
     eval_rules r2 (u(v \<mapsto> e')) r\<rbrakk>
-   \<Longrightarrow> eval_rules (r1 \<then> r2) u r" |
+   \<Longrightarrow> eval_rules (r1 \<Zsemi> r2) u r" |
   "\<lbrakk>eval_rules r1 u (Some e');
     entry_var r2 = None\<rbrakk>
-   \<Longrightarrow> eval_rules (r1 \<then> r2) u None" |
+   \<Longrightarrow> eval_rules (r1 \<Zsemi> r2) u None" |
   "\<lbrakk>eval_rules r1 u None;
     eval_rules r2 u r\<rbrakk>
-   \<Longrightarrow> eval_rules (r1 \<then> r2) u r"
+   \<Longrightarrow> eval_rules (r1 \<Zsemi> r2) u r"
 
 declare [[show_types=false,show_sorts=false]]
 snipbegin \<open>rules-semantics\<close>
@@ -635,10 +632,9 @@ text \<open>
 \induct{@{thm[mode=Rule] eval_rules.intros(5) [no_vars]}}{evalrules:else-none}
 \induct{@{thm[mode=Rule] eval_rules.intros(6) [no_vars]}}{evalrules:choice-some}
 \induct{@{thm[mode=Rule] eval_rules.intros(7) [no_vars]}}{evalrules:choice-none}
-\induct{@{thm[mode=Rule] eval_rules.intros(8) [no_vars]}}{evalrules:choice-empty}
 \induct{@{thm[mode=Rule] eval_rules.intros(9) [no_vars]}}{evalrules:seq-some}
-\induct{@{thm[mode=Rule] eval_rules.intros(10) [no_vars]}}{evalrules:seq-noentry}
 \induct{@{thm[mode=Rule] eval_rules.intros(11) [no_vars]}}{evalrules:seq-none}
+\induct{@{thm[mode=Rule] eval_rules.intros(10) [no_vars]}}{evalrules:seq-noentry}
 \<close>
 snipend -
 
@@ -646,7 +642,7 @@ inductive_cases baseE: "eval_rules (base e') u e"
 inductive_cases condE: "eval_rules (cond m r) u e"
 inductive_cases elseE: "eval_rules (r1 else r2) u e"
 inductive_cases choiceE: "eval_rules (choice r) u e"
-inductive_cases seqE: "eval_rules (r1 \<then> r2) u e"
+inductive_cases seqE: "eval_rules (r1 \<Zsemi> r2) u e"
 
 code_pred [show_modes] eval_rules .
 
@@ -710,7 +706,7 @@ fun eliminate_noop :: "Rules \<Rightarrow> Rules" where
   "eliminate_noop (m ? r) = elim_noop m ? eliminate_noop r" |
   "eliminate_noop (r1 else r2) = (eliminate_noop r1 else eliminate_noop r2)" |
   "eliminate_noop (choice rules) = choice (map eliminate_noop rules)" |
-  "eliminate_noop (r1 \<then> r2) = (eliminate_noop r1 \<then> eliminate_noop r2)"
+  "eliminate_noop (r1 \<Zsemi> r2) = (eliminate_noop r1 \<Zsemi> eliminate_noop r2)"
 
 lemma match_entry_elim_noop:
   "match_entry_var m = match_entry_var (elim_noop m)"
@@ -830,7 +826,7 @@ fun combined_size :: "Rules \<Rightarrow> nat" where
   "combined_size (r1 else r2) = combined_size r1 + combined_size r2" |
   "combined_size (choice (rule # rules)) = 1 + combined_size rule + combined_size (choice rules)" |
   "combined_size (choice []) = 1" |
-  "combined_size (r1 \<then> r2) = combined_size r1 + combined_size r2"
+  "combined_size (r1 \<Zsemi> r2) = combined_size r1 + combined_size r2"
 
 value "size (m ? r)"
 
@@ -840,7 +836,7 @@ function (sequential) lift_match :: "Rules \<Rightarrow> Rules" where
   "lift_match ((m1 && m2) ? r) = (lift_match (m1 ? (m2 ? r)))" |
   "lift_match (m ? r) = m ? (lift_match r)" |
   "lift_match (base e) = (base e)" |
-  "lift_match (r1 \<then> r2) = (lift_match r1 \<then> lift_match r2)"
+  "lift_match (r1 \<Zsemi> r2) = (lift_match r1 \<Zsemi> lift_match r2)"
   by pat_completeness auto
 termination lift_match
   apply (relation "measures [combined_size, size]") apply auto[1]
@@ -916,7 +912,7 @@ function lift_common :: "Rules \<Rightarrow> Rules" where
        None \<Rightarrow> (m ? lift_common r))" |
   "lift_common (choice rules) = choice (map lift_common rules)" |
   "lift_common (base e) = base e" |
-  "lift_common (r1 \<then> r2) = (lift_common r1 \<then> lift_common r2)"
+  "lift_common (r1 \<Zsemi> r2) = (lift_common r1 \<Zsemi> lift_common r2)"
   using combined_size.cases 
   apply (smt (verit, ccfv_threshold))
   by simp+
@@ -959,7 +955,7 @@ fun valid_match :: "MATCH \<Rightarrow> bool" where
 fun valid_rules :: "Rules \<Rightarrow> bool" where
   "valid_rules (m ? r) = (valid_match m \<and> valid_rules r)" |
   "valid_rules (r1 else r2) = (valid_rules r1 \<and> valid_rules r2)" |
-  "valid_rules (r1 \<then> r2) = (valid_rules r1 \<and> valid_rules r2)" |
+  "valid_rules (r1 \<Zsemi> r2) = (valid_rules r1 \<and> valid_rules r2)" |
   "valid_rules (choice rules) = (\<forall>r \<in> set rules. valid_rules r)" |
   "valid_rules _ = True"
 
@@ -1223,13 +1219,13 @@ lemma monotonic_seq_with_entry:
   assumes "\<forall>e u. eval_rules r1 u e = eval_rules (f r1) u e"
   assumes "\<forall>e u. eval_rules r2 u e = eval_rules (f r2) u e"
   assumes "entry_var r2 = entry_var (f r2)"
-  shows "\<forall>e. eval_rules (r1 \<then> r2) u e = eval_rules (f r1 \<then> f r2) u e"
+  shows "\<forall>e. eval_rules (r1 \<Zsemi> r2) u e = eval_rules (f r1 \<Zsemi> f r2) u e"
   using assms
   by (smt (verit) eval_rules.simps seqE)
 
 lemma monotonic_seq_without_entry:
   assumes "\<forall>e u. eval_rules r1 u e = eval_rules (f r1) u e"
-  shows "\<forall>e. eval_rules (r1 \<then> r2) u e = eval_rules ((f r1) \<then> r2) u e"
+  shows "\<forall>e. eval_rules (r1 \<Zsemi> r2) u e = eval_rules ((f r1) \<Zsemi> r2) u e"
   using assms
   by (smt (verit) eval_rules.simps seqE)
 
@@ -1356,7 +1352,7 @@ fun common_size :: "Rules \<Rightarrow> nat" where
   "common_size (r1 else r2) = 1 + common_size r1 + common_size r2" |
   "common_size (choice (rule # rules)) = 1 + common_size rule + common_size (choice rules)" |
   "common_size (choice []) = 0" |
-  "common_size (r1 \<then> r2) = 1 + common_size r1 + common_size r2"
+  "common_size (r1 \<Zsemi> r2) = 1 + common_size r1 + common_size r2"
 
 fun find_common :: "MATCH \<Rightarrow> Rules \<Rightarrow> Rules option" where
   "find_common m (m' ? r) = (if m = m' then Some r else None)" |
@@ -1438,7 +1434,7 @@ function (sequential) combine_conditions :: "Rules \<Rightarrow> Rules" where
       # [combine_conditions (choice (join_uncommon m rules))])" |
   "combine_conditions (choice rules) = 
     choice (map combine_conditions rules)" |
-  "combine_conditions (r1 \<then> r2) = (combine_conditions r1 \<then> r2)"
+  "combine_conditions (r1 \<Zsemi> r2) = (combine_conditions r1 \<Zsemi> r2)"
   apply pat_completeness+
   by simp+
 
@@ -1890,7 +1886,7 @@ fun eliminate_choice :: "Rules \<Rightarrow> Rules" where
   "eliminate_choice (choice (r # [])) = eliminate_choice r" |
   "eliminate_choice (choice rules) = 
     choice (map eliminate_choice rules)" |
-  "eliminate_choice (r1 \<then> r2) = (eliminate_choice r1 \<then> eliminate_choice r2)"
+  "eliminate_choice (r1 \<Zsemi> r2) = (eliminate_choice r1 \<Zsemi> eliminate_choice r2)"
 
 lemma choice_Single:
   "eval_rules (choice [r]) u e = eval_rules r u e"
@@ -2127,15 +2123,19 @@ fun construct_node :: "IRExpr \<Rightarrow> Expression" where
     new ''ConstantNode''([Ref var])" |
   "construct_node (VariableExpr v s) = Ref v"
 
+snipbegin \<open>evaluateexpression\<close>
 fun evaluate_expression :: "IRExpr \<Rightarrow> Expression" where
   "evaluate_expression (UnaryExpr UnaryAbs e) = (Ref STR ''Math'').''abs''([evaluate_expression e])" |
   "evaluate_expression (BinaryExpr BinAnd e1 e2) = BitAnd (evaluate_expression e1) (evaluate_expression e2)" |
-  "evaluate_expression (ConstantExpr c) = construct_node (ConstantExpr c)"
+  "evaluate_expression (ConstantExpr c) = generate_value c"
+snipend -
 
+snipbegin \<open>generateresult\<close>
 fun generate_result :: "Result \<Rightarrow> Expression" where
   "generate_result (Construct e) = construct_node e" |
-  "generate_result (Constant e) = construct_node e" |
+  "generate_result (Constant e) = (Ref STR ''ConstantNode'').''forInt''([evaluate_expression e])" |
   "generate_result (forZero e) = new ''ConstantNode''([IntegerConstant 0])"
+snipend -
 
 fun export_stamp :: "Stamp \<Rightarrow> Expression" where
   "export_stamp (IntegerStamp bits lower higher) =
@@ -2234,16 +2234,17 @@ fun size_condition :: "(MATCH \<times> Statement) \<Rightarrow> nat" where
   "size_condition ((condition c), s) = size (condition c) + size c" |
   "size_condition (m, s) = size m"
 
+snipbegin \<open>generaterules\<close>
 fun generate_rules :: "VarName option \<Rightarrow> Rules \<Rightarrow> Statement" where
   "generate_rules None (base e) = Return (generate_result e)" |
   "generate_rules (Some v) (base e) = v := (generate_result e)" |
   "generate_rules v (cond m r) = generate_match m (generate_rules v r)" |
   "generate_rules v (r1 else r2) = generate_rules v r1; generate_rules v r2" |
   "generate_rules v (choice rules) = Sequential (map (generate_rules v) rules)" |
-  "generate_rules v (r1 \<then> r2) = 
+  "generate_rules v (r1 \<Zsemi> r2) = 
     generate_rules (entry_var r2) r1;
     generate_rules v r2"
-
+snipend -
 
 definition "export_rules = generate_rules None"
 
@@ -2463,16 +2464,16 @@ value "lift_match (eliminate_noop (NestedNot else RedundantSub else AddLeftNegat
 value "export_rules (optimized_export ((RedundantSub else AddLeftNegateToSub) else NestedNot))"
 value "export_rules (optimized_export (NestedNot else RedundantSub else AddLeftNegateToSub))"
 
-value "export_rules (optimized_export (NestedNot \<then> (optimized_export (RedundantSub else AddLeftNegateToSub))))"
+value "export_rules (optimized_export (NestedNot \<Zsemi> (optimized_export (RedundantSub else AddLeftNegateToSub))))"
 
 
 no_notation cond (infixl "?" 52)
-no_notation seq (infixl "\<then>" 50)
+no_notation seq (infixl "\<Zsemi>" 50)
 no_notation andthen (infixl "&&" 50)
 
 notation SideCondition.And (infixl "&&" 50)
 
-value "NestedNot \<then> (RedundantSub else AddLeftNegateToSub)"
+value "NestedNot \<Zsemi> (RedundantSub else AddLeftNegateToSub)"
 
 
 subsection \<open>Examples\<close>
@@ -2525,8 +2526,8 @@ definition LeftConst where
 value "LeftConst"
 
 
-value "(optimized_export (optimized_export (LeftConst \<then> (optimized_export (Evaluate else (Identity else Shift))))))"
-value "export_rules (optimized_export (optimized_export (LeftConst \<then> (optimized_export (Evaluate else (Identity else Shift))))))"
+value "(optimized_export (optimized_export (LeftConst \<Zsemi> (optimized_export (Evaluate else (Identity else Shift))))))"
+value "export_rules (optimized_export (optimized_export (LeftConst \<Zsemi> (optimized_export (Evaluate else (Identity else Shift))))))"
 
 no_notation equality (infixl "==" 52)
 no_notation andthen (infixr"&&" 50)
