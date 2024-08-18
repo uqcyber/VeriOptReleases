@@ -347,7 +347,7 @@ structure Locale_Code :LOCALE_CODE = struct
             (BlockData.map (bd_add_add_pateqs [(cpat',thms')])) I 
         end
       in 
-        lthy |> Local_Theory.declaration {syntax = false, pervasive = false} decl
+        lthy |> Local_Theory.declaration {syntax = false, pos=Position.none, pervasive = false} decl
       end
     | NONE => raise THM ("Locale_Code.lc_decl_eq: No common pattern",~1,thms);
 

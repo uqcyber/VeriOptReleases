@@ -119,7 +119,7 @@ next
   case BinShortCircuitOr
   then show ?thesis
     using assms apply (cases x; cases y; auto)
-    by (metis IntVal1 bits_mod_0 bool_to_val.elims new_int.simps take_bit_eq_mod)+
+    by (metis IntVal0 IntVal1 bool_to_val.elims new_int.elims)+
 next
   case BinLeftShift
   then show ?thesis

@@ -280,7 +280,7 @@ ML \<open>
     fun revert_abbrevs mpat thy = let
       val ctxt = Proof_Context.init_global thy;
       val match_prefix = if Long_Name.is_qualified mpat then mpat
-        else Long_Name.qualify (Context.theory_name thy) mpat;
+        else Long_Name.qualify (Context.theory_name {long=true} thy) mpat;
       val {const_space, constants, ...} = Sign.consts_of thy |> Consts.dest;
       val names = 
       Name_Space.extern_entries true ctxt const_space constants
