@@ -6,6 +6,7 @@ imports
     Semantics.IRTreeEvalThms
     Semantics.TreeToGraphThms
     Fresh.Fresh_String
+    "HOL-Library.Monad_Syntax"
 begin
 
 declare [[show_types=false]]
@@ -17,18 +18,14 @@ type_synonym VarName = "String.literal"
 type_synonym Subst = "VarName \<rightharpoonup> IRExpr"
 
 fun compatible :: "Subst \<Rightarrow> Subst \<Rightarrow> bool" where
-  "compatible \<sigma>1 \<sigma>2 = (\<forall>x \<in> dom \<sigma>1. \<sigma>2 x \<noteq> None \<longrightarrow> \<sigma>1 x = \<sigma>2 x)"
+  "compatible \<sigma>\<^sub>1 \<sigma>\<^sub>2 = (\<forall>x \<in> dom \<sigma>\<^sub>1. \<sigma>\<^sub>2 x \<noteq> None \<longrightarrow> \<sigma>\<^sub>1 x = \<sigma>\<^sub>2 x)"
 
 fun substitution_union :: "Subst option \<Rightarrow> Subst option \<Rightarrow> Subst option" (infix "\<uplus>" 70) where
-  "substitution_union s1 s2 = 
-      (case s1 of
-       None \<Rightarrow> None |
-       Some \<sigma>1 \<Rightarrow> 
-           (case s2 of
-            None \<Rightarrow> None |
-            Some \<sigma>2 \<Rightarrow> (if compatible \<sigma>1 \<sigma>2 then Some (\<sigma>1 ++ \<sigma>2) else None)
-           )
-      )"
+  "substitution_union s\<^sub>1 s\<^sub>2 = do {
+      \<sigma>\<^sub>1 <- s\<^sub>1;
+      \<sigma>\<^sub>2 <- s\<^sub>2;
+      (if compatible \<sigma>\<^sub>1 \<sigma>\<^sub>2 then Some (\<sigma>\<^sub>1 ++ \<sigma>\<^sub>2) else None)
+  }"
 
 fun match_tree :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> Subst option" where
   "match_tree (UnaryExpr op x) (UnaryExpr op' x') = 
@@ -585,6 +582,7 @@ next
   then show ?case
     by (metis eval_match_noop map_le_refl)
 qed
+
 
 lemma eval_match_adds_patterns:
   assumes "[e, \<Sigma>] \<leadsto> [m, v, \<Sigma>']"
