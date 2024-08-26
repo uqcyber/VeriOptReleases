@@ -3156,7 +3156,7 @@ qed
       (s'', am) = match_pattern e a s'
      in (s'', match v (UnaryPattern op a) && am))" |*)
 
-theorem sound:
+theorem sound_generate:
   assumes "x1 \<sqsubseteq> x2"
   assumes "valid (generate x1 (Construct x2) None)"
   (*assumes "valid_rules (generate x1 (Construct x2) None)"*)
@@ -3253,6 +3253,7 @@ theorem sound_else:
   assumes "y1 \<sqsubseteq> y2"
   assumes "eval_rules ((generate x1 (Construct x2) None) else (generate y1 (Construct y2) None)) [STR ''e'' \<mapsto> e] (Some e')"
   shows "e \<sqsubseteq> e'"
+  sorry
 
 section "Sound Lowering"
 
