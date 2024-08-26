@@ -176,8 +176,8 @@ type_synonym Scope = "Vars \<times> (VarName \<rightharpoonup> VarName)"
 
 fun remove_var :: "VarName \<Rightarrow> Scope \<Rightarrow> Scope" where
   "remove_var v (vs, m) = (vs - {|v|}, m)"
-fun add_var :: "VarName \<Rightarrow> Scope \<Rightarrow> Scope" where
-  "add_var v (vs, m) = (vs |\<union>| {|v|}, m)"
+fun add_var :: "VarName \<Rightarrow> VarName \<Rightarrow> Scope \<Rightarrow> Scope" where
+  "add_var v var (vs, m) = (vs |\<union>| {|v|}, (m(v\<mapsto>var)))"
 
 (*
 function fresh_var :: "VarName \<Rightarrow> Scope \<Rightarrow> VarName" where
@@ -199,7 +199,7 @@ fun fresh_var :: "VarName \<Rightarrow> VarName fset \<Rightarrow> VarName" wher
 
 
 fun fresh :: "VarName \<Rightarrow> Scope \<Rightarrow> Scope \<times> VarName" where
-  "fresh var s = (let v = fresh_var var (fst s) in (add_var v s, v))"
+  "fresh var s = (let v = fresh_var var (fst s) in (add_var v var s, v))"
                                 
 (*
 lemma fresh [code]:
@@ -303,7 +303,7 @@ snipbegin \<open>MATCH\<close>
 datatype MATCH =
   match VarName PatternExpr |
   equality VarName VarName (infixl "==" 52) |
-  andthen MATCH MATCH (infixr"&&" 50) |
+  andthen MATCH MATCH (infixr "&&" 50) |
   condition SideCondition |
   noop
 snipend -
@@ -336,6 +336,42 @@ abbreviation join :: "('b \<Rightarrow> 'c \<times> MATCH) \<Rightarrow> ('b \<R
 
 fun register_name where
   "register_name (s, m) vn v = (s, m(vn\<mapsto>v))"
+
+(*value "Option.bind"
+
+definition bind :: "'a set \<Rightarrow> ('a \<Rightarrow> 'b set) \<Rightarrow> 'b set"
+  where "bind A f = {x. \<exists>B \<in> f`A. x \<in> B}"
+
+qualified primrec bind :: "'a option \<Rightarrow> ('a \<Rightarrow> 'b option) \<Rightarrow> 'b option"
+where
+  bind_lzero: "bind None f = None"
+| bind_lunit: "bind (Some x) f = f x"
+
+fun add :: "nat option \<Rightarrow> nat option \<Rightarrow> nat option" where
+  "add x y = do {
+    x' <- x;
+    y' <- y;
+    Some (x' + y')
+  }"
+
+fun add' :: "nat option \<Rightarrow> nat option \<Rightarrow> nat option" where
+  "add' x y = 
+    x \<bind> (\<lambda>x'. y \<bind> (\<lambda>y'. Some (x' + y')))"
+
+definition bind_scope :: "Scope \<Rightarrow> (Scope \<Rightarrow> (Scope \<times> 'a)) \<Rightarrow> (Scope \<times> 'a)" where
+  "bind_scope s f = f s"
+
+adhoc_overloading
+  Monad_Syntax.bind CodeGen.bind_scope
+
+fun match_pattern :: "IRExpr \<Rightarrow> VarName \<Rightarrow> Scope \<Rightarrow> Scope \<times> MATCH" where
+  "match_pattern (UnaryExpr op e) v s =
+    do {
+      s' <- s;
+      (_, am) <- match_pattern e a;
+      (s, match v (UnaryPattern op a) && am)
+    }"
+*)
 
 snipbegin "matchpattern"
 fun match_pattern :: "IRExpr \<Rightarrow> VarName \<Rightarrow> Scope \<Rightarrow> Scope \<times> MATCH" where
@@ -381,7 +417,7 @@ type_synonym Subst = "VarName \<rightharpoonup> IRExpr"
 snipend -
 
 snipbegin \<open>evalmatch\<close>
-fun eval_match :: "MATCH \<Rightarrow> Subst \<Rightarrow> Subst option" where
+fun eval_match :: "MATCH \<Rightarrow> Subst \<Rightarrow> Subst option" (infix "\<upharpoonleft>" 70) where
   "eval_match (match v (UnaryPattern op1 x)) s =
     (case s v of 
       Some (UnaryExpr op2 xe) \<Rightarrow>
@@ -439,6 +475,7 @@ fun eval_match :: "MATCH \<Rightarrow> Subst \<Rightarrow> Subst option" where
   "eval_match _ s = None"
 snipend -
 
+
 (*
 fun IROnly :: "Substitution option \<Rightarrow> Subst option" where
   "IROnly (Some s) = Some (map_of (map (\<lambda>k. (k, (s_expr (the (s k))))) (sorted_list_of_set (dom s))))" |
@@ -461,6 +498,7 @@ snipend -
 text \<open>Use the scope of a generated match to replace real variable names with aliases in the rewrite result.\<close>
 class substitutable =
   fixes substitute :: "'a \<Rightarrow> Scope \<Rightarrow> 'a"
+  assumes id: "substitute r ({||}, Map.empty) = r"
 
 
 snipbegin \<open>groundirexpr\<close>
@@ -476,7 +514,10 @@ fun substitute_IRExpr :: "IRExpr \<Rightarrow> Scope \<Rightarrow> IRExpr" where
     (case m vn of None \<Rightarrow> VariableExpr vn st 
                 | Some v' \<Rightarrow> VariableExpr v' st)" |
   "substitute_IRExpr e s = e"
-instance by standard
+instance apply standard
+  subgoal for r apply (induction r)
+    by simp+
+  done
 end
 snipend -
 
@@ -485,8 +526,12 @@ instantiation Result :: substitutable begin
 fun substitute_Result :: "Result \<Rightarrow> Scope \<Rightarrow> Result" where
   "substitute_Result (Construct e) s = Construct (substitute e s)" |
   "substitute_Result (Constant e) s = Constant (substitute e s)" |
-  "substitute_Result (forZero e) s = forZero (substitute e s)"
-instance by standard
+  "substitute_Result (forZero e) s = forZero (substitute e s)" |
+  "substitute_Result (log2 e) s = log2 (substitute e s)"
+instance apply standard
+  subgoal for r apply (cases r)
+    by (simp add: id)+
+  done
 end
 snipend -
 
@@ -497,7 +542,10 @@ fun substitute_NumberCondition :: "NumberCondition \<Rightarrow> Scope \<Rightar
   "substitute_NumberCondition (BitAnd n1 n2) s = (BitAnd (substitute_NumberCondition n1 s) (substitute_NumberCondition n2 s))" |
   "substitute_NumberCondition (UpMask e) s = (UpMask (substitute e s))" |
   "substitute_NumberCondition (DownMask e) s = (DownMask (substitute e s))"
-instance by standard
+instance apply standard
+  subgoal for r apply (induction r)
+    by (simp add: id)+
+  done
 end
 
 instantiation SideCondition :: substitutable begin
@@ -520,7 +568,10 @@ fun substitute_SideCondition :: "SideCondition \<Rightarrow> Scope \<Rightarrow>
   "substitute_SideCondition (Not sc) s = Not (substitute_SideCondition sc s)" |
   "substitute_SideCondition (Empty) s = Empty" |
   "substitute_SideCondition (Equals n1 n2) s = (Equals (substitute n1 s) (substitute n2 s))"
-instance by standard
+instance apply standard
+  subgoal for r apply (induction r)
+    by (simp add: id)+
+  done
 end
 
 snipbegin \<open>generate\<close>
@@ -550,7 +601,7 @@ fun eval_expr :: "IRExpr \<Rightarrow> Subst \<Rightarrow> IRExpr option" where
     of None \<Rightarrow> None | Some e1' \<Rightarrow>
     (case (eval_expr e2 u)
       of None \<Rightarrow> None | Some e2' \<Rightarrow>
-        (case (eval_expr e2 u)
+        (case (eval_expr e3 u)
           of None \<Rightarrow> None | Some e3' \<Rightarrow> Some (ConditionalExpr e1' e2' e3'))))" |
   "eval_expr e u = Some e"
 
@@ -758,8 +809,7 @@ lemma eliminate_noop_valid:
   "eval_rules r u e = eval_rules (eliminate_noop r) u e"
   apply (induction r arbitrary: u e rule: eliminate_noop.induct)
   apply simp
-  using eliminate_noop.simps(2) condE sound_optimize_noop
-    apply (smt (verit) eval_rules.simps) 
+  apply (smt (verit, ccfv_SIG) condE eliminate_noop.simps(2) eval_rules.intros(2) eval_rules.intros(3) sound_optimize_noop)
   using eliminate_noop.simps(3) elseE
    apply (smt (verit, del_insts) eval_rules.intros(4) eval_rules.intros(5))
   unfolding eliminate_noop.simps(4)
@@ -849,8 +899,8 @@ termination lift_match
 
 lemma chain_equiv:
   "eval_rules (m1 ? (m2 ? r)) u e = eval_rules ((m1 && m2) ? r) u e"
-  using condE apply auto[1]
-   apply (smt (verit) eval_match.simps(6) eval_rules.simps option.simps(4) option.simps(5))
+  using condE apply auto[1] 
+  apply (smt (verit, best) eval_match.simps(6) eval_rules.intros(2) eval_rules.intros(3) option.simps(4) option.simps(5))
   by (metis (no_types, lifting) eval_match.simps(6) eval_rules.intros(2) eval_rules.intros(3) option.case_eq_if option.distinct(1) option.exhaust_sel)
 
 lemma entry_var_lift_match:
@@ -2532,13 +2582,685 @@ value "export_rules (optimized_export (optimized_export (LeftConst \<Zsemi> (opt
 no_notation equality (infixl "==" 52)
 no_notation andthen (infixr"&&" 50)
 
+section "Sound Strategy Composition"
+
+inductive groundof :: "Substitution \<Rightarrow> IRExpr \<Rightarrow> IRExpr \<Rightarrow> bool" where
+  "\<lbrakk>groundof sub e e'\<rbrakk>
+    \<Longrightarrow> groundof sub (UnaryExpr op e) (UnaryExpr op e')" |
+  "\<lbrakk>groundof sub e1 e1' \<and> groundof sub e2 e2'\<rbrakk>
+    \<Longrightarrow> groundof sub (BinaryExpr op e1 e2) (BinaryExpr op e1' e2')" |
+  "\<lbrakk>groundof sub c c' \<and> groundof sub e1 e1' \<and> groundof sub e2 e2'\<rbrakk>
+    \<Longrightarrow> groundof sub (ConditionalExpr c e1 e2) (ConditionalExpr c' e1' e2')" |
+  "groundof sub (ParameterExpr i s) (ParameterExpr i s)" |
+  "groundof sub (LeafExpr nid s) (LeafExpr nid s)" |
+  "groundof sub (ConstantExpr c) (ConstantExpr c)" |
+  "\<lbrakk>sub v = Some (SubConst c)\<rbrakk>
+    \<Longrightarrow> groundof sub (ConstantExpr c) (ConstantVar v)" |
+  "\<lbrakk>sub name = Some (SubExpr e)\<rbrakk>
+    \<Longrightarrow> groundof sub e (VariableExpr name s)"
+(* TODO: Temporarily ignoring stamps  \<and> s = stamp_expr e *)
+
+inductive_cases groundUnary: 
+  "groundof sub (UnaryExpr op e) (UnaryExpr op e')"
+inductive_cases groundBinary: 
+  "groundof sub (BinaryExpr op e1 e2) (BinaryExpr op e1' e2')"
+inductive_cases groundConditional: 
+  "groundof sub (ConditionalExpr c e1 e2) (ConditionalExpr c' e1' e2')"
+inductive_cases groundParameter: 
+  "groundof sub (ParameterExpr i s) (ParameterExpr i s)"
+inductive_cases groundLeaf: 
+  "groundof sub (LeafExpr nid s) (LeafExpr nid s)"
+inductive_cases groundConstant: 
+  "groundof sub (ConstantExpr c) (ConstantExpr c)"
+inductive_cases groundConstantVar: 
+  "groundof sub (ConstantExpr c) (ConstantVar v)"
+inductive_cases groundVariable: 
+  "groundof sub e (VariableExpr name s)"
+
+lemma groundUnaryExists:
+  "(\<exists>sub. groundof sub (UnaryExpr op e) (UnaryExpr op e'))
+   = (\<exists>sub. groundof sub e e')"
+  by (meson groundUnary groundof.intros(1))
+
+lemma groundBinaryExists:
+  "(\<exists>sub. groundof sub (BinaryExpr op e1 e2) (BinaryExpr op e1' e2'))
+   = (\<exists>sub. groundof sub e1 e1' \<and> groundof sub e2 e2')"
+  by (meson groundBinary groundof.intros(2))
+
+definition subset_domain :: "Substitution \<Rightarrow> Substitution \<Rightarrow> bool" (infix "\<preceq>" 55) where
+  "subset_domain sub sub' = (\<forall>x \<in> dom sub. sub x = sub' x)"
+
+lemma groundof_subset:
+  assumes "groundof sub e e'"
+  assumes "sub \<preceq> sub'"
+  shows "groundof sub' e e'"
+  using assms proof (induction rule: groundof.induct)
+  case (1 sub e e' op)
+  then show ?case using groundof.intros(1) by blast
+next
+  case (2 sub e1 e1' e2 e2' op)
+  then show ?case using groundof.intros(2) by blast
+next
+  case (3 sub c c' e1 e1' e2 e2')
+  then show ?case using groundof.intros(3) by blast
+next
+  case (4 sub i s)
+  then show ?case using groundof.intros(4) by blast
+next
+  case (5 sub nid s)
+  then show ?case using groundof.intros(5) by blast
+next
+  case (6 sub c)
+  then show ?case using groundof.intros(6) by blast
+next
+  case (7 sub v c)
+  have "sub' v = Some (SubConst c)"
+    using 7(1,2) unfolding subset_domain_def
+    by (metis domI)
+  then show ?case
+    by (simp add: groundof.intros(7))
+next
+  case (8 sub name e s)
+  have "sub' name = Some (SubExpr e)"
+    using 8(1,2) unfolding subset_domain_def
+    by (metis domI)
+  then show ?case
+    by (simp add: groundof.intros(8))
+qed
+
+lemma groundBinaryExists1:
+  assumes "(\<exists>sub1 sub2. groundof sub1 e1 e1' \<and> groundof sub2 e2 e2' \<and> compatible sub1 sub2)"
+  shows "(\<exists>sub. groundof sub (BinaryExpr op e1 e2) (BinaryExpr op e1' e2'))"
+proof -
+  obtain sub1 sub2 where subs: "groundof sub1 e1 e1' \<and> groundof sub2 e2 e2' \<and> compatible sub1 sub2"
+    using assms by auto
+  obtain sub where sub: "sub = sub1 ++ sub2"
+    by auto
+  then have "sub1 \<preceq> sub \<and> sub2 \<preceq> sub"
+    by (metis CodeGen.compatible.elims(2) subs domIff map_add_dom_app_simps(1) map_add_dom_app_simps(3) subset_domain_def)
+  then have "groundof sub (BinaryExpr op e1 e2) (BinaryExpr op e1' e2')"
+    using subs groundof.intros(2) groundof_subset by blast
+  then show ?thesis
+    by auto
+qed
+    
+
+lemma groundVariableExists:
+  shows "\<exists>sub. groundof sub e (VariableExpr name s)"
+  using groundof.intros(8) by fastforce
+
+lemma "\<exists>sub.
+groundof sub
+  (BinaryExpr BinAdd
+              (UnaryExpr UnaryNeg (ConstantExpr (IntVal 32 0)))
+              (ConstantExpr (IntVal 32 10)))
+  (BinaryExpr BinAdd
+              (UnaryExpr UnaryNeg (VariableExpr STR ''e1'' s))
+              (VariableExpr STR ''e2'' s))"
+  (is "\<exists>sub. groundof sub (BinaryExpr BinAdd ?un1 ?c) (BinaryExpr BinAdd ?un2 ?v)")
+proof - \<comment> \<open>Forwards\<close>
+  obtain sub where subdef: "sub = [STR ''e1'' \<mapsto> (SubExpr (ConstantExpr (IntVal 32 0))), STR ''e2'' \<mapsto> (SubExpr (ConstantExpr (IntVal 32 10)))]"
+    by force
+  then have rhs: "groundof sub ?c ?v"
+    by (simp add: groundof.intros(8))
+  then have "groundof sub (ConstantExpr (IntVal 32 0)) (VariableExpr STR ''e1'' s)"
+    by (simp add: groundof.intros(8) subdef)
+  then have lhs: "groundof sub ?un1 ?un2"
+    using groundof.intros(1) by force
+  then have "groundof sub (BinaryExpr BinAdd ?un1 ?c) (BinaryExpr BinAdd ?un2 ?v)"
+    using groundof.intros(2) rhs by blast
+  then show ?thesis
+    by blast
+qed
+(* \<comment> \<open>Backwards\<close>
+  apply (rule groundBinaryExists1)
+  apply (rule split_ex)
+  apply (subst groundUnaryExists)
+  apply (subst groundVariableExists)
+  apply (subst groundVariableExists)
+  by force
+*)
+
+fun expr_of_result :: "Result \<Rightarrow> IRExpr" where
+  "expr_of_result (Construct e) = e" |
+  "expr_of_result (Constant e) = e" |
+  "expr_of_result (forZero e) = e" |
+  "expr_of_result (log2 e) = e"
+
+fun def_vars_rule :: "Rules \<Rightarrow> String.literal set" where
+  "def_vars_rule (r1 else r2) = def_vars_rule r1 \<union> def_vars_rule r2" |
+  "def_vars_rule (cond m r) = def_vars m \<union> def_vars_rule r" |
+  "def_vars_rule (choice rules) = (\<Union>r \<in> set rules. (def_vars_rule r))" |
+  "def_vars_rule (base e) = {}" |
+  "def_vars_rule (r1 \<Zsemi> r2) = def_vars_rule r1 \<union> def_vars_rule r2"
+
+fun validm :: "String.literal set \<Rightarrow> Rules \<Rightarrow> bool" where
+  "validm s (base e) = (fset (vars (expr_of_result e)) \<subseteq>  s)" |
+  "validm s (cond m r) = validm (s \<union> def_vars m) r" |
+  "validm s (r1 else r2) = (validm s r1 \<and> validm s r2)" |
+  "validm s (r1 \<Zsemi> r2) = (validm s r1 \<and> validm (s \<union> def_vars_rule r1) r2)" |
+  "validm s (choice rules) = (\<forall> r \<in> set rules. validm s r)"
+
+definition valid :: "Rules \<Rightarrow> bool" where
+  "valid r = validm {} r"
+
+definition expression_domain :: "Substitution \<Rightarrow> Subst \<Rightarrow> bool" where
+  "expression_domain s s' = (\<forall>vn \<in> dom s. (\<exists>e. s vn = Some (SubExpr e)) \<longrightarrow> s' vn = Some (s_expr (the (s vn))))"
+
+lemma fresh_var:
+  assumes "(s', a) = fresh vn scope"
+  shows "a |\<notin>| (fst scope)"
+  using assms
+  by (metis finite_fset fresh.simps fresh_notIn fresh_var.simps fst_conv swap_simp)
+
+lemma(* match_pattern_only_adds:*)
+  assumes "(s, m) = match_pattern p vn scope"
+  assumes "vn |\<notin>| fst scope \<or> (snd scope) vn = Some vn"
+  shows "vn |\<notin>| fst s"
+  using assms proof (induction p arbitrary: scope vn s m)
+  case (UnaryExpr x1 p)
+  obtain s' a where f:"(s', a) = fresh STR ''a'' scope"
+    by (metis fresh.simps)        
+  then obtain s'' am where "(s'', am) = match_pattern p a s'"
+    by (metis surj_pair)
+  also have "a |\<notin>| (fst scope)"
+    using f
+    by (simp add: fresh_var)
+  have "(snd s') a = Some STR ''a''"
+    using f unfolding fresh.simps
+    by (metis Pair_inject add_var.simps fun_upd_apply prod.collapse)
+  then show ?case sorry
+next
+  case (BinaryExpr x1 p1 p2)
+  then show ?case sorry
+next
+  case (ConditionalExpr p1 p2 p3)
+  then show ?case sorry
+next
+  case (ParameterExpr x1 x2)
+  then show ?case sorry
+next
+  case (LeafExpr x1 x2)
+  then show ?case sorry
+next
+  case (ConstantExpr x)
+  then show ?case sorry
+next
+  case (ConstantVar x)
+  then show ?case sorry
+next
+  case (VariableExpr x1 x2)
+  then show ?case sorry
+qed
+
+lemma(* match_pattern_only_adds:*)
+  assumes "(s, m) = match_pattern p vn scope"
+  assumes "vn \<notin> dom (snd scope)"
+  shows "\<forall>vn. (snd scope) vn \<noteq> None \<longrightarrow> (snd scope) vn = (snd s) vn"
+  sorry
+(*  using assms proof (inductin p arbitrary: scope vn s m)
+  case (UnaryExpr x1 p)
+  then show ?case
+    by (smt (z3) add_var.simps eq_fst_iff fresh.simps match_pattern.simps(4) prod.case_eq_if sndI)
+next
+  case (BinaryExpr x1 p1 p2)
+  then show ?case
+    by (smt (z3) Pair_inject add_var.simps fresh.simps match_pattern.simps(5) prod.collapse split_beta)
+next
+  case (ConditionalExpr p1 p2 p3)
+  then show ?case
+    by (smt (z3) add_var.simps case_prod_beta fresh.simps match_pattern.simps(6) old.prod.inject prod.collapse)
+next
+  case (ParameterExpr x1 x2)
+  then show ?case by simp
+next
+  case (LeafExpr x1 x2)
+  then show ?case by simp
+next
+  case (ConstantExpr x)
+  then show ?case by simp
+next
+  case (ConstantVar x)
+  then show ?case by simp
+next
+  case (VariableExpr name smp)
+  obtain s1 s2 where sb: "scope = (s1, s2)"
+    by fastforce
+  then have "s = register_name (s1, s2) name vn"
+    using option.case_eq_if VariableExpr
+    by (metis (no_types, lifting) match_pattern.simps(1) prod.inject)
+  then show ?case unfolding register_name.simps using sb sledgehammer
+qed*)
+
+lemma unary_eval_match:
+  assumes "(match v (UnaryPattern op e))\<upharpoonleft>sub = Some sub'"
+  shows "\<exists>xe. sub' v = Some (UnaryExpr op xe) \<and> sub' e = Some xe"
+  using assms unfolding eval_match.simps
+  by (smt (z3) IRExpr.simps(65) IRExpr.split_sels(2) domI is_none_code(2) is_none_simps(1) map_upd_Some_unfold option.case_eq_if option.inject option.split_sel_asm)
+
+lemma binary_eval_match:
+  assumes "valid_match (match v (BinaryPattern op e1 e2))"
+  assumes "eval_match (match v (BinaryPattern op e1 e2)) sub = Some sub'"
+  shows "\<exists>xe1 xe2. sub' v = Some (BinaryExpr op xe1 xe2) \<and> sub' e1 = Some xe1 \<and> sub' e2 = Some xe2"
+proof -
+  obtain xe1 xe2 where bsub: "sub' v = Some (BinaryExpr op xe1 xe2)" 
+    using assms unfolding eval_match.simps apply (cases "sub v") apply simp
+    by (smt (z3) IRExpr.simps(66) IRExpr.split_sels(2) domI fun_upd_apply is_none_code(2) is_none_simps(1) option.sel option.simps(5))
+  then have res: "Some sub' =
+        (if e1 \<in> dom sub \<and> sub e1 \<noteq> Some xe1 then None else 
+          (if e2 \<in> dom sub \<and> sub e2 \<noteq> Some xe2 then None else 
+          (if e1 \<in> dom sub \<and> e2 \<in> dom sub then Some sub else
+          (if e1 \<in> dom sub then Some (sub(e2\<mapsto>xe2)) else
+          (if e2 \<in> dom sub then Some (sub(e1\<mapsto>xe1)) else
+          Some (sub(e1\<mapsto>xe1, e2\<mapsto>xe2)))))))"
+    using assms unfolding eval_match.simps
+    by (smt (z3) IRExpr.simps(66) IRExpr.split_sels(2) domIff fun_upd_apply is_none_code(2) is_none_simps(1) option.case_eq_if option.sel)
+  then have "sub' e1 = Some xe1 \<and> sub' e2 = Some xe2"
+  proof (cases "e1 \<in> dom sub")
+    case e1T: True
+    then show ?thesis proof (cases "e2 \<in> dom sub")
+      case e2T: True
+      have "Some sub' = Some sub" using res e1T e2T
+        by (metis option.distinct(1))
+      then show ?thesis
+        by (metis e1T e2T is_none_code(2) is_none_simps(1) option.inject res)
+    next
+      case e2F: False
+      have "Some sub' = Some (sub(e2\<mapsto>xe2))"
+        using res e1T e2F by auto
+      then show ?thesis
+        by (metis e1T fun_upd_def option.distinct(1) option.inject res)
+    qed
+  next
+    case e1F:  False
+    then show ?thesis proof (cases "e2 \<in> dom sub")
+      case e2T: True
+      have "Some sub' = Some (sub(e1\<mapsto>xe1))"
+        using res e1F e2T by auto
+      then show ?thesis
+        by (metis (no_types, lifting) map_upd_Some_unfold option.discI res)
+    next
+      case e2F: False
+      have "Some sub' = Some (sub(e1\<mapsto>xe1, e2\<mapsto>xe2))"
+        using res e1F e2F by auto
+      then show ?thesis
+        using assms(1) by force
+    qed
+  qed
+  then show ?thesis using bsub by simp
+qed
+
+lemma conditional_eval_match:
+  assumes "valid_match (match v (ConditionalPattern c e1 e2))"
+  assumes "eval_match (match v (ConditionalPattern c e1 e2)) sub = Some sub'"
+  shows "\<exists>xc xe1 xe2. sub' v = Some (ConditionalExpr xc xe1 xe2) \<and> sub' c = Some xc \<and> sub' e1 = Some xe1 \<and> sub' e2 = Some xe2"
+proof -
+  obtain xc xe1 xe2 where bsub: "sub' v = Some (ConditionalExpr xc xe1 xe2)" 
+    using assms unfolding eval_match.simps apply (cases "sub v") apply simp
+    by (smt (z3) IRExpr.split_sels(2) assms(2) domIff eval_match_subset is_none_code(2) is_none_simps(1) map_le_def option.split_sel_asm)
+  then have "sub' c = Some xc \<and> sub' e1 = Some xe1 \<and> sub' e2 = Some xe2"
+    using assms unfolding eval_match.simps apply (cases "c \<in> dom sub"; cases "e1 \<in> dom sub"; cases "e2 \<in> dom sub")
+           apply (smt (z3) IRExpr.simps(67) assms(2) domIff eval_match_subset map_le_def option.case_eq_if option.discI option.sel)
+          apply (smt (z3) IRExpr.simps(67) assms(2) domIff eval_match_subset map_le_def map_upd_Some_unfold option.case_eq_if option.discI option.sel)
+         apply (smt (z3) IRExpr.simps(67) IRExpr.split_sels(2) fun_upd_same fun_upd_triv fun_upd_twist is_none_code(2) is_none_simps(1) option.case_eq_if option.sel valid_match.simps(3))
+        apply (smt (z3) IRExpr.simps(67) IRExpr.split_sels(2) fun_upd_other fun_upd_same is_none_code(2) is_none_simps(1) option.case_eq_if option.sel valid_match.simps(3))
+       apply (smt (z3) IRExpr.simps(67) assms(2) domIff eval_match_subset map_le_def map_upd_Some_unfold option.case_eq_if option.discI option.sel)
+      apply (smt (z3) IRExpr.simps(67) assms(2) domIff eval_match_subset map_le_def map_upd_Some_unfold option.case_eq_if option.discI option.sel valid_match.simps(3))
+     apply (smt (z3) IRExpr.simps(67) assms(2) domIff eval_match_subset map_le_def map_upd_Some_unfold option.case_eq_if option.discI option.sel valid_match.simps(3))
+    by (smt (z3) IRExpr.simps(67) IRExpr.split_sels(2) fun_upd_apply is_none_code(2) is_none_simps(1) option.case_eq_if option.sel valid_match.simps(3))
+  then show ?thesis
+    using bsub by blast
+qed
+
+
+lemma constant_eval_match:
+  assumes "eval_match (match v (ConstantPattern c)) sub = Some sub'"
+  shows "sub' v = Some (ConstantExpr c)"
+  using assms apply (cases "sub v") 
+  apply simp 
+  by (smt (verit) IRExpr.split_sels(2) domI eval_match.simps(4) eval_match_subset is_none_code(2) is_none_simps(1) map_le_def option.simps(5) valid_match.simps(6))
+
+lemma equality_eval_match:
+  assumes "eval_match (equality c1 c2) sub = Some sub'"
+  shows "sub' c1 = sub' c2"
+  using assms
+  by (metis eval_match.simps(5) option.discI option.sel)
+
+lemma
+  assumes "(s, m) = match_pattern p vn scope"
+  assumes "\<forall>vn \<in> dom (snd s). sub vn = None"
+  shows "\<exists>ge sub'. eval_match m (sub(vn \<mapsto> ge)) = (Some sub')"
+  using assms proof (induction p arbitrary: s m vn scope sub)
+  case (UnaryExpr op e)
+  obtain s' a where "(s', a) = fresh STR ''a'' scope"
+    by (metis fresh.simps)
+  obtain s'' am where "(s'', am) = match_pattern e a s'"
+    using prod.collapse by blast
+  obtain fsub ge where "fsub = sub(vn \<mapsto> ge)"
+    by auto
+  then have "\<forall>vn \<in> dom (snd s''). sub vn = None"
+    by (metis (no_types, lifting) UnaryExpr.prems(2) \<open>(s'', am) = match_pattern e a s'\<close> \<open>(s', a) = CodeGen.fresh STR ''a'' scope\<close> local.UnaryExpr(2) match_pattern.simps(4) prod.sel(1) split_conv)
+  then obtain uge usub' where "eval_match am (fsub(a \<mapsto> uge)) = Some usub'"
+    sorry
+  have "m = (andthen (match vn (UnaryPattern op a)) am)" (is "m = ?pat")
+    by (metis (no_types, lifting) UnaryExpr.prems(1) \<open>(s'', am) = match_pattern e a s'\<close> \<open>(s', a) = CodeGen.fresh STR ''a'' scope\<close> case_prod_conv match_pattern.simps(4) prod.inject)
+  then have "\<exists>sub'. eval_match ?pat (sub(vn \<mapsto> UnaryExpr op uge)) = Some sub'"
+    sorry
+  then show ?case using UnaryExpr 
+    using \<open>m = andthen (match vn (UnaryPattern op a)) am\<close> by blast
+next
+  case (BinaryExpr x1 p1 p2)
+  then show ?case sorry
+next
+  case (ConditionalExpr p1 p2 p3)
+  then show ?case sorry
+next
+  case (ParameterExpr x1 x2)
+  then show ?case sorry
+next
+  case (LeafExpr x1 x2)
+  then show ?case sorry
+next
+  case (ConstantExpr x)
+  then show ?case sorry
+next
+  case (ConstantVar x)
+  then show ?case sorry
+next
+  case (VariableExpr x1 x2)
+  then show ?case sorry
+qed
+
+
+lemma
+  assumes "(s, m) = match_pattern p vn scope"
+  (*assumes "\<forall>vn \<in> dom (snd s). (\<exists>e. sub vn = Some e)"*)
+  assumes "eval_match m [vn \<mapsto> ge] = (Some sub')"
+  shows "\<exists>sub. groundof sub ge p"
+  using assms proof (induction p arbitrary: m vn ge sub' scope)
+  case (UnaryExpr x1 p)
+  then show ?case sorry
+next
+  case (BinaryExpr x1 p1 p2)
+  then show ?case sorry
+next
+  case (ConditionalExpr p1 p2 p3)
+  then show ?case sorry
+next
+  case (ParameterExpr x1 x2)
+  then show ?case sorry
+next
+  case (LeafExpr x1 x2)
+  then show ?case sorry
+next
+  case (ConstantExpr x)
+  then show ?case sorry
+next
+  case (ConstantVar x)
+  then show ?case sorry
+next
+  case (VariableExpr x1 x2)
+  then show ?case sorry
+qed
+
+lemma inductUnaryEval:
+  assumes "eval_rules (generate (UnaryExpr op ep) (Construct rhs) None) [STR ''e'' \<mapsto> (UnaryExpr op eg)] (Some e')"
+  shows "\<exists>e'. eval_rules (generate ep (Construct rhs) None) [STR ''e'' \<mapsto> eg] (Some e')"
+  using assms sorry
+
+lemma
+  assumes "eval_rules (generate lhs (Construct rhs) None) [STR ''e'' \<mapsto> e] (Some e')"
+  shows "\<exists>sub. groundof sub e lhs"
+using assms proof (induction lhs arbitrary: rhs e e')
+  case (UnaryExpr op lhs)
+  obtain s' a where "fresh STR ''a'' ({||}, Map.empty) = (s', a)"
+    by fastforce
+  obtain s'' am where "(s'', am) = match_pattern lhs a s'"
+    using prod.collapse by blast
+  have mp1: "snd (match_pattern (UnaryExpr op lhs) STR ''e'' ({||}, (\<lambda>x. None))) = (andthen (match STR ''e'' (UnaryPattern op a)) am)"
+    by (metis (no_types, lifting) \<open>(s'', am) = match_pattern lhs a s'\<close> \<open>CodeGen.fresh STR ''a'' ({||}, \<lambda>x. None) = (s', a)\<close> case_prod_conv match_pattern.simps(4) snd_eqD)
+  have mp2: "fst (match_pattern (UnaryExpr op lhs) STR ''e'' ({||}, (\<lambda>x. None))) = s''"
+    by (metis (no_types, lifting) \<open>(s'', am) = match_pattern lhs a s'\<close> \<open>CodeGen.fresh STR ''a'' ({||}, \<lambda>x. None) = (s', a)\<close> case_prod_conv match_pattern.simps(4) prod.collapse prod.inject)
+  then have gen: "(generate (UnaryExpr op lhs) (Construct rhs) None) 
+      = (cond (andthen (match STR ''e'' (UnaryPattern op a)) am) (base (substitute (Construct rhs) s'')))"
+    (is "?gencmd = ?gen")
+    using mp1 mp2
+    by (metis (no_types, lifting) case_prod_conv generate.simps option.simps(4) prod.collapse)
+  have "eval_rules ?gen [STR ''e'' \<mapsto> e] (Some e')"
+    using assms
+    by (metis UnaryExpr.prems gen)
+  then obtain u' where "eval_match (andthen (match STR ''e'' (UnaryPattern op a)) am) [STR ''e'' \<mapsto> e] = (Some u')"
+    by (meson condE option.discI)
+  then obtain u'' where "eval_match (match STR ''e'' (UnaryPattern op a)) [STR ''e'' \<mapsto> e] = (Some u'')"
+    by fastforce
+  then obtain glhs where "e = UnaryExpr op glhs"
+    by (smt (z3) IRExpr.split_sels(2) eval_match.simps(1) fun_upd_same is_none_code(2) is_none_simps(1) option.case_eq_if option.exhaust_sel option.inject)
+  then obtain e' where "eval_rules (generate lhs (Construct rhs) None) [STR ''e'' \<mapsto> glhs] (Some e')"
+    using inductUnaryEval
+    using UnaryExpr.prems by blast
+  then have "\<exists>sub. groundof sub glhs lhs"
+    using UnaryExpr
+    by blast
+  then show ?case
+    using \<open>e = UnaryExpr op glhs\<close> groundof.intros(1) by blast
+next
+  case (BinaryExpr x1 lhs1 lhs2)
+  then show ?case sorry
+next
+  case (ConditionalExpr lhs1 lhs2 lhs3)
+  then show ?case sorry
+next
+  case (ParameterExpr x1 x2)
+  then show ?case sorry
+next
+  case (LeafExpr x1 x2)
+  then show ?case sorry
+next
+  case (ConstantExpr x)
+  then show ?case sorry
+next
+  case (ConstantVar x)
+  then show ?case sorry
+next
+  case (VariableExpr x1 x2)
+  then show ?case sorry
+qed
+
+definition ground_substitution :: "Substitution \<Rightarrow> bool" where
+  "ground_substitution m = (\<forall>n \<in> dom m. (\<forall>e. m n = Some (SubExpr e) \<longrightarrow> is_ground e))"
+
+definition pattern_refinement :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> bool" where
+  "pattern_refinement e1 e2 = (\<forall>m. (ground_substitution m \<and> (\<forall>var \<in> fset (vars e1). (\<exists>e. m var = Some e))) 
+                                \<longrightarrow> (\<forall>ge1 ge2. (groundof m ge1 e1 \<and> groundof m ge2 e2) \<longrightarrow> ge1 \<le> ge2))"
+
+lemma ground_requires_mdom:
+  assumes "groundof m ge1 e1"
+  shows "(\<forall>var \<in> fset (vars e1). (\<exists>e. m var = Some e))"
+  using assms apply (induction rule: groundof.induct) by auto
+
+lemma ground_refinement:
+  assumes "pattern_refinement e1 e2"
+  assumes "ground_substitution m"
+  assumes "groundof m ge1 e1"
+  assumes "groundof m ge2 e2"
+  shows "ge1 \<le> ge2"
+proof -
+  have "(\<forall>var \<in> fset (vars e1). (\<exists>e. m var = Some e))"
+    using ground_requires_mdom assms(3) by simp
+  then have f: "(\<And>ge1 ge2. (groundof m ge1 e1 \<and> groundof m ge2 e2) \<Longrightarrow> ge1 \<le> ge2)"
+    using assms(1,2) unfolding pattern_refinement_def by auto
+  show ?thesis
+    apply (rule f)
+    using assms(3,4) by simp
+qed
+
+theorem sound:
+  assumes "pattern_refinement pe1 pe2"
+  assumes "eval_rules (generate pe1 (Construct pe2) None) [STR ''e'' \<mapsto> ge1] (Some ge2)"
+  shows "ge1 \<sqsubseteq> ge2"
+  using assms sorry
+
+
+
+
+
+
+
+
+
+
+
+lemma
+  assumes "vars e = {||}"
+  shows "eval_expr e u \<noteq> None"
+  using assms apply (induction e)
+  by force+
+
+lemma ground_expr_eval_id:
+  assumes "vars e = {||}"
+  shows "eval_expr e u = Some e"
+  using assms apply (induction e) by simp+
+
+lemma L1:
+  assumes "valid (cond (match STR ''e'' (ConstantPattern x6)) (base (Construct x2)))"
+  assumes "(\<exists>e'. eval_rules (cond (match STR ''e'' (ConstantPattern x6)) (base (Construct x2))) [STR ''e'' \<mapsto> e] (Some e'))"
+  shows "eval_rules (cond (match STR ''e'' (ConstantPattern x6)) (base (Construct x2))) [STR ''e'' \<mapsto> e] (Some x2)"
+proof -
+  obtain u' where "eval_match (match STR ''e'' (ConstantPattern x6)) [STR ''e'' \<mapsto> e] = Some u'"
+    by (metis assms(2) condE option.discI)
+  then have "\<exists>e'. eval_rules (base (Construct x2)) u' (Some e')"
+    by (metis assms(2) condE option.discI option.inject)
+  then have "eval_rules (base (Construct x2)) u' (eval_result (Construct x2) u')"
+    using eval_rules.intros(1) by blast
+  then have eval_subst: "eval_rules (base (Construct x2)) u' (eval_expr x2 u')"
+    by fastforce
+  have "validm ({} \<union> def_vars (match STR ''e'' (ConstantPattern x6))) (base (Construct x2))"
+    using assms(1) valid_def by fastforce
+  also have "def_vars (match STR ''e'' (ConstantPattern x6)) = {}"
+    by simp
+  also have "validm {} (base (Construct x2))"
+    using calculation by auto
+  ultimately have "vars e = {||}"
+    by (smt (verit) IRExpr.split_sels(2) \<open>eval_match (match STR ''e'' (ConstantPattern x6)) [STR ''e'' \<mapsto> e] = Some u'\<close> eval_match.simps(4) fun_upd_apply is_none_code(2) is_none_simps(1) option.case(2) vars.simps(6))
+  then have "eval_rules (base (Construct x2)) u' (Some x2)"
+    using ground_expr_eval_id
+    by (metis \<open>validm {} (base (Construct x2))\<close> bot.extremum_uniqueI bot_fset.rep_eq eval_subst expr_of_result.simps(1) fset_cong validm.simps(1))
+  then show ?thesis
+    using \<open>eval_match (match STR ''e'' (ConstantPattern x6)) [STR ''e'' \<mapsto> e] = Some u'\<close> eval_rules.intros(2) by blast
+qed
+
+(*
+ "match_pattern (UnaryExpr op e) v s =
+    (let
+      (s', a) = fresh STR ''a'' s;
+      (s'', am) = match_pattern e a s'
+     in (s'', match v (UnaryPattern op a) && am))" |*)
+
+theorem sound:
+  assumes "x1 \<sqsubseteq> x2"
+  assumes "valid (generate x1 (Construct x2) None)"
+  (*assumes "valid_rules (generate x1 (Construct x2) None)"*)
+  assumes "eval_rules (generate x1 (Construct x2) None) [STR ''e'' \<mapsto> e] (Some e')"
+  shows "e \<sqsubseteq> e'"
+  using assms
+proof (cases x1)
+  case (UnaryExpr x11 x12)
+  obtain s' a where "fresh STR ''a'' ({||}, Map.empty) = (s', a)"
+    by fastforce
+  obtain s'' am where "(s'', am) = match_pattern x12 a s'"
+    using prod.collapse by blast
+  have mp1: "snd (match_pattern x1 STR ''e'' ({||}, (\<lambda>x. None))) = (andthen (match STR ''e'' (UnaryPattern x11 a)) am)"
+    by (metis (no_types, lifting) \<open>(s'', am) = match_pattern x12 a s'\<close> \<open>CodeGen.fresh STR ''a'' ({||}, \<lambda>x. None) = (s', a)\<close> local.UnaryExpr match_pattern.simps(4) old.prod.case sndI)
+  have mp2: "fst (match_pattern x1 STR ''e'' ({||}, (\<lambda>x. None))) = s''"
+    by (metis (no_types, lifting) \<open>(s'', am) = match_pattern x12 a s'\<close> \<open>CodeGen.fresh STR ''a'' ({||}, \<lambda>x. None) = (s', a)\<close> case_prod_conv fst_conv local.UnaryExpr match_pattern.simps(4))
+  then have gen: "(generate x1 (Construct x2) None) = (cond (andthen (match STR ''e'' (UnaryPattern x11 a)) am) (base (substitute (Construct x2) s'')))"
+    (is "?gencmd = ?gen")
+    using mp1 mp2
+    by (metis (no_types, lifting) case_prod_conv generate.simps option.simps(4) prod.collapse)
+(*"\<lbrakk>eval_match m u = Some u';
+    eval_rules r u' e\<rbrakk>
+   \<Longrightarrow> eval_rules (cond m r) u e" |*)
+  have "eval_rules ?gen [STR ''e'' \<mapsto> e] (Some e')"
+    using assms(3) gen by fastforce
+  then have "\<exists>u'. eval_match (andthen (match STR ''e'' (UnaryPattern x11 a)) am) [STR ''e'' \<mapsto> e] = Some u'"
+    by (meson condE option.discI)
+  then have "\<exists>u'. eval_match (match STR ''e'' (UnaryPattern x11 a)) [STR ''e'' \<mapsto> e] = Some u'"
+    by (metis eval_match.simps(6) opt_to_list.cases option.simps(4))
+  then have "\<exists>se. e = UnaryExpr x11 se"
+    by (smt (verit, del_insts) IRExpr.split_sels(2) eval_match.simps(1) fun_upd_apply is_none_code(2) is_none_simps(1) option.case(2))
+  then have "eval_rules ?gen [STR ''e'' \<mapsto> e] (Some e') \<Longrightarrow> \<exists>se. e = (UnaryExpr x11 se)"
+    by blast
+  have "eval_rules ?gen [STR ''e'' \<mapsto> e] (Some e') \<Longrightarrow> \<exists>u'. eval_rules ?gen [STR ''e'' \<mapsto> e] (eval_expr x2 u')"
+    using assms(2) sorry
+  then show ?thesis
+    sorry
+next
+  case (BinaryExpr x21 x22 x23)
+  then show ?thesis sorry
+next
+  case (ConditionalExpr x31 x32 x33)
+  then show ?thesis sorry
+next
+  case (ParameterExpr x41 x42)
+  have mp1: "snd (match_pattern x1 STR ''e'' ({||}, (\<lambda>x. None))) = noop"
+    using local.ParameterExpr by auto
+  have mp2: "fst (match_pattern x1 STR ''e'' ({||}, (\<lambda>x. None))) = ({||}, Map.empty)"
+    by (simp add: local.ParameterExpr)
+  then have gen: "(generate x1 (Construct x2) None) = (cond (noop) (base (Construct x2)))"
+    (is "?gencmd = ?gen")
+    using mp1 mp2
+    by (simp add: id prod.case_eq_if)
+  also have "eval_rules ?gen [STR ''e'' \<mapsto> e] (Some e') \<Longrightarrow> eval_rules (base (Construct x2)) [STR ''e'' \<mapsto> e] (Some e')"
+    by (metis condE eval_match.simps(7) option.discI option.sel)
+  moreover have "eval_rules (base (Construct x2)) [STR ''e'' \<mapsto> e] (Some e') \<Longrightarrow> eval_rules (base (Construct x2)) [STR ''e'' \<mapsto> e] (Some x2)"
+    by (metis Un_absorb assms(2) baseE bot.extremum_uniqueI bot_fset.rep_eq def_vars.simps(5) eval_result.simps(1) expr_of_result.simps(1) fset_cong gen ground_expr_eval_id valid_def validm.simps(1) validm.simps(2))
+  ultimately have "eval_rules (base (Construct x2)) [STR ''e'' \<mapsto> e] (Some x2)"
+    using assms(3) by presburger
+  then show ?thesis
+    sorry
+next
+  case (LeafExpr x51 x52)
+  then show ?thesis sorry
+next
+  case (ConstantExpr x6)
+  have mp1: "snd (match_pattern x1 STR ''e'' ({||}, (\<lambda>x. None))) = (match STR ''e'' (ConstantPattern x6))"
+    by (simp add: local.ConstantExpr)
+  have mp2: "fst (match_pattern x1 STR ''e'' ({||}, (\<lambda>x. None))) = ({||}, Map.empty)"
+    by (simp add: local.ConstantExpr)
+  then have gen: "(generate x1 (Construct x2) None) = (cond (match STR ''e'' (ConstantPattern x6)) (base (Construct x2)))"
+    (is "?gencmd = ?gen")
+    using mp1 mp2
+    by (simp add: id prod.case_eq_if)
+  have "eval_rules ?gen [STR ''e'' \<mapsto> e] (Some e') \<Longrightarrow> e = (ConstantExpr x6)"
+    by (smt (verit) IRExpr.split_sels(2) condE eval_match.simps(4) fun_upd_apply is_none_code(2) is_none_simps(1) option.case(2))
+  then have "e = (ConstantExpr x6)"
+    using assms(3) gen by auto
+  have "eval_rules ?gen [STR ''e'' \<mapsto> e] (Some e') \<Longrightarrow> eval_rules ?gen [STR ''e'' \<mapsto> e] (Some x2)"
+    using assms(2) L1
+    using gen by auto
+  then show ?thesis
+    by (metis (no_types, lifting) \<open>e = ConstantExpr x6\<close> assms(1) assms(3) baseE condE gen local.ConstantExpr option.discI option.sel)
+next
+  case (ConstantVar x7)
+  then show ?thesis sorry
+next
+  case (VariableExpr x81 x82)
+  then show ?thesis sorry
+qed
+
+theorem sound_else:
+  assumes "x1 \<sqsubseteq> x2"
+  assumes "y1 \<sqsubseteq> y2"
+  assumes "eval_rules ((generate x1 (Construct x2) None) else (generate y1 (Construct y2) None)) [STR ''e'' \<mapsto> e] (Some e')"
+  shows "e \<sqsubseteq> e'"
+
 section "Sound Lowering"
 
 lemma fresh:
   assumes "v' = fresh_var v s"
   shows "v' |\<notin>| s"
   using assms unfolding fresh_var.simps using fresh_notIn
-  by (metis finite_fset fmember.rep_eq)
+  using finite_fset by blast
 
 lemma fresh_add:
   assumes "(s', v') = fresh v s"
@@ -2546,14 +3268,17 @@ lemma fresh_add:
   using assms unfolding fresh.simps
   by (metis Pair_inject add_var.simps finsertCI funion_iff prod.collapse)
 
-(*
+
+abbreviation subval_equal where
+  "subval_equal e1 e2 \<equiv> (case e1 of Some v \<Rightarrow> Some (s_expr v) = e2 | None \<Rightarrow> e2 = None)"
+
 experiment begin
 lemma 
   assumes "Some sub = match_tree ep e"
   assumes "(s', p) = (match_pattern ep v init)"
   assumes "v |\<in>| fst init"
   assumes "Some sub' = eval_match p [v \<mapsto> e]"
-  shows "\<forall>(vn, e) \<in> graph (snd s'). sub vn = e"
+  shows "\<forall>(vn, e) \<in> Map.graph (snd s'). subval_equal (sub vn) (sub' e)"
 using assms(1,2,3) proof (induction ep arbitrary: init e sub p sub' v)
   case (UnaryExpr x1 e1)
   obtain a s' where a: "(s', a) = fresh STR ''a'' init"
@@ -2600,7 +3325,6 @@ using assms(1,2,3) proof (induction ep arbitrary: init e sub p sub' v)
       by simp
     moreover have "v' |\<in>| fst init'"
       sorry
-
     ultimately obtain sub''' where "Some sub''' = eval_match p' [v' \<mapsto> e1]"
       sorry
     then show ?thesis
@@ -2645,14 +3369,14 @@ lemma def_vars_generation:
   then have "(fst s) |\<subseteq>| (fst s')"
     by (metis fresh_def add_var.simps fresh.simps fst_eqD fsubsetI funion_iff prod.collapse)
   then have "am = snd (match_pattern e' v' s')"
-    by (smt (verit) MATCH.inject(3) UnaryExpr.prems \<open>(s', v') = TermRewrites.fresh STR ''a'' s\<close> fst_eqD match_pattern.simps(4) pdef snd_eqD split_beta)
+    by (smt (verit) MATCH.inject(3) UnaryExpr.prems fresh_def fst_eqD match_pattern.simps(4) pdef snd_eqD split_beta)
   also have "v' |\<in>| fst s'"
-    using \<open>(s', v') = TermRewrites.fresh STR ''a'' s\<close> fresh_add by blast
+    using fresh_def fresh_add by blast
   ultimately have "\<forall>v\<in>fset (fst s'). v \<notin> def_vars am"
     by (simp add: UnaryExpr.IH)
   have tluse: "\<forall>v \<in> fset (fst s). v \<notin> def_vars ?match"
     unfolding def_vars.simps
-    by (metis TermRewrites.fresh fresh.simps fresh_def notin_fset pattern_variables.simps(1) singleton_iff snd_eqD)
+    by (metis CodeGen.fresh empty_iff fresh.simps fresh_def fst_conv insertE pattern_variables.simps(1) swap_simp)
   then show ?case
     by (metis Un_iff \<open>\<forall>v\<in>fset (fst s'). v \<notin> def_vars am\<close> \<open>fst s |\<subseteq>| fst s'\<close> def_vars.simps(3) less_eq_fset.rep_eq pdef subsetD)
 next
@@ -2862,7 +3586,7 @@ next
   have em: "eval_match p [v \<mapsto> e] = 
         (case eval_match ?m [v \<mapsto> e] of 
         None \<Rightarrow> None |
-        Some s' \<Rightarrow> eval_match (am && bm) s')"
+        Some s' \<Rightarrow> eval_match (andthen am bm) s')"
     using eval_match.simps(6) p by blast
   then show ?case proof (cases "eval_match ?m [v \<mapsto> e]")
     case None
@@ -2875,7 +3599,7 @@ next
       using BinaryExpr.prems(1) by force
   next
     case (Some x)
-    then have "eval_match p [v \<mapsto> e] = eval_match (am && bm) (x)"
+    then have "eval_match p [v \<mapsto> e] = eval_match (andthen am bm) (x)"
       using em
       by simp
     obtain e1' e2' op where e1': "e = BinaryExpr op e1' e2'"
@@ -2885,26 +3609,47 @@ next
     have "x = [v \<mapsto> e, a \<mapsto> e1', b \<mapsto> e2']"
       using e1' Some apply simp
       by (metis \<open>b \<noteq> v\<close> dom_eq_singleton_conv fun_upd_idem_iff option.distinct(1) option.sel singletonD)
-    obtain asub where "Some asub = match_tree e11 e1'"
+    obtain asub where asub: "Some asub = match_tree e11 e1'"
       using BinaryExpr(3) e1' substitution_union.simps
       by (metis (no_types, lifting) is_none_code(2) is_none_simps(1) match_tree.simps(2) option.split_sel_asm)
-    also obtain p' where "p' = snd (match_pattern e11 a s')"
+    also obtain p' where p': "p' = snd (match_pattern e11 a s')"
       by simp
+    have subm: "[a \<mapsto> e1', b \<mapsto> e2'] \<subseteq>\<^sub>m [v \<mapsto> e, a \<mapsto> e1', b \<mapsto> e2']"
+      by simp
+    have "dom [v \<mapsto> e, a \<mapsto> e1', b \<mapsto> e2'] - dom [a \<mapsto> e1', b \<mapsto> e2'] = {v}"
+      using \<open>a \<noteq> v\<close> \<open>b \<noteq> v\<close> by auto
     moreover have "a |\<in>| fst s'"
       using a fresh_add by blast
-    ultimately obtain asub' where "Some asub' = eval_match p' [a \<mapsto> e11]"
-      by (metis (full_types) BinaryExpr.IH(1) map_upd_nonempty option.inject)
+    ultimately have "\<forall>v\<in>dom [v \<mapsto> e, a \<mapsto> e1', b \<mapsto> e2'] - dom [a \<mapsto> e1', b \<mapsto> e2']. v |\<in>| fst s'"
+      using a add_var.simps fresh.simps fst_conv funion_iff prod.collapse
+      by (metis BinaryExpr.prems(3) singletonD)
+    also obtain asub' where asub': "Some asub' = eval_match p' [a \<mapsto> e1']"
+      using BinaryExpr.IH p' asub
+      by (meson \<open>a |\<in>| fst s'\<close>)
+    obtain bsub where bsub: "Some bsub = match_tree e12 e2'"
+      using BinaryExpr(3) e1' substitution_union.simps
+      by (metis (no_types, lifting) match_tree.simps(2) option.exhaust option.simps(4) option.simps(5))
+    obtain p'' where p'': "p'' = snd (match_pattern e12 b s'')"
+      by simp
+    moreover have "b |\<in>| fst s''"
+      using b fresh_add
+      by blast
+    then obtain bsub' where "Some bsub' = eval_match p'' [b \<mapsto> e2']"
+      using BinaryExpr.IH bsub
+      using p'' by blast
+    then obtain asub'' where "Some asub'' = eval_match p' [v \<mapsto> e, a \<mapsto> e1', b \<mapsto> e2']"
+      using \<open>a \<noteq> v\<close> \<open>b \<noteq> v\<close> p' p'' subm eval_match_subset_match sorry
     obtain bsub where "Some bsub = match_tree e12 e2'"
       using BinaryExpr(3) e1' substitution_union.simps
-      by (smt (z3) BinaryExpr.IH(1) \<open>Some asub = match_tree e11 e1'\<close> \<open>a |\<in>| fst s'\<close> map_upd_nonempty option.inject)
-    also obtain p'' where "p'' = snd (match_pattern e12 b s'')"
+      using bsub by blast
+    then obtain p'' where "p'' = snd (match_pattern e12 b s'')"
       by simp
     moreover have "b |\<in>| fst s''"
       using b fresh_add by blast
     ultimately obtain bsub' where "Some bsub' = eval_match p'' [b \<mapsto> e12]"
-      by (metis (mono_tags, lifting) BinaryExpr.IH(2) option.inject)
+      sorry
     then show ?thesis
-      by (metis (mono_tags, lifting) BinaryExpr.IH(2) \<open>Some bsub = match_tree e12 e2'\<close> \<open>b |\<in>| fst s''\<close> map_upd_nonempty option.sel)
+      sorry
   qed
 next
   case (ConditionalExpr e11 e12 e13)
@@ -2933,7 +3678,7 @@ next
     have e: "e = ConstantExpr x"
       using Some p apply (subst (asm) p)
       unfolding eval_match.simps apply simp
-      by (smt (verit) IRExpr.split_sel_asm is_none_code(2) is_none_simps(1))
+      by (smt (verit) IRExpr.split_sels(2) is_none_code(2) is_none_simps(1))
     show ?thesis using p e by simp
     qed
 next
@@ -2943,6 +3688,5 @@ next
   case (VariableExpr x1 x2)
   then show ?case sorry
 qed
-*)
 
 end
