@@ -111,7 +111,83 @@ fun valid_match :: "MATCH \<Rightarrow> bool" where
 subsection \<open>Lowering IRExpr\<close>
 
 definition fresh_var :: "VarName set \<Rightarrow> VarName" where
-  "fresh_var \<Sigma> = fresh \<Sigma> (STR ''x'')"
+  "fresh_var \<Sigma> = fresh \<Sigma> (STR ''X'')"
+
+lemma X_outofrange:
+  "(of_char(last (String.explode (STR ''X'')))::nat) < 97"
+  by eval
+
+lemma upChar_preserves_head:
+  assumes "length s > 0"
+  assumes "hd s = CHR ''X''"
+  shows "hd (upChar s) = CHR ''X''"
+  using assms proof (induction s)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons a s)
+  then show ?case proof (cases "of_char(last (a # s)) \<ge> 97 \<and> of_char(last (a # s)) < 122")
+    case True
+    then show ?thesis unfolding upChar.simps 
+      using Cons.prems(2) by auto
+  next
+    case False
+    then show ?thesis
+      using Cons.prems(2) by auto
+  qed
+qed
+
+lemma fresh_string_preserves_head:
+  assumes "finite \<Sigma>"
+  assumes "length s > 0"
+  assumes "hd s = CHR ''X''"
+  shows "hd (fresh_string \<Sigma> s) = hd s"
+  using assms proof (induction \<Sigma> s rule: fresh_string.induct)
+  case (1 Y Xs)
+  then show ?case
+    by (metis Fresh_String.Fresh Fresh_String.Up leD length_greater_0_conv list.size(3) nat_less_le ordst_def upChar_ordst upChar_preserves_head)
+next
+  case (2 Y Xs)
+  then show ?case
+    by auto
+qed
+
+lemma fresh_var_head:
+  assumes "finite \<Sigma>"
+  shows "hd (String.explode (fresh_var \<Sigma>)) = CHR ''X''"
+  using assms
+  by (simp add: Literal.rep_eq fresh_literal.rep_eq fresh_string_preserves_head fresh_var_def)
+
+definition safe_prefix :: "VarName \<Rightarrow> bool" where
+  "safe_prefix v = (hd (String.explode v) \<noteq> CHR ''X'')"
+
+fun valid_pattern :: "IRExpr \<Rightarrow> bool" where
+  "valid_pattern (VariableExpr vn s) = safe_prefix vn" |
+  "valid_pattern (ConstantVar vn) = safe_prefix vn" |
+  "valid_pattern (ConstantExpr c) = True" |
+  "valid_pattern (UnaryExpr op x) = valid_pattern x" |
+  "valid_pattern (BinaryExpr op x y) = (valid_pattern x \<and> valid_pattern y)" |
+  "valid_pattern (ConditionalExpr c t f) = (valid_pattern c \<and> valid_pattern t \<and> valid_pattern f)" |
+  "valid_pattern (ParameterExpr nid s) = True" |
+  "valid_pattern (LeafExpr nid s) = True"
+
+lemma fresh_var_prefix:
+  assumes "safe_prefix s"
+  shows "fresh_var \<Sigma> \<noteq> s"
+  using assms unfolding safe_prefix_def
+  by (metis Fresh_String.Fresh Literal.rep_eq add_Suc_right fresh_literal.rep_eq fresh_string_preserves_head fresh_var_def list.sel(1) list.size(4) zero_less_Suc)
+
+lemma prefix_preserves_freshness:
+  assumes "\<forall>v \<in> \<L> e. safe_prefix v"
+  shows "\<forall>v \<Sigma>. v = fresh_var \<Sigma> \<longrightarrow> v \<notin> \<L> e"
+  using assms
+  using fresh_var_prefix by blast
+
+lemma valid_pattern_preserves_freshness:
+  assumes "valid_pattern e"
+  shows "\<forall>v \<Sigma>. v = fresh_var \<Sigma> \<longrightarrow> v \<notin> \<L> e"
+  using assms apply (induction e) apply auto
+  using fresh_var_prefix safe_prefix_def by blast+
 
 lemma freshness:
   assumes "finite \<Sigma>"
@@ -588,12 +664,12 @@ lemma restricted_unchanged:
 subsection \<open>Lowering Sound\<close>
 
 theorem lower_sound:
-  assumes "\<forall>V v. v = fresh_var V \<longrightarrow> v \<notin> \<L> e"
+  assumes "valid_pattern e"
+  assumes "finite \<Sigma>"
   assumes "[e, \<Sigma>] \<leadsto> [m, v, \<Sigma>']"
-  assumes "valid_match m"
   assumes "m \<U> \<sigma>(v \<mapsto> e') = \<sigma>'"
   shows "match_tree e e' = Some (\<sigma>'|`(\<L> e))"
-  using assms(2,4,3,1) proof (induct arbitrary: \<sigma> e' \<sigma>' rule: lower.induct)
+  using assms(3,2,1,4) proof (induct arbitrary: \<sigma> e' \<sigma>' rule: lower.induct)
   case (1 vn \<Sigma> s)
   have "\<sigma>' = \<sigma>(vn \<mapsto> e')"
     using "1.prems"
@@ -605,22 +681,22 @@ theorem lower_sound:
 next
   case (2 vn \<Sigma> v' s)
   have "v' \<noteq> vn"
-    using "2.hyps" "2.prems"(3) by auto
+    using "2.hyps" "2.prems"(2) valid_pattern_preserves_freshness by fastforce
   also have "\<sigma>' = \<sigma>(v' \<mapsto> e')"
-    using "2.prems"(1) calculation(1) 
+    using "2.prems"(3) calculation(1) 
     using eval_match.simps by blast
   ultimately show ?case
-    using "2.prems"(1) eval_match_equality by fastforce
+    using "2.prems"(3) eval_match_equality by fastforce
 next
   case (3 v' \<Sigma> c)
   have "e' = ConstantExpr c"
-    by (meson "3.prems"(1) eval_match_ConstantExpr map_upd_Some_unfold)
+    by (meson "3.prems"(3) eval_match_ConstantExpr map_upd_Some_unfold)
   then show ?case
     by simp
 next
   case (4 x \<Sigma> x\<^sub>m x\<^sub>v \<Sigma>\<^sub>x v' op)
   obtain \<sigma>\<^sub>m where m1: "match v' (UnaryPattern op x\<^sub>v) \<U> \<sigma>(v' \<mapsto> e') = \<sigma>\<^sub>m"
-    by (meson "4.prems"(1) eval_match_andthen)
+    by (meson "4.prems"(3) eval_match_andthen)
   then obtain e\<^sub>x where  e': "e' = UnaryExpr op e\<^sub>x" using 4
     by (meson eval_match_UnaryPattern map_upd_Some_unfold)
   then have "match_tree x e\<^sub>x = Some (\<sigma>' |` \<L> x)"
@@ -629,57 +705,61 @@ next
       using 4 e'
       by (metis IRExpr.sel(2) m1 eval_match_UnaryPattern fun_upd_same option.sel)
     have "x\<^sub>m \<U> \<sigma>\<^sub>m = \<sigma>'"
-      by (metis "4.prems"(1) m1 eval_match_andthen eval_match_deterministic)
+      by (metis "4.prems"(3) m1 eval_match_andthen eval_match_deterministic)
     then obtain \<sigma>\<^sub>x where xm: "x\<^sub>m \<U> \<sigma>\<^sub>x(x\<^sub>v \<mapsto> e\<^sub>x) = \<sigma>'"
       using u1 unify_partition
       by (meson list.set_intros(1) map_le_refl)
     then show ?thesis
-      using "4.hyps"(2) "4.prems"(2) "4.prems"(3) by fastforce
+      using 4 by fastforce
   qed
   then show ?case
     using e' by auto
 next
   case (5 x \<Sigma> x\<^sub>m x\<^sub>v \<Sigma>\<^sub>x y y\<^sub>m y\<^sub>v \<Sigma>\<^sub>y v' op)
   obtain \<sigma>\<^sub>m where s1: "match v' (BinaryPattern op x\<^sub>v y\<^sub>v) \<U> \<sigma>(v' \<mapsto> e') = \<sigma>\<^sub>m"
-    by (meson "5.prems"(1) eval_match_andthen)
+    by (meson "5.prems"(3) eval_match_andthen)
   then obtain e\<^sub>x e\<^sub>y where e': "e' = BinaryExpr op e\<^sub>x e\<^sub>y"
     by (meson eval_match_BinaryPattern map_upd_Some_unfold)
   have u1: "unify (\<sigma>(v' \<mapsto> e')) [(x\<^sub>v, e\<^sub>x), (y\<^sub>v, e\<^sub>y)] \<sigma>\<^sub>m"
       using e' IRExpr.inject(2) s1 eval_match_BinaryPattern by fastforce
   then obtain \<sigma>\<^sub>x where m1: "x\<^sub>m \<U> \<sigma>\<^sub>m = \<sigma>\<^sub>x"
-    by (metis "5.prems"(1) eval_match_andthen eval_match_deterministic s1)
+    by (metis "5.prems"(3) eval_match_andthen eval_match_deterministic s1)
   then have mx: "\<sigma>\<^sub>m \<subseteq>\<^sub>m \<sigma>\<^sub>x"
-    using "5.prems"(2) eval_match_subset m1 by auto
+    using "5.prems"(2) eval_match_subset m1 
+    by (metis "5.hyps"(1) "5.prems"(1) lower_valid_matches valid_pattern.simps(5) valid_pattern_preserves_freshness)
   then have mt1: "match_tree x e\<^sub>x = Some (\<sigma>\<^sub>x |` \<L> x)"
   proof -
     obtain \<sigma>\<^sub>x' where xm: "x\<^sub>m \<U> \<sigma>\<^sub>x'(x\<^sub>v \<mapsto> e\<^sub>x) = \<sigma>\<^sub>x"
       using m1 u1 unify_partition
       by (meson list.set_intros(1) map_le_refl)
     then show ?thesis
-      using "5.hyps"(2) "5.prems"(2) "5.prems"(3) by fastforce
+      using 5 by fastforce
   qed
   then have mt2: "match_tree y e\<^sub>y = Some (\<sigma>' |` \<L> y)"
   proof -
     have m2: "y\<^sub>m \<U> \<sigma>\<^sub>x = \<sigma>'"
-      by (metis "5.prems"(1) eval_match_andthen eval_match_deterministic m1 s1)
+      by (metis "5.prems"(3) eval_match_andthen eval_match_deterministic m1 s1)
     then have "\<sigma>\<^sub>m \<subseteq>\<^sub>m \<sigma>\<^sub>x"
-      using "5.prems"(2) eval_match_subset m1 by auto
+      using "5.prems"(3) eval_match_subset m1
+      using mx by fastforce
     then obtain \<sigma>\<^sub>y' where ym: "y\<^sub>m \<U> \<sigma>\<^sub>y'(y\<^sub>v \<mapsto> e\<^sub>y) = \<sigma>'"
       using m1 u1 unify_partition
       by (metis list.set_intros(1) m2 unify_unempty)
     then show ?thesis
-      using "5.hyps"(4) "5.prems"(2) "5.prems"(3) by fastforce
+      using 5 
+      using lower_finite valid_pattern.simps(5) by blast
   qed
   have comp: "compatible \<sigma>\<^sub>x \<sigma>'" using mx
-    by (metis "5.prems"(1) "5.prems"(2) CodeGenAlt.compatible.elims(3) eval_match_andthen eval_match_deterministic eval_match_subset m1 map_le_def s1 valid_match.simps(4))
+    using  CodeGenAlt.compatible.elims(3) eval_match_andthen eval_match_deterministic eval_match_subset m1 map_le_def s1 valid_match.simps(4)
+    by (metis "5.hyps"(1) "5.hyps"(3) "5.prems"(1) "5.prems"(2) "5.prems"(3) lower_finite lower_valid_matches valid_pattern.simps(5) valid_pattern_preserves_freshness)
   then have comp': "compatible (\<sigma>\<^sub>x |` \<L> x) (\<sigma>' |` \<L> y)"
     by (metis (full_types) CodeGenAlt.compatible.elims(2) CodeGenAlt.compatible.elims(3) domIff restrict_in restrict_out)
   have "\<sigma>\<^sub>x ++ \<sigma>' = \<sigma>'"
     using mx
-    by (metis "5.prems"(1) "5.prems"(2) eval_match_andthen eval_match_deterministic eval_match_subset m1 map_add_subsumed1 s1 valid_match.simps(4))
+    by (metis "5.hyps"(1) "5.hyps"(3) "5.prems"(1) "5.prems"(2) "5.prems"(3) eval_match_andthen eval_match_deterministic eval_match_subset lower_finite lower_valid_matches m1 map_add_subsumed1 s1 valid_pattern.simps(5) valid_pattern_preserves_freshness)
   have "(dom \<sigma>' - dom \<sigma>\<^sub>x) \<inter> \<L> x = {}" \<comment> \<open>Ian: This is the troublesome case\<close>
     using eval_match_adds_patterns
-    by (metis "5.hyps"(1) "5.prems"(2) Diff_Int_distrib2 Diff_disjoint Int_lower2 inf.absorb_iff2 m1 valid_match.simps(4))
+    by (metis "5.hyps"(1) "5.prems"(1) "5.prems"(2) DiffD2 disjoint_iff lower_valid_matches m1 subset_eq valid_pattern.simps(5) valid_pattern_preserves_freshness)
   then have "(\<sigma>\<^sub>x |` \<L> x) ++ (\<sigma>' |` \<L> y) = (\<sigma>' |` \<L> x) ++ (\<sigma>' |` \<L> y)"
     by (metis (no_types, lifting) CodeGenAlt.compatible.elims(2) \<open>\<sigma>\<^sub>x ++ \<sigma>' = \<sigma>'\<close> comp map_add_None map_le_def restricted_unchanged)
   then have "(\<sigma>\<^sub>x |` \<L> x) ++ (\<sigma>' |` \<L> y) = (\<sigma>' |` (\<L> x \<union> \<L> y))"
@@ -700,9 +780,10 @@ next
 next
   case (8 vn \<Sigma> v')
   have "v' \<noteq> vn"
-    using "8.hyps" "8.prems"(3) by auto
+    using "8.hyps" "8.prems"(3) valid_pattern_preserves_freshness
+    using "8.prems"(1) freshness by force
   also have "\<sigma>' = \<sigma>(v' \<mapsto> e')"
-    using "8.prems"(1) calculation(1) 
+    using "8.prems"(3) calculation(1) 
     using eval_match.simps by blast
   ultimately show ?case
     using "8.prems"(1) eval_match_equality sorry
@@ -826,7 +907,7 @@ lemma ground_restriction:
 theorem generate_sound:
   assumes "[p, b] \<leadsto> [v, r]"
   assumes "eval_rules r [v \<mapsto> e] e'"
-  assumes "\<forall>V v. v = fresh_var V \<longrightarrow> v \<notin> \<L> p"
+  assumes "valid_pattern p"
   assumes "\<L> b \<subseteq> \<L> p"
   shows "e' = exec p b e"
 proof -
@@ -839,7 +920,7 @@ proof -
   then have e': "e' = (Some (b $ \<sigma>'))"
     using eval_rules.simps by blast
   have "valid_match m"
-    by (metis \<open>[p, {}] \<leadsto> [m, v, \<Sigma>]\<close> assms(3) finite.emptyI lower_valid_matches)
+    using \<open>[p, {}] \<leadsto> [m, v, \<Sigma>]\<close> assms(3) lower_valid_matches valid_pattern_preserves_freshness by blast
   then have "match_tree p e = Some (\<sigma>'|`(\<L> p))"
     using lower_sound
     using \<open>[p, {}] \<leadsto> [m, v, \<Sigma>]\<close> \<open>m \<U> [v \<mapsto> e] = \<sigma>'\<close> assms(3) by blast
