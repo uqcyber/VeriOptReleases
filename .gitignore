@@ -2,3 +2,6 @@
 **/output/
 export/
 dependencies.dot
+afp
+codegen-artifact.zip
+codegenpaper

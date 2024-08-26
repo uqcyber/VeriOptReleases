@@ -110,7 +110,7 @@ val _ =
 
 fun export_phases thy name =
   let
-    val state = Toplevel.theory_toplevel thy;
+    val state = Toplevel.make_state (SOME thy);
     val ctxt = Toplevel.context_of state;
     val content = Pretty.string_of (Pretty.chunks (print_phases false ctxt));
     val cleaned = YXML.content_of content;    
@@ -250,7 +250,7 @@ fun replaceSubstring (original: string, target: string, replacement: string): st
 
 fun gencode thy name term =
   let
-    val state = Toplevel.theory_toplevel thy;
+    val state = Toplevel.make_state (SOME thy);
     val ctxt = Toplevel.context_of state;
     val code = (Syntax.check_term ctxt (Syntax.parse_term ctxt term));
     val export = 

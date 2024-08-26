@@ -1,4 +1,4 @@
-session VeriComp in "Lib/VeriComp" = "HOL-Library" +
+  session VeriComp in "Lib/VeriComp" = "HOL-Library" +
   theories
     Compiler
     Fixpoint
@@ -100,7 +100,9 @@ session OptimizationDSL in "Optimizations/DSL" = Proofs +
   description
     "DSL for expressing optimizations"
   options [document = pdf, document_output = "output",
-           show_question_marks = false]
+           show_question_marks = false,
+           quick_and_dirty,
+           document_variants="document:outline=/proof"]
   sessions
     Snippets
     Fresh
