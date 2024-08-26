@@ -816,25 +816,35 @@ instance apply standard
 end
 
 class groundable =
-  fixes ground :: "'a \<Rightarrow> (VarName \<Rightarrow> IRExpr option) \<Rightarrow> 'a" (infix "$" 70)
+  fixes ground :: "'a \<Rightarrow> (VarName \<Rightarrow> IRExpr option) \<Rightarrow> 'a option" (infix "$" 70)
   fixes varset :: "'a \<Rightarrow> VarName set"
-  assumes identity: "r $ Map.empty = r"
+  (*assumes identity: "r $ Map.empty = r"*)
   assumes effect: "varset e \<subseteq> S \<Longrightarrow> e $ \<sigma> = e $ (\<sigma>|`S)"
 
 instantiation IRExpr :: groundable begin
-fun ground_IRExpr :: "IRExpr \<Rightarrow> (VarName \<Rightarrow> IRExpr option) \<Rightarrow> IRExpr" where
-  "UnaryExpr op x $ \<sigma> = UnaryExpr op (x $ \<sigma>)" |
-  "BinaryExpr op x y $ \<sigma> = BinaryExpr op (x $ \<sigma>) (y $ \<sigma>)" |
-  "(ConditionalExpr c t f) $ \<sigma> = ConditionalExpr (c $ \<sigma>) (t $ \<sigma>) (f $ \<sigma>)" |
+fun ground_IRExpr :: "IRExpr \<Rightarrow> (VarName \<Rightarrow> IRExpr option) \<Rightarrow> IRExpr option" where
+  "UnaryExpr op x $ \<sigma> = do {
+    x' <- x $ \<sigma>;
+    Some (UnaryExpr op x')
+  }" |
+  "BinaryExpr op x y $ \<sigma> = do {
+    x' <- x $ \<sigma>;
+    y' <- y $ \<sigma>;
+    Some (BinaryExpr op x' y')
+  }" |
+  "(ConditionalExpr c t f) $ \<sigma> = do {
+    c' <- c $ \<sigma>;
+    t' <- t $ \<sigma>;
+    f' <- f $ \<sigma>;
+    Some (ConditionalExpr c' t' f')
+  }" |
   "(VariableExpr vn s) $ \<sigma> = 
-    (case \<sigma> vn of None \<Rightarrow> VariableExpr vn s 
-                | Some e \<Rightarrow> e)" |
-  "ground_IRExpr e \<sigma> = e"
+    (case \<sigma> vn of None \<Rightarrow> None
+                | Some e \<Rightarrow> Some e)" |
+  "ground_IRExpr e \<sigma> = Some e"
 definition varset_IRExpr where
   "varset_IRExpr = \<L>"
 instance apply standard
-  subgoal for r apply (induction r)
-    by simp+
   subgoal for r apply (induction r)
     by (simp add: varset_IRExpr_def)+
   done
@@ -849,7 +859,7 @@ datatype Rules =
 
 inductive eval_rules :: "Rules \<Rightarrow> Subst \<Rightarrow> IRExpr option \<Rightarrow> bool" where
   \<comment> \<open>Evaluate the result\<close>
-  "eval_rules (base e) \<sigma> (Some (e $ \<sigma>))" | \<comment> \<open>TODO: only Some for ground terms\<close>
+  "eval_rules (base e) \<sigma> (e $ \<sigma>)" |
 
   \<comment> \<open>Evaluate a condition\<close>
   "\<lbrakk>m \<U> \<sigma> = \<sigma>';
@@ -894,7 +904,7 @@ value "Predicate.the (generateC
     (VariableExpr STR ''x'' default_stamp))"
 
 definition exec :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> IRExpr \<Rightarrow> IRExpr option" where
-  "exec p b = (\<lambda>e. Some (b $ the (match_tree p e)))"
+  "exec p b e = (case match_tree p e of Some \<sigma> \<Rightarrow> b $ \<sigma> | None \<Rightarrow> None)"
 
 lemma ground_restriction:
   assumes "\<L> e \<subseteq> S"
@@ -915,7 +925,7 @@ proof -
     by (metis Rules.distinct(1) Rules.distinct(9) Rules.inject(2) assms(1) assms(2) eval_rules.simps generate.cases lower_deterministic)
   then have "eval_rules (base b) \<sigma>' e'"
     by (metis (no_types, lifting) Rules.distinct(1) Rules.distinct(9) Rules.inject(2) \<open>[p, {}] \<leadsto> [m, v, \<Sigma>]\<close> assms(1) assms(2) eval_match_deterministic eval_rules.simps generate.cases lower_deterministic)
-  then have e': "e' = (Some (b $ \<sigma>'))"
+  then have e': "e' = (b $ \<sigma>')"
     using eval_rules.simps by blast
   have "valid_match m"
     using \<open>[p, {}] \<leadsto> [m, v, \<Sigma>]\<close> assms(3) lower_valid_matches valid_pattern_preserves_freshness by blast
@@ -926,7 +936,7 @@ proof -
     using ground_restriction assms(4)
     by (metis option.sel)
   then show ?thesis using ground_restriction unfolding exec_def using e'
-    by presburger
+    using \<open>match_tree p e = Some (\<sigma>' |` \<L> p)\<close> by auto
 qed
 
 end
