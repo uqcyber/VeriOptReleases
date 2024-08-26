@@ -204,17 +204,17 @@ inductive lower :: "IRExpr \<Rightarrow> VarName set \<Rightarrow> MATCH \<Right
   ConstantPattern:
   "v' = fresh_var \<Sigma> \<Longrightarrow> (ConstantExpr c, \<Sigma>) \<leadsto> (match v' (ConstantPattern c), v', \<Sigma> \<union> {v'})" |
   UnaryPattern:
-  "\<lbrakk>(x, \<Sigma>) \<leadsto> (x\<^sub>m, x\<^sub>v, \<Sigma>\<^sub>x);
+  "\<lbrakk>(x, \<Sigma>) \<leadsto> (m\<^sub>x, v\<^sub>x, \<Sigma>\<^sub>x);
     v' = fresh_var \<Sigma>\<^sub>x\<rbrakk>
-  \<Longrightarrow> (UnaryExpr op x, \<Sigma>) \<leadsto> (match v' (UnaryPattern op x\<^sub>v) && x\<^sub>m, v', \<Sigma>\<^sub>x \<union> {v'})" |
+  \<Longrightarrow> (UnaryExpr op x, \<Sigma>) \<leadsto> (match v' (UnaryPattern op v\<^sub>x) && m\<^sub>x, v', \<Sigma>\<^sub>x \<union> {v'})" |
   BinaryPattern:
-  "\<lbrakk>(x, \<Sigma>) \<leadsto> (x\<^sub>m, x\<^sub>v, \<Sigma>\<^sub>x); (y, \<Sigma>\<^sub>x) \<leadsto> (y\<^sub>m, y\<^sub>v, \<Sigma>\<^sub>y);
+  "\<lbrakk>(x, \<Sigma>) \<leadsto> (m\<^sub>x, v\<^sub>x, \<Sigma>\<^sub>x); (y, \<Sigma>\<^sub>x) \<leadsto> (m\<^sub>y, v\<^sub>y, \<Sigma>\<^sub>y);
     v' = fresh_var \<Sigma>\<^sub>y\<rbrakk>
-  \<Longrightarrow> (BinaryExpr op x y, \<Sigma>) \<leadsto> (match v' (BinaryPattern op x\<^sub>v y\<^sub>v) && x\<^sub>m && y\<^sub>m, v', \<Sigma>\<^sub>y \<union> {v'})" |
+  \<Longrightarrow> (BinaryExpr op x y, \<Sigma>) \<leadsto> (match v' (BinaryPattern op v\<^sub>x v\<^sub>y) && m\<^sub>x && m\<^sub>y, v', \<Sigma>\<^sub>y \<union> {v'})" |
   ConditionalPattern:
-  "\<lbrakk>(c, \<Sigma>) \<leadsto> (c\<^sub>m, c\<^sub>v, \<Sigma>\<^sub>c); (t, \<Sigma>\<^sub>c) \<leadsto> (t\<^sub>m, t\<^sub>v, \<Sigma>\<^sub>t);
-    (f, \<Sigma>\<^sub>t) \<leadsto> (f\<^sub>m, f\<^sub>v, \<Sigma>\<^sub>f); v' = fresh_var \<Sigma>\<^sub>f\<rbrakk>
-  \<Longrightarrow> (ConditionalExpr c t f, \<Sigma>) \<leadsto> (match v' (ConditionalPattern c\<^sub>v t\<^sub>v f\<^sub>v) && c\<^sub>m && t\<^sub>m && f\<^sub>m, v', \<Sigma>\<^sub>f \<union> {v'})" |
+  "\<lbrakk>(c, \<Sigma>) \<leadsto> (m\<^sub>c, v\<^sub>c, \<Sigma>\<^sub>c); (t, \<Sigma>\<^sub>c) \<leadsto> (m\<^sub>t, v\<^sub>t, \<Sigma>\<^sub>t);
+    (f, \<Sigma>\<^sub>t) \<leadsto> (m\<^sub>f, v\<^sub>f, \<Sigma>\<^sub>f); v' = fresh_var \<Sigma>\<^sub>f\<rbrakk>
+  \<Longrightarrow> (ConditionalExpr c t f, \<Sigma>) \<leadsto> (match v' (ConditionalPattern v\<^sub>c v\<^sub>t v\<^sub>f) && m\<^sub>c && m\<^sub>t && m\<^sub>f, v', \<Sigma>\<^sub>f \<union> {v'})" |
 
   ConstantVariableUnseen:
   "vn \<notin> \<Sigma> \<Longrightarrow> (ConstantVar vn, \<Sigma>) \<leadsto> (noop vn, vn, \<Sigma> \<union> {vn})" | \<comment> \<open>Note that constant variables are also not properly handled currently.\<close>
@@ -298,41 +298,41 @@ next
   then show ?case
     by (simp add: freshness)
 next
-  case (UnaryPattern x \<Sigma> x\<^sub>m x\<^sub>v \<Sigma>\<^sub>x v' op)
-  have ih: "\<Sigma> \<inter> ({x\<^sub>v} \<union> use_vars x\<^sub>m \<union> def_vars x\<^sub>m) = {}"
+  case (UnaryPattern x \<Sigma> m\<^sub>x v\<^sub>x \<Sigma>\<^sub>x v' op)
+  have ih: "\<Sigma> \<inter> ({v\<^sub>x} \<union> use_vars m\<^sub>x \<union> def_vars m\<^sub>x) = {}"
     using UnaryPattern by presburger
-  have seq: "({v'} \<union> use_vars (match v' (UnaryPattern op x\<^sub>v) && x\<^sub>m) \<union> def_vars (match v' (UnaryPattern op x\<^sub>v) && x\<^sub>m)) 
-    = {v'} \<union> use_vars x\<^sub>m \<union> {x\<^sub>v} \<union> def_vars x\<^sub>m"
+  have seq: "({v'} \<union> use_vars (match v' (UnaryPattern op v\<^sub>x) && m\<^sub>x) \<union> def_vars (match v' (UnaryPattern op v\<^sub>x) && m\<^sub>x)) 
+    = {v'} \<union> use_vars m\<^sub>x \<union> {v\<^sub>x} \<union> def_vars m\<^sub>x"
     by simp
   then show ?case
     by (metis UnaryPattern Int_insert_right UnCI Un_assoc Un_commute freshness insert_is_Un lower_finite lower_sigma_update)
 next
-  case (BinaryPattern x \<Sigma> x\<^sub>m x\<^sub>v \<Sigma>\<^sub>x y y\<^sub>m y\<^sub>v \<Sigma>\<^sub>y v' op)
-  have ihx: "\<Sigma> \<inter> ({x\<^sub>v} \<union> use_vars x\<^sub>m \<union> def_vars x\<^sub>m) = {}"
+  case (BinaryPattern x \<Sigma> m\<^sub>x v\<^sub>x \<Sigma>\<^sub>x y m\<^sub>y v\<^sub>y \<Sigma>\<^sub>y v' op)
+  have ihx: "\<Sigma> \<inter> ({v\<^sub>x} \<union> use_vars m\<^sub>x \<union> def_vars m\<^sub>x) = {}"
     using BinaryPattern by blast
-  have ihy: "\<Sigma>\<^sub>x \<inter> ({y\<^sub>v} \<union> use_vars y\<^sub>m \<union> def_vars y\<^sub>m) = {}"
+  have ihy: "\<Sigma>\<^sub>x \<inter> ({v\<^sub>y} \<union> use_vars m\<^sub>y \<union> def_vars m\<^sub>y) = {}"
     using BinaryPattern lower_finite by presburger
-  then have ihy': "(\<Sigma> \<union> {x\<^sub>v} \<union> def_vars x\<^sub>m) \<inter> ({y\<^sub>v} \<union> use_vars y\<^sub>m \<union> def_vars y\<^sub>m) = {}"
+  then have ihy': "(\<Sigma> \<union> {v\<^sub>x} \<union> def_vars m\<^sub>x) \<inter> ({v\<^sub>y} \<union> use_vars m\<^sub>y \<union> def_vars m\<^sub>y) = {}"
     using BinaryPattern lower_sigma_update by presburger
-  have seq: "({v'} \<union> use_vars (match v' (BinaryPattern op x\<^sub>v y\<^sub>v) && x\<^sub>m && y\<^sub>m) \<union> def_vars (match v' (BinaryPattern op x\<^sub>v y\<^sub>v) && x\<^sub>m && y\<^sub>m))
-    = {v'} \<union> use_vars x\<^sub>m \<union> use_vars y\<^sub>m \<union> {x\<^sub>v, y\<^sub>v} \<union> def_vars x\<^sub>m \<union> def_vars y\<^sub>m"
+  have seq: "({v'} \<union> use_vars (match v' (BinaryPattern op v\<^sub>x v\<^sub>y) && m\<^sub>x && m\<^sub>y) \<union> def_vars (match v' (BinaryPattern op v\<^sub>x v\<^sub>y) && m\<^sub>x && m\<^sub>y))
+    = {v'} \<union> use_vars m\<^sub>x \<union> use_vars m\<^sub>y \<union> {v\<^sub>x, v\<^sub>y} \<union> def_vars m\<^sub>x \<union> def_vars m\<^sub>y"
     by force
   then show ?case using seq ihx ihy' apply simp
     by (smt (verit) BinaryPattern.hyps(1) BinaryPattern.hyps(2) BinaryPattern.hyps(3) BinaryPattern.prems Un_iff disjoint_iff_not_equal freshness lower_finite lower_sigma_update)
 next
-  case (ConditionalPattern c \<Sigma> c\<^sub>m c\<^sub>v \<Sigma>\<^sub>c t t\<^sub>m t\<^sub>v \<Sigma>\<^sub>t f f\<^sub>m f\<^sub>v \<Sigma>\<^sub>f v')
-  have ihc: "\<Sigma> \<inter> ({c\<^sub>v} \<union> use_vars c\<^sub>m \<union> def_vars c\<^sub>m) = {}"
+  case (ConditionalPattern c \<Sigma> m\<^sub>c v\<^sub>c \<Sigma>\<^sub>c t m\<^sub>t v\<^sub>t \<Sigma>\<^sub>t f m\<^sub>f v\<^sub>f \<Sigma>\<^sub>f v')
+  have ihc: "\<Sigma> \<inter> ({v\<^sub>c} \<union> use_vars m\<^sub>c \<union> def_vars m\<^sub>c) = {}"
     using ConditionalPattern by auto
-  have iht: "\<Sigma>\<^sub>c \<inter> ({t\<^sub>v} \<union> use_vars t\<^sub>m \<union> def_vars t\<^sub>m) = {}"
+  have iht: "\<Sigma>\<^sub>c \<inter> ({v\<^sub>t} \<union> use_vars m\<^sub>t \<union> def_vars m\<^sub>t) = {}"
     using ConditionalPattern lower_finite by blast
-  have ihf: "\<Sigma>\<^sub>t \<inter> ({f\<^sub>v} \<union> use_vars f\<^sub>m \<union> def_vars f\<^sub>m) = {}"
+  have ihf: "\<Sigma>\<^sub>t \<inter> ({v\<^sub>f} \<union> use_vars m\<^sub>f \<union> def_vars m\<^sub>f) = {}"
     by (meson ConditionalPattern lower_finite)
-  have iht': "(\<Sigma> \<union> {c\<^sub>v} \<union> def_vars c\<^sub>m) \<inter> ({t\<^sub>v} \<union> use_vars t\<^sub>m \<union> def_vars t\<^sub>m) = {}"
+  have iht': "(\<Sigma> \<union> {v\<^sub>c} \<union> def_vars m\<^sub>c) \<inter> ({v\<^sub>t} \<union> use_vars m\<^sub>t \<union> def_vars m\<^sub>t) = {}"
     using ConditionalPattern iht lower_sigma_update by presburger
-  then have ihf': "(\<Sigma> \<union> {c\<^sub>v} \<union> def_vars c\<^sub>m \<union> {t\<^sub>v} \<union> def_vars t\<^sub>m) \<inter> ({f\<^sub>v} \<union> use_vars f\<^sub>m \<union> def_vars f\<^sub>m) = {}"
+  then have ihf': "(\<Sigma> \<union> {v\<^sub>c} \<union> def_vars m\<^sub>c \<union> {v\<^sub>t} \<union> def_vars m\<^sub>t) \<inter> ({v\<^sub>f} \<union> use_vars m\<^sub>f \<union> def_vars m\<^sub>f) = {}"
     using ConditionalPattern ihf lower_sigma_update by presburger
-  have seq: "({v'} \<union> use_vars (match v' (ConditionalPattern c\<^sub>v t\<^sub>v f\<^sub>v) && c\<^sub>m && t\<^sub>m && f\<^sub>m) \<union> def_vars (match v' (ConditionalPattern c\<^sub>v t\<^sub>v f\<^sub>v) && c\<^sub>m && t\<^sub>m && f\<^sub>m))
-    = {v'} \<union> use_vars c\<^sub>m \<union> use_vars t\<^sub>m \<union> use_vars f\<^sub>m \<union> {c\<^sub>v, t\<^sub>v, f\<^sub>v} \<union> def_vars c\<^sub>m \<union> def_vars t\<^sub>m \<union> def_vars f\<^sub>m"
+  have seq: "({v'} \<union> use_vars (match v' (ConditionalPattern v\<^sub>c v\<^sub>t v\<^sub>f) && m\<^sub>c && m\<^sub>t && m\<^sub>f) \<union> def_vars (match v' (ConditionalPattern v\<^sub>c v\<^sub>t v\<^sub>f) && m\<^sub>c && m\<^sub>t && m\<^sub>f))
+    = {v'} \<union> use_vars m\<^sub>c \<union> use_vars m\<^sub>t \<union> use_vars m\<^sub>f \<union> {v\<^sub>c, v\<^sub>t, v\<^sub>f} \<union> def_vars m\<^sub>c \<union> def_vars m\<^sub>t \<union> def_vars m\<^sub>f"
     by (simp add: Un_assoc)
   then show ?case apply auto
     using ihc apply auto[1] 
@@ -380,51 +380,52 @@ next
   case (ConstantPattern v' \<Sigma> c)
   then show ?case by simp
 next
-  case (UnaryPattern x \<Sigma> x\<^sub>m x\<^sub>v \<Sigma>\<^sub>x v' op)
-  have "fresh_var \<Sigma>\<^sub>x \<noteq> x\<^sub>v"
+  case (UnaryPattern x \<Sigma> m\<^sub>x v\<^sub>x \<Sigma>\<^sub>x v' op)
+  have "fresh_var \<Sigma>\<^sub>x \<noteq> v\<^sub>x"
     using lower_sigma_update UnaryPattern freshness
     by (metis UnCI insertCI lower_finite)
-  have "fresh_var \<Sigma>\<^sub>x \<noteq> x\<^sub>v \<and> fresh_var \<Sigma>\<^sub>x \<notin> def_vars x\<^sub>m"
-    by (metis "UnaryPattern.hyps"(1) "UnaryPattern.prems"(2) UnCI \<open>fresh_var \<Sigma>\<^sub>x \<noteq> x\<^sub>v\<close> freshness lower_finite lower_sigma_update)
+  have "fresh_var \<Sigma>\<^sub>x \<noteq> v\<^sub>x \<and> fresh_var \<Sigma>\<^sub>x \<notin> def_vars m\<^sub>x"
+    by (metis "UnaryPattern.hyps"(1) "UnaryPattern.prems"(2) UnCI \<open>fresh_var \<Sigma>\<^sub>x \<noteq> v\<^sub>x\<close> freshness lower_finite lower_sigma_update)
   then show ?case using UnaryPattern by simp
 next
-  case (BinaryPattern x \<Sigma> x\<^sub>m x\<^sub>v \<Sigma>\<^sub>x y y\<^sub>m y\<^sub>v \<Sigma>\<^sub>y v' op)
-  have vmx: "valid_match x\<^sub>m"
+  case (BinaryPattern x \<Sigma> m\<^sub>x v\<^sub>x \<Sigma>\<^sub>x y m\<^sub>y v\<^sub>y \<Sigma>\<^sub>y v' op)
+  have vmx: "valid_match m\<^sub>x"
     using BinaryPattern by fastforce
-  have vmy: "valid_match y\<^sub>m"
+  have vmy: "valid_match m\<^sub>y"
     using BinaryPattern lower_finite
     by (metis UnCI \<L>.simps(5))
-  have "fresh_var \<Sigma>\<^sub>y \<noteq> x\<^sub>v" using BinaryPattern
+  have "fresh_var \<Sigma>\<^sub>y \<noteq> v\<^sub>x" using BinaryPattern
     by (metis UnCI freshness insertCI lower_finite lower_sigma_update)
-  also have "fresh_var \<Sigma>\<^sub>y \<noteq> y\<^sub>v" using BinaryPattern
+  also have "fresh_var \<Sigma>\<^sub>y \<noteq> v\<^sub>y" using BinaryPattern
     by (metis UnCI freshness insertCI lower_finite lower_sigma_update)
-  moreover have "use_vars x\<^sub>m \<inter> def_vars y\<^sub>m = {}" using BinaryPattern lower_sigma_update2
+  moreover have "use_vars m\<^sub>x \<inter> def_vars m\<^sub>y = {}" using BinaryPattern lower_sigma_update2
     by (metis UnCI disjoint_iff_not_equal lower_finite lower_sigma_update1)
-  moreover have "x\<^sub>v \<noteq> y\<^sub>v" using BinaryPattern
+  moreover have "v\<^sub>x \<noteq> v\<^sub>y" using BinaryPattern
     by (metis Un_commute Un_insert_right disjoint_insert(2) insertI1 lower_finite lower_sigma_update lower_sigma_update2)
-  ultimately have "fresh_var \<Sigma>\<^sub>y \<noteq> x\<^sub>v \<and> fresh_var \<Sigma>\<^sub>y \<noteq> y\<^sub>v \<and> x\<^sub>v \<noteq> y\<^sub>v \<and> use_vars x\<^sub>m \<inter> def_vars y\<^sub>m = {} \<and> fresh_var \<Sigma>\<^sub>y \<notin> def_vars x\<^sub>m \<and> fresh_var \<Sigma>\<^sub>y \<notin> def_vars y\<^sub>m"
+  ultimately have "fresh_var \<Sigma>\<^sub>y \<noteq> v\<^sub>x \<and> fresh_var \<Sigma>\<^sub>y \<noteq> v\<^sub>y \<and> v\<^sub>x \<noteq> v\<^sub>y \<and> use_vars m\<^sub>x \<inter> def_vars m\<^sub>y = {} \<and> fresh_var \<Sigma>\<^sub>y \<notin> def_vars m\<^sub>x \<and> fresh_var \<Sigma>\<^sub>y \<notin> def_vars m\<^sub>y"
     by (metis BinaryPattern.hyps(1,2) BinaryPattern.prems(2) UnCI freshness lower_finite lower_sigma_update)
   then show ?case
     by (simp add: BinaryPattern.hyps(3) vmx vmy)
 next
-  case (ConditionalPattern c \<Sigma> c\<^sub>m c\<^sub>v \<Sigma>\<^sub>c t t\<^sub>m t\<^sub>v \<Sigma>\<^sub>t f f\<^sub>m f\<^sub>v \<Sigma>\<^sub>f v')
-  have vmc: "valid_match c\<^sub>m"
+  case (ConditionalPattern c \<Sigma> m\<^sub>c v\<^sub>c \<Sigma>\<^sub>c t m\<^sub>t v\<^sub>t \<Sigma>\<^sub>t f m\<^sub>f v\<^sub>f \<Sigma>\<^sub>f v')
+  have vmc: "valid_match m\<^sub>c"
     using ConditionalPattern by force
-  have vmt: "valid_match t\<^sub>m"
+  have vmt: "valid_match m\<^sub>t"
     using ConditionalPattern lower_finite by auto
-  have vmf: "valid_match f\<^sub>m"
-    by (metis ConditionalPattern UnI2 \<L>.simps(6) lower_finite)
-  have v'ne: "v' \<noteq> c\<^sub>v \<and> v' \<noteq> t\<^sub>v \<and> v' \<noteq> f\<^sub>v"
+  have vmf: "valid_match m\<^sub>f"
+    by (metis ConditionalPattern.IH(3) ConditionalPattern.hyps(1,2) ConditionalPattern.prems(1,2) UnI2 \<L>.simps(6) lower_finite)
+  have v'ne: "v' \<noteq> v\<^sub>c \<and> v' \<noteq> v\<^sub>t \<and> v' \<noteq> v\<^sub>f"
     by (smt (verit) ConditionalPattern Un_insert_left Un_insert_right freshness insert_iff lower_finite lower_sigma_update)
-  have dij: "c\<^sub>v \<noteq> t\<^sub>v \<and> c\<^sub>v \<noteq> f\<^sub>v \<and> t\<^sub>v \<noteq> f\<^sub>v"
-    by (metis ConditionalPattern UnCI Un_insert_left disjoint_insert(2) insertCI lower_finite lower_sigma_update1 lower_sigma_update2)
-  have cd: "use_vars c\<^sub>m \<inter> (def_vars t\<^sub>m \<union> def_vars f\<^sub>m) = {}"
+  have dij: "v\<^sub>c \<noteq> v\<^sub>t \<and> v\<^sub>c \<noteq> v\<^sub>f \<and> v\<^sub>t \<noteq> v\<^sub>f"
+    using UnCI Un_insert_left disjoint_insert(2) insertCI lower_finite lower_sigma_update1 lower_sigma_update2
+    by (metis ConditionalPattern.hyps(1,2,3) ConditionalPattern.prems(2))
+  have cd: "use_vars m\<^sub>c \<inter> (def_vars m\<^sub>t \<union> def_vars m\<^sub>f) = {}"
     using ConditionalPattern lower_sigma_update2
     by (smt (verit, ccfv_threshold) Un_iff disjoint_iff lower_finite lower_sigma_update1)
-  have td: "use_vars t\<^sub>m \<inter> def_vars f\<^sub>m = {}"
+  have td: "use_vars m\<^sub>t \<inter> def_vars m\<^sub>f = {}"
     using ConditionalPattern lower_sigma_update2
     by (smt (verit, ccfv_SIG) UnCI disjoint_iff lower_finite lower_sigma_update1)
-  have "v' \<notin> def_vars c\<^sub>m \<and> v' \<notin> def_vars t\<^sub>m \<and> v' \<notin> def_vars f\<^sub>m"
+  have "v' \<notin> def_vars m\<^sub>c \<and> v' \<notin> def_vars m\<^sub>t \<and> v' \<notin> def_vars m\<^sub>f"
     using ConditionalPattern
     by (metis UnI1 Un_insert_right freshness insertCI lower_finite lower_sigma_update mk_disjoint_insert)
   then show ?case using vmc vmt vmf v'ne dij cd td
@@ -624,17 +625,17 @@ next
   case (ConstantPattern v' \<Sigma> c)
   then show ?case by simp
 next
-  case (UnaryPattern x \<Sigma> x\<^sub>m x\<^sub>v \<Sigma>\<^sub>x v' op)
+  case (UnaryPattern x \<Sigma> m\<^sub>x v\<^sub>x \<Sigma>\<^sub>x v' op)
   then show ?case
     by (metis \<L>.simps(4) eval_match_andthen valid_match.simps(4))
 next
-  case (BinaryPattern x \<Sigma> x\<^sub>m x\<^sub>v \<Sigma>\<^sub>x y y\<^sub>m y\<^sub>v \<Sigma>\<^sub>y v' op)
-  obtain \<sigma>\<^sub>m where \<sigma>\<^sub>m: "match v' (BinaryPattern op x\<^sub>v y\<^sub>v) \<U> \<sigma> = \<sigma>\<^sub>m"
+  case (BinaryPattern x \<Sigma> m\<^sub>x v\<^sub>x \<Sigma>\<^sub>x y m\<^sub>y v\<^sub>y \<Sigma>\<^sub>y v' op)
+  obtain \<sigma>\<^sub>m where \<sigma>\<^sub>m: "match v' (BinaryPattern op v\<^sub>x v\<^sub>y) \<U> \<sigma> = \<sigma>\<^sub>m"
     by (meson BinaryPattern.prems eval_match_andthen)
-  then obtain \<sigma>\<^sub>x where \<sigma>\<^sub>x: "x\<^sub>m \<U> \<sigma>\<^sub>m = \<sigma>\<^sub>x"
+  then obtain \<sigma>\<^sub>x where \<sigma>\<^sub>x: "m\<^sub>x \<U> \<sigma>\<^sub>m = \<sigma>\<^sub>x"
     by (metis BinaryPattern.prems(2) eval_match_andthen eval_match_deterministic)
-  then obtain \<sigma>\<^sub>y where \<sigma>\<^sub>y: "y\<^sub>m \<U> \<sigma>\<^sub>x = \<sigma>\<^sub>y"
-    by (metis BinaryPattern.prems(2) \<open>match v' (BinaryPattern op x\<^sub>v y\<^sub>v) \<U> \<sigma> = \<sigma>\<^sub>m\<close> eval_match_andthen eval_match_deterministic)
+  then obtain \<sigma>\<^sub>y where \<sigma>\<^sub>y: "m\<^sub>y \<U> \<sigma>\<^sub>x = \<sigma>\<^sub>y"
+    by (metis BinaryPattern.prems(2) \<open>match v' (BinaryPattern op v\<^sub>x v\<^sub>y) \<U> \<sigma> = \<sigma>\<^sub>m\<close> eval_match_andthen eval_match_deterministic)
   have xs: "\<L> x \<subseteq> dom \<sigma>\<^sub>x"
     using BinaryPattern.hyps(2) \<sigma>\<^sub>x BinaryPattern.prems(1) by auto
   have ys: "\<L> y \<subseteq> dom \<sigma>\<^sub>y"
@@ -646,7 +647,7 @@ next
   then show ?case
     by (metis Un_subset_iff \<open>\<L> (BinaryExpr op x y) = \<L> x \<union> \<L> y\<close> sup.absorb_iff1 xs ys)
 next
-  case (ConditionalPattern c \<Sigma> c\<^sub>m c\<^sub>v \<Sigma>\<^sub>c t t\<^sub>m t\<^sub>v \<Sigma>\<^sub>t f f\<^sub>m f\<^sub>v \<Sigma>\<^sub>f v')
+  case (ConditionalPattern c \<Sigma> m\<^sub>c v\<^sub>c \<Sigma>\<^sub>c t m\<^sub>t v\<^sub>t \<Sigma>\<^sub>t f m\<^sub>f v\<^sub>f \<Sigma>\<^sub>f v')
   then show ?case sorry
 next
   case (ConstantVariableUnseen vn \<Sigma>)
@@ -715,19 +716,19 @@ next
   then show ?case
     by simp
 next
-  case (UnaryPattern x \<Sigma> x\<^sub>m x\<^sub>v \<Sigma>\<^sub>x v' op)
-  obtain \<sigma>\<^sub>m where m1: "match v' (UnaryPattern op x\<^sub>v) \<U> \<sigma>(v' \<mapsto> e') = \<sigma>\<^sub>m"
+  case (UnaryPattern x \<Sigma> m\<^sub>x v\<^sub>x \<Sigma>\<^sub>x v' op)
+  obtain \<sigma>\<^sub>m where m1: "match v' (UnaryPattern op v\<^sub>x) \<U> \<sigma>(v' \<mapsto> e') = \<sigma>\<^sub>m"
     by (meson UnaryPattern.prems(3) eval_match_andthen)
   then obtain e\<^sub>x where  e': "e' = UnaryExpr op e\<^sub>x" using UnaryPattern
     by (meson eval_match_UnaryPattern map_upd_Some_unfold)
   then have "match_tree x e\<^sub>x = Some (\<sigma>' |` \<L> x)"
   proof -
-    have u1: "unify (\<sigma>(v' \<mapsto> e')) [(x\<^sub>v, e\<^sub>x)] \<sigma>\<^sub>m" 
+    have u1: "unify (\<sigma>(v' \<mapsto> e')) [(v\<^sub>x, e\<^sub>x)] \<sigma>\<^sub>m" 
       using UnaryPattern e'
       by (metis IRExpr.sel(2) m1 eval_match_UnaryPattern fun_upd_same option.sel)
-    have "x\<^sub>m \<U> \<sigma>\<^sub>m = \<sigma>'"
+    have "m\<^sub>x \<U> \<sigma>\<^sub>m = \<sigma>'"
       by (metis UnaryPattern.prems(3) m1 eval_match_andthen eval_match_deterministic)
-    then obtain \<sigma>\<^sub>x where xm: "x\<^sub>m \<U> \<sigma>\<^sub>x(x\<^sub>v \<mapsto> e\<^sub>x) = \<sigma>'"
+    then obtain \<sigma>\<^sub>x where xm: "m\<^sub>x \<U> \<sigma>\<^sub>x(v\<^sub>x \<mapsto> e\<^sub>x) = \<sigma>'"
       using u1 unify_partition
       by (meson list.set_intros(1) map_le_refl)
     then show ?thesis
@@ -736,21 +737,21 @@ next
   then show ?case
     using e' by auto
 next
-  case (BinaryPattern x \<Sigma> x\<^sub>m x\<^sub>v \<Sigma>\<^sub>x y y\<^sub>m y\<^sub>v \<Sigma>\<^sub>y v' op)
-  obtain \<sigma>\<^sub>m where s1: "match v' (BinaryPattern op x\<^sub>v y\<^sub>v) \<U> \<sigma>(v' \<mapsto> e') = \<sigma>\<^sub>m"
+  case (BinaryPattern x \<Sigma> m\<^sub>x v\<^sub>x \<Sigma>\<^sub>x y m\<^sub>y v\<^sub>y \<Sigma>\<^sub>y v' op)
+  obtain \<sigma>\<^sub>m where s1: "match v' (BinaryPattern op v\<^sub>x v\<^sub>y) \<U> \<sigma>(v' \<mapsto> e') = \<sigma>\<^sub>m"
     by (meson BinaryPattern.prems(3) eval_match_andthen)
   then obtain e\<^sub>x e\<^sub>y where e': "e' = BinaryExpr op e\<^sub>x e\<^sub>y"
     by (meson eval_match_BinaryPattern map_upd_Some_unfold)
-  have u1: "unify (\<sigma>(v' \<mapsto> e')) [(x\<^sub>v, e\<^sub>x), (y\<^sub>v, e\<^sub>y)] \<sigma>\<^sub>m"
+  have u1: "unify (\<sigma>(v' \<mapsto> e')) [(v\<^sub>x, e\<^sub>x), (v\<^sub>y, e\<^sub>y)] \<sigma>\<^sub>m"
       using e' IRExpr.inject(2) s1 eval_match_BinaryPattern by fastforce
-  then obtain \<sigma>\<^sub>x where m1: "x\<^sub>m \<U> \<sigma>\<^sub>m = \<sigma>\<^sub>x"
+  then obtain \<sigma>\<^sub>x where m1: "m\<^sub>x \<U> \<sigma>\<^sub>m = \<sigma>\<^sub>x"
     by (metis BinaryPattern.prems(3) eval_match_andthen eval_match_deterministic s1)
   then have mx: "\<sigma>\<^sub>m \<subseteq>\<^sub>m \<sigma>\<^sub>x"
     using BinaryPattern.prems(2) eval_match_subset m1 
     by (metis BinaryPattern.hyps(1) BinaryPattern.prems(1) lower_valid_matches valid_pattern.simps(5) valid_pattern_preserves_freshness)
   then have mt1: "match_tree x e\<^sub>x = Some (\<sigma>\<^sub>x |` \<L> x)"
   proof -
-    obtain \<sigma>\<^sub>x' where xm: "x\<^sub>m \<U> \<sigma>\<^sub>x'(x\<^sub>v \<mapsto> e\<^sub>x) = \<sigma>\<^sub>x"
+    obtain \<sigma>\<^sub>x' where xm: "m\<^sub>x \<U> \<sigma>\<^sub>x'(v\<^sub>x \<mapsto> e\<^sub>x) = \<sigma>\<^sub>x"
       using m1 u1 unify_partition
       by (meson list.set_intros(1) map_le_refl)
     then show ?thesis
@@ -758,12 +759,12 @@ next
   qed
   then have mt2: "match_tree y e\<^sub>y = Some (\<sigma>' |` \<L> y)"
   proof -
-    have m2: "y\<^sub>m \<U> \<sigma>\<^sub>x = \<sigma>'"
+    have m2: "m\<^sub>y \<U> \<sigma>\<^sub>x = \<sigma>'"
       by (metis BinaryPattern.prems(3) eval_match_andthen eval_match_deterministic m1 s1)
     then have "\<sigma>\<^sub>m \<subseteq>\<^sub>m \<sigma>\<^sub>x"
       using BinaryPattern.prems(3) eval_match_subset m1
       using mx by fastforce
-    then obtain \<sigma>\<^sub>y' where ym: "y\<^sub>m \<U> \<sigma>\<^sub>y'(y\<^sub>v \<mapsto> e\<^sub>y) = \<sigma>'"
+    then obtain \<sigma>\<^sub>y' where ym: "m\<^sub>y \<U> \<sigma>\<^sub>y'(v\<^sub>y \<mapsto> e\<^sub>y) = \<sigma>'"
       using m1 u1 unify_partition
       by (metis list.set_intros(1) m2 unify_unempty)
     then show ?thesis
@@ -793,7 +794,7 @@ next
   then show ?case using mt1 mt2 e'
     using match_tree.simps(2) by presburger
 next
-  case (ConditionalPattern c \<Sigma> c\<^sub>m c\<^sub>v \<Sigma>\<^sub>c t t\<^sub>m t\<^sub>v \<Sigma>\<^sub>t f f\<^sub>m f\<^sub>v \<Sigma>\<^sub>f v')
+  case (ConditionalPattern c \<Sigma> m\<^sub>c v\<^sub>c \<Sigma>\<^sub>c t m\<^sub>t v\<^sub>t \<Sigma>\<^sub>t f m\<^sub>f v\<^sub>f \<Sigma>\<^sub>f v')
   then show ?case sorry
 next
   case (ConstantVariableUnseen vn \<Sigma>)
@@ -841,8 +842,12 @@ end
 class groundable =
   fixes ground :: "'a \<Rightarrow> (VarName \<Rightarrow> IRExpr option) \<Rightarrow> 'a option" (infix "$" 70)
   fixes varset :: "'a \<Rightarrow> VarName set"
-  (*assumes identity: "r $ Map.empty = r"*)
-  assumes effect: "varset e \<subseteq> S \<Longrightarrow> e $ \<sigma> = e $ (\<sigma>|`S)"
+  (*assumes grounds: "(e $ \<sigma>) = Some g \<Longrightarrow> varset g = {}"
+  assumes idempotent: "(e $ \<sigma>) = Some g \<Longrightarrow> g $ \<sigma>' = Some g"*)
+  assumes restricted: "varset e \<subseteq> S \<Longrightarrow> e $ \<sigma> = e $ (\<sigma>|`S)"
+
+definition is_ground :: "'a::groundable \<Rightarrow> bool" where
+  "is_ground e = (varset e = {})"
 
 instantiation IRExpr :: groundable begin
 fun ground_IRExpr :: "IRExpr \<Rightarrow> (VarName \<Rightarrow> IRExpr option) \<Rightarrow> IRExpr option" where
@@ -868,7 +873,7 @@ fun ground_IRExpr :: "IRExpr \<Rightarrow> (VarName \<Rightarrow> IRExpr option)
 definition varset_IRExpr where
   "varset_IRExpr = \<L>"
 instance apply standard
-  subgoal for r apply (induction r)
+  subgoal for e apply (induction e)
     by (simp add: varset_IRExpr_def)+
   done
 end
@@ -933,7 +938,7 @@ lemma ground_restriction:
   assumes "\<L> e \<subseteq> S"
   shows "e $ \<sigma> = e $ (\<sigma>|`S)"
   using assms
-  by (metis effect varset_IRExpr_def)
+  by (metis restricted varset_IRExpr_def)
 
 theorem generate_sound:
   assumes "(p, b) \<leadsto> (v, r)"
