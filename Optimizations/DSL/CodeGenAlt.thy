@@ -196,45 +196,45 @@ lemma freshness:
   by (simp add: assms(1) assms(2) fresh_notIn fresh_var_def)
 
 inductive lower :: "IRExpr \<Rightarrow> VarName set \<Rightarrow> MATCH \<Rightarrow> VarName \<Rightarrow> VarName set \<Rightarrow> bool"
-  ("[_, _] \<leadsto> [_, _, _]" 70) where
+  ("'(_, _') \<leadsto> '(_, _, _')" 70) where
   VariableUnseen:
-  "vn \<notin> \<Sigma> \<Longrightarrow> [VariableExpr vn s, \<Sigma>] \<leadsto> [noop vn, vn, \<Sigma> \<union> {vn}]" |
+  "vn \<notin> \<Sigma> \<Longrightarrow> (VariableExpr vn s, \<Sigma>) \<leadsto> (noop vn, vn, \<Sigma> \<union> {vn})" |
   VariableSeen:
-  "\<lbrakk>vn \<in> \<Sigma>; v' = fresh_var \<Sigma>\<rbrakk> \<Longrightarrow> [VariableExpr vn s, \<Sigma>] \<leadsto> [v' == vn, v', \<Sigma> \<union> {v'}]" |
+  "\<lbrakk>vn \<in> \<Sigma>; v' = fresh_var \<Sigma>\<rbrakk> \<Longrightarrow> (VariableExpr vn s, \<Sigma>) \<leadsto> (v' == vn, v', \<Sigma> \<union> {v'})" |
   ConstantPattern:
-  "v' = fresh_var \<Sigma> \<Longrightarrow> [ConstantExpr c, \<Sigma>] \<leadsto> [match v' (ConstantPattern c), v', \<Sigma> \<union> {v'}]" |
+  "v' = fresh_var \<Sigma> \<Longrightarrow> (ConstantExpr c, \<Sigma>) \<leadsto> (match v' (ConstantPattern c), v', \<Sigma> \<union> {v'})" |
   UnaryPattern:
-  "\<lbrakk>[x, \<Sigma>] \<leadsto> [x\<^sub>m, x\<^sub>v, \<Sigma>\<^sub>x];
+  "\<lbrakk>(x, \<Sigma>) \<leadsto> (x\<^sub>m, x\<^sub>v, \<Sigma>\<^sub>x);
     v' = fresh_var \<Sigma>\<^sub>x\<rbrakk>
-  \<Longrightarrow> [UnaryExpr op x, \<Sigma>] \<leadsto> [match v' (UnaryPattern op x\<^sub>v) && x\<^sub>m, v', \<Sigma>\<^sub>x \<union> {v'}]" |
+  \<Longrightarrow> (UnaryExpr op x, \<Sigma>) \<leadsto> (match v' (UnaryPattern op x\<^sub>v) && x\<^sub>m, v', \<Sigma>\<^sub>x \<union> {v'})" |
   BinaryPattern:
-  "\<lbrakk>[x, \<Sigma>] \<leadsto> [x\<^sub>m, x\<^sub>v, \<Sigma>\<^sub>x]; [y, \<Sigma>\<^sub>x] \<leadsto> [y\<^sub>m, y\<^sub>v, \<Sigma>\<^sub>y];
+  "\<lbrakk>(x, \<Sigma>) \<leadsto> (x\<^sub>m, x\<^sub>v, \<Sigma>\<^sub>x); (y, \<Sigma>\<^sub>x) \<leadsto> (y\<^sub>m, y\<^sub>v, \<Sigma>\<^sub>y);
     v' = fresh_var \<Sigma>\<^sub>y\<rbrakk>
-  \<Longrightarrow> [BinaryExpr op x y, \<Sigma>] \<leadsto> [match v' (BinaryPattern op x\<^sub>v y\<^sub>v) && x\<^sub>m && y\<^sub>m, v', \<Sigma>\<^sub>y \<union> {v'}]" |
+  \<Longrightarrow> (BinaryExpr op x y, \<Sigma>) \<leadsto> (match v' (BinaryPattern op x\<^sub>v y\<^sub>v) && x\<^sub>m && y\<^sub>m, v', \<Sigma>\<^sub>y \<union> {v'})" |
   ConditionalPattern:
-  "\<lbrakk>[c, \<Sigma>] \<leadsto> [c\<^sub>m, c\<^sub>v, \<Sigma>\<^sub>c]; [t, \<Sigma>\<^sub>c] \<leadsto> [t\<^sub>m, t\<^sub>v, \<Sigma>\<^sub>t];
-    [f, \<Sigma>\<^sub>t] \<leadsto> [f\<^sub>m, f\<^sub>v, \<Sigma>\<^sub>f]; v' = fresh_var \<Sigma>\<^sub>f\<rbrakk>
-  \<Longrightarrow> [ConditionalExpr c t f, \<Sigma>] \<leadsto> [match v' (ConditionalPattern c\<^sub>v t\<^sub>v f\<^sub>v) && c\<^sub>m && t\<^sub>m && f\<^sub>m, v', \<Sigma>\<^sub>f \<union> {v'}]" |
+  "\<lbrakk>(c, \<Sigma>) \<leadsto> (c\<^sub>m, c\<^sub>v, \<Sigma>\<^sub>c); (t, \<Sigma>\<^sub>c) \<leadsto> (t\<^sub>m, t\<^sub>v, \<Sigma>\<^sub>t);
+    (f, \<Sigma>\<^sub>t) \<leadsto> (f\<^sub>m, f\<^sub>v, \<Sigma>\<^sub>f); v' = fresh_var \<Sigma>\<^sub>f\<rbrakk>
+  \<Longrightarrow> (ConditionalExpr c t f, \<Sigma>) \<leadsto> (match v' (ConditionalPattern c\<^sub>v t\<^sub>v f\<^sub>v) && c\<^sub>m && t\<^sub>m && f\<^sub>m, v', \<Sigma>\<^sub>f \<union> {v'})" |
 
   ConstantVariableUnseen:
-  "vn \<notin> \<Sigma> \<Longrightarrow> [ConstantVar vn, \<Sigma>] \<leadsto> [noop vn, vn, \<Sigma> \<union> {vn}]" | \<comment> \<open>Note that constant variables are also not properly handled currently.\<close>
+  "vn \<notin> \<Sigma> \<Longrightarrow> (ConstantVar vn, \<Sigma>) \<leadsto> (noop vn, vn, \<Sigma> \<union> {vn})" | \<comment> \<open>Note that constant variables are also not properly handled currently.\<close>
   ConstantVariableSeen:
-  "vn \<in> \<Sigma> \<and> v' = fresh_var \<Sigma> \<Longrightarrow> [ConstantVar vn, \<Sigma>] \<leadsto> [v' == vn, v', \<Sigma> \<union> {v'}]" |
+  "vn \<in> \<Sigma> \<and> v' = fresh_var \<Sigma> \<Longrightarrow> (ConstantVar vn, \<Sigma>) \<leadsto> (v' == vn, v', \<Sigma> \<union> {v'})" |
   ParameterPattern:
-  "v' = fresh_var \<Sigma> \<Longrightarrow> [ParameterExpr nid s, \<Sigma>] \<leadsto> [match v' (ParameterPattern nid), v', \<Sigma> \<union> {v'}]" |
+  "v' = fresh_var \<Sigma> \<Longrightarrow> (ParameterExpr nid s, \<Sigma>) \<leadsto> (match v' (ParameterPattern nid), v', \<Sigma> \<union> {v'})" |
   LeafPattern:
-  "v' = fresh_var \<Sigma> \<Longrightarrow> [LeafExpr nid s, \<Sigma>] \<leadsto> [match v' (LeafPattern nid), v', \<Sigma> \<union> {v'}]"
+  "v' = fresh_var \<Sigma> \<Longrightarrow> (LeafExpr nid s, \<Sigma>) \<leadsto> (match v' (LeafPattern nid), v', \<Sigma> \<union> {v'})"
 
 code_pred (modes: i \<Rightarrow> i \<Rightarrow> o \<Rightarrow> o \<Rightarrow> o \<Rightarrow> bool as lowerC) lower .
 
-inductive_cases lower_VariableExpr: "[VariableExpr vn s, \<Sigma>] \<leadsto> [m, v, \<Sigma>']"
-inductive_cases lower_ConstantExpr: "[ConstantExpr c, \<Sigma>] \<leadsto> [m, v, \<Sigma>']"
-inductive_cases lower_UnaryExpr: "[UnaryExpr op x, \<Sigma>] \<leadsto> [m, v, \<Sigma>']"
-inductive_cases lower_BinaryExpr: "[BinaryExpr op x y, \<Sigma>] \<leadsto> [m, v, \<Sigma>']"
-inductive_cases lower_ConditionalExpr: "[ConditionalExpr c t f, \<Sigma>] \<leadsto> [m, v, \<Sigma>']"
-inductive_cases lower_ConstantVar: "[ConstantVar c, \<Sigma>] \<leadsto> [m, v, \<Sigma>']"
-inductive_cases lower_ParameterExpr: "[ParameterExpr nid s, \<Sigma>] \<leadsto> [m, v, \<Sigma>']"
-inductive_cases lower_LeafExpr: "[LeafExpr nid s, \<Sigma>] \<leadsto> [m, v, \<Sigma>']"
+inductive_cases lower_VariableExpr: "(VariableExpr vn s, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
+inductive_cases lower_ConstantExpr: "(ConstantExpr c, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
+inductive_cases lower_UnaryExpr: "(UnaryExpr op x, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
+inductive_cases lower_BinaryExpr: "(BinaryExpr op x y, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
+inductive_cases lower_ConditionalExpr: "(ConditionalExpr c t f, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
+inductive_cases lower_ConstantVar: "(ConstantVar c, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
+inductive_cases lower_ParameterExpr: "(ParameterExpr nid s, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
+inductive_cases lower_LeafExpr: "(LeafExpr nid s, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
 
 values "{(m, v, \<Sigma>) | m v \<Sigma>. 
 (lower ((VariableExpr STR ''x'' default_stamp)) {} m v \<Sigma>)}"
@@ -244,13 +244,13 @@ values "{(m, v, \<Sigma>) | m v \<Sigma>.
 value "Predicate.the (lowerC (ConditionalExpr (VariableExpr STR ''x'' default_stamp) (VariableExpr STR ''y'' default_stamp) (VariableExpr STR ''x'' default_stamp)) {})"
 
 lemma lower_total:
-  "\<exists>m v \<Sigma>'. [e, \<Sigma>] \<leadsto> [m, v, \<Sigma>']"
+  "\<exists>m v \<Sigma>'. (e, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
   apply (induction e arbitrary: \<Sigma>)
   by (meson lower.intros)+
 
 lemma lower_deterministic:
-  assumes "[e, \<Sigma>] \<leadsto> [m\<^sub>1, v\<^sub>1, \<Sigma>'\<^sub>1]"
-  assumes "[e, \<Sigma>] \<leadsto> [m\<^sub>2, v\<^sub>2, \<Sigma>'\<^sub>2]"
+  assumes "(e, \<Sigma>) \<leadsto> (m\<^sub>1, v\<^sub>1, \<Sigma>'\<^sub>1)"
+  assumes "(e, \<Sigma>) \<leadsto> (m\<^sub>2, v\<^sub>2, \<Sigma>'\<^sub>2)"
   shows "m\<^sub>1 = m\<^sub>2 \<and> v\<^sub>1 = v\<^sub>2 \<and> \<Sigma>'\<^sub>1 = \<Sigma>'\<^sub>2"
   using assms apply (induction e \<Sigma> m\<^sub>1 v\<^sub>1 \<Sigma>'\<^sub>1 arbitrary: m\<^sub>2 v\<^sub>2 \<Sigma>'\<^sub>2 rule: lower.induct)
           apply (metis Un_commute insert_is_Un lower_VariableExpr)
@@ -265,26 +265,26 @@ lemma lower_deterministic:
    using lower_LeafExpr by blast
 
 lemma lower_sigma_update:
-  assumes "[e, \<Sigma>] \<leadsto> [m, v, \<Sigma>']"
+  assumes "(e, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
   shows "\<Sigma>' = \<Sigma> \<union> {v} \<union> def_vars m"
   using assms apply (induction rule: lower.induct) apply simp+
   by fastforce+
 
 lemma lower_sigma_update1:
-  assumes "[e, \<Sigma>] \<leadsto> [m, v, \<Sigma>']"
+  assumes "(e, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
   shows "\<Sigma>' = \<Sigma> \<union> {v} \<union> use_vars m \<union> def_vars m"
   using assms apply (induction rule: lower.induct) apply simp+
   by force+
 
 lemma lower_finite:
   assumes "finite \<Sigma>"
-  assumes "[e, \<Sigma>] \<leadsto> [m, v, \<Sigma>']"
+  assumes "(e, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
   shows "finite \<Sigma>'"
   using assms(2,1) apply (induction rule: lower.induct) by simp+
 
 lemma lower_sigma_update2:
   assumes "finite \<Sigma>"
-  assumes "[e, \<Sigma>] \<leadsto> [m, v, \<Sigma>']"
+  assumes "(e, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
   shows "\<Sigma> \<inter> ({v} \<union> use_vars m \<union> def_vars m) = {}"
   using assms(2,1) proof (induction rule: lower.induct)
   case (VariableUnseen vn \<Sigma> s)
@@ -367,7 +367,7 @@ qed
 lemma lower_valid_matches:
   assumes "finite \<Sigma>"
   assumes "\<forall>v \<Sigma>. v = fresh_var \<Sigma> \<longrightarrow> v \<notin> \<L> e"
-  assumes "[e, \<Sigma>] \<leadsto> [m, v, \<Sigma>']"
+  assumes "(e, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
   shows "valid_match m"
   using assms(3,2,1)
 proof (induction rule: lower.induct)
@@ -608,7 +608,7 @@ qed
 
 
 lemma eval_match_adds_patterns:
-  assumes "[e, \<Sigma>] \<leadsto> [m, v, \<Sigma>']"
+  assumes "(e, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
   assumes "valid_match m"
   assumes "m \<U> \<sigma> = \<sigma>'"
   shows "\<L> e \<subseteq> dom \<sigma>'"
@@ -687,7 +687,7 @@ subsection \<open>Lowering Sound\<close>
 theorem lower_sound:
   assumes "valid_pattern e"
   assumes "finite \<Sigma>"
-  assumes "[e, \<Sigma>] \<leadsto> [m, v, \<Sigma>']"
+  assumes "(e, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
   assumes "m \<U> \<sigma>(v \<mapsto> e') = \<sigma>'"
   shows "match_tree e e' = Some (\<sigma>'|`(\<L> e))"
   using assms(3,2,1,4) proof (induct arbitrary: \<sigma> e' \<sigma>' rule: lower.induct)
@@ -917,8 +917,8 @@ inductive eval_rules :: "Rules \<Rightarrow> Subst \<Rightarrow> IRExpr option \
    \<Longrightarrow> eval_rules (r1 \<Zsemi> r2) u r"*)
 
 inductive generate :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> VarName \<Rightarrow> Rules \<Rightarrow> bool"
-  ("[_, _] \<leadsto> [_, _]" 70) where
-  "[p, {}] \<leadsto> [m, v, \<Sigma>] \<Longrightarrow> [p, r] \<leadsto> [v, m ? base r]"
+  ("'(_, _') \<leadsto> '(_, _')" 70) where
+  "(p, {}) \<leadsto> (m, v, \<Sigma>) \<Longrightarrow> (p, r) \<leadsto> (v, m ? base r)"
 
 code_pred (modes: i \<Rightarrow> i \<Rightarrow> o \<Rightarrow> o \<Rightarrow> bool as generateC) generate .
 
@@ -936,25 +936,25 @@ lemma ground_restriction:
   by (metis effect varset_IRExpr_def)
 
 theorem generate_sound:
-  assumes "[p, b] \<leadsto> [v, r]"
+  assumes "(p, b) \<leadsto> (v, r)"
   assumes "eval_rules r [v \<mapsto> e] e'"
   assumes "valid_pattern p"
   assumes "\<L> b \<subseteq> \<L> p"
   shows "e' = exec p b e"
 proof -
-  obtain m \<Sigma> where "[p, {}] \<leadsto> [m, v, \<Sigma>]"
+  obtain m \<Sigma> where "(p, {}) \<leadsto> (m, v, \<Sigma>)"
     using assms(1) generate.simps by blast
   then obtain \<sigma>' where "m \<U> [v \<mapsto> e] = \<sigma>'"
     by (metis Rules.distinct(1) Rules.distinct(9) Rules.inject(2) assms(1) assms(2) eval_rules.simps generate.cases lower_deterministic)
   then have "eval_rules (base b) \<sigma>' e'"
-    by (metis (no_types, lifting) Rules.distinct(1) Rules.distinct(9) Rules.inject(2) \<open>[p, {}] \<leadsto> [m, v, \<Sigma>]\<close> assms(1) assms(2) eval_match_deterministic eval_rules.simps generate.cases lower_deterministic)
+    by (metis (no_types, lifting) Rules.distinct(1) Rules.distinct(9) Rules.inject(2) \<open>(p, {}) \<leadsto> (m, v, \<Sigma>)\<close> assms(1) assms(2) eval_match_deterministic eval_rules.simps generate.cases lower_deterministic)
   then have e': "e' = (b $ \<sigma>')"
     using eval_rules.simps by blast
   have "valid_match m"
-    using \<open>[p, {}] \<leadsto> [m, v, \<Sigma>]\<close> assms(3) lower_valid_matches valid_pattern_preserves_freshness by blast
+    using \<open>(p, {}) \<leadsto> (m, v, \<Sigma>)\<close> assms(3) lower_valid_matches valid_pattern_preserves_freshness by blast
   then have "match_tree p e = Some (\<sigma>'|`(\<L> p))"
     using lower_sound
-    using \<open>[p, {}] \<leadsto> [m, v, \<Sigma>]\<close> \<open>m \<U> [v \<mapsto> e] = \<sigma>'\<close> assms(3) by blast
+    using \<open>(p, {}) \<leadsto> (m, v, \<Sigma>)\<close> \<open>m \<U> [v \<mapsto> e] = \<sigma>'\<close> assms(3) by blast
   then have "b $ the (match_tree p e) = b $ \<sigma>'"
     using ground_restriction assms(4)
     by (metis option.sel)
