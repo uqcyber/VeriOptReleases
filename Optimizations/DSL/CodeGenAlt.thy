@@ -40,10 +40,10 @@ fun match_tree :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> Subst option" where
       (if n1 = n2 then Some Map.empty else None)" |
   "match_tree (ConstantExpr v) (ConstantExpr v') = 
       (if v = v' then Some Map.empty else None)" |
-  "match_tree (ConstantVar name) (ConstantExpr v) = 
-      Some ([name \<mapsto> (ConstantExpr v)])" |
-  "match_tree (VariableExpr name s) e = 
-      Some ([name \<mapsto> e])" |
+  "match_tree (ConstantVar vn) (ConstantExpr v) = 
+      Some ([vn \<mapsto> (ConstantExpr v)])" |
+  "match_tree (VariableExpr vn s) e = 
+      Some ([vn \<mapsto> e])" |
   "match_tree _ _ = None"
 
 subsection \<open>MATCH Datatype\<close>
@@ -498,10 +498,10 @@ code_pred (modes: i \<Rightarrow> i \<Rightarrow> o \<Rightarrow> bool as eval_m
 
 inductive_cases eval_match_UnaryPattern: "(match v (UnaryPattern op x)) \<U> \<sigma> = \<sigma>'"
 inductive_cases eval_match_BinaryPattern: "(match v (BinaryPattern op x y)) \<U> \<sigma> = \<sigma>'"
-inductive_cases eval_match_ConditionalExpr: "(match v (ConditionalPattern c t f)) \<U> \<sigma> = \<sigma>'"
-inductive_cases eval_match_ConstantExpr: "(match v (ConstantPattern c)) \<U> \<sigma> = \<sigma>'"
-inductive_cases eval_match_ParameterExpr: "(match v (ParameterPattern nid)) \<U> \<sigma> = \<sigma>'"
-inductive_cases eval_match_LeafExpr: "(match v (LeafPattern nid)) \<U> \<sigma> = \<sigma>'"
+inductive_cases eval_match_ConditionalPattern: "(match v (ConditionalPattern c t f)) \<U> \<sigma> = \<sigma>'"
+inductive_cases eval_match_ConstantPattern: "(match v (ConstantPattern c)) \<U> \<sigma> = \<sigma>'"
+inductive_cases eval_match_ParameterPattern: "(match v (ParameterPattern nid)) \<U> \<sigma> = \<sigma>'"
+inductive_cases eval_match_LeafPattern: "(match v (LeafPattern nid)) \<U> \<sigma> = \<sigma>'"
 inductive_cases eval_match_equality: "(v\<^sub>1 == v\<^sub>2) \<U> \<sigma> = \<sigma>'"
 inductive_cases eval_match_andthen: "(m\<^sub>1 && m\<^sub>2) \<U> \<sigma> = \<sigma>'"
 inductive_cases eval_match_noop: "noop v \<U> \<sigma> = \<sigma>'"
@@ -539,10 +539,10 @@ lemma eval_match_deterministic:
   using assms apply (induction m \<sigma> \<sigma>' arbitrary: \<sigma>'' rule: eval_match.induct)
         apply (metis IRExpr.sel(2) eval_match_UnaryPattern option.sel unify_deterministic)
        apply (metis IRExpr.inject(2) eval_match_BinaryPattern option.inject unify_deterministic)
-      apply (metis IRExpr.inject(3) eval_match_ConditionalExpr option.sel unify_deterministic)
-  using eval_match_ConstantExpr apply blast
-  using eval_match_ParameterExpr apply blast
-  using eval_match_LeafExpr apply blast
+      apply (metis IRExpr.inject(3) eval_match_ConditionalPattern option.sel unify_deterministic)
+  using eval_match_ConstantPattern apply blast
+  using eval_match_ParameterPattern apply blast
+  using eval_match_LeafPattern apply blast
   using eval_match_equality apply blast
   using eval_match_andthen apply metis
   using eval_match_noop by auto
@@ -570,7 +570,7 @@ lemma eval_match_subset:
   next
     case (ConditionalPattern x31 x32 x33)
     then show ?thesis using match apply simp
-      by (meson eval_match_ConditionalExpr map_le_def unify_grows)
+      by (meson eval_match_ConditionalPattern map_le_def unify_grows)
   next
     case (VariablePattern x4)
     then show ?thesis 
@@ -586,11 +586,11 @@ lemma eval_match_subset:
   next
     case (ParameterPattern x7)
     then show ?thesis
-      by (metis eval_match_ParameterExpr map_le_refl match.prems(1))
+      by (metis eval_match_ParameterPattern map_le_refl match.prems(1))
   next
     case (LeafPattern x8)
     then show ?thesis
-      by (metis eval_match_LeafExpr map_le_refl match.prems(1))
+      by (metis eval_match_LeafPattern map_le_refl match.prems(1))
   qed
 next
   case (equality x1 x2)
@@ -606,6 +606,162 @@ next
     by (metis eval_match_noop map_le_refl)
 qed
 
+lemma unify_idempotent:
+  assumes "unify \<sigma> xs \<sigma>'"
+  shows "unify \<sigma>' xs \<sigma>'"
+  using assms apply (induction xs arbitrary: \<sigma> \<sigma>') 
+  using unify.intros(1) apply simp
+  by (smt (verit, del_insts) domI fun_upd_same unify.intros(2) unify_grows unify_unempty)
+
+lemma unify_superset_idempotence:
+  assumes "unify \<sigma> xs \<sigma>"
+  assumes "\<sigma> \<subseteq>\<^sub>m \<sigma>'"
+  shows "unify \<sigma>' xs \<sigma>'"
+  using assms apply (induction xs arbitrary: \<sigma> \<sigma>') 
+  apply (simp add: unify.intros(1))
+  by (smt (verit, best) domIff fun_upd_same map_le_def option.discI unify.intros(2) unify_grows unify_unempty)
+
+lemma eval_match_superset_idempotence:
+  assumes "m \<U> \<sigma> = \<sigma>"
+  assumes "\<sigma> \<subseteq>\<^sub>m \<sigma>'"
+  assumes "valid_match m"
+  shows "m \<U> \<sigma>' = \<sigma>'"
+  using assms proof (induction m arbitrary: \<sigma> \<sigma>')
+  case (match x1 x2)
+  then show ?case proof (cases x2)
+    case (UnaryPattern x11 x12)
+    then show ?thesis 
+      using eval_match_UnaryPattern unify_superset_idempotence
+      by (smt (verit, best) domI eval_match.UnaryPattern map_le_def match.prems(1) match.prems(2))
+  next
+    case (BinaryPattern x21 x22 x23)
+    then show ?thesis
+      using eval_match_BinaryPattern unify_superset_idempotence
+      by (smt (verit, best) domI eval_match.BinaryPattern map_le_def match.prems(1) match.prems(2))
+  next
+    case (ConditionalPattern x31 x32 x33)
+    then show ?thesis
+      using eval_match_ConditionalPattern unify_superset_idempotence
+      by (smt (verit, best) domI eval_match.ConditionalPattern map_le_def match.prems(1) match.prems(2))
+  next
+    case (VariablePattern x4)
+    then show ?thesis
+      by (smt (verit) MATCH.distinct(1) MATCH.distinct(3) MATCH.distinct(5) domI eval_match.simps map_le_def match.prems(1) match.prems(2) unify_superset_idempotence)
+  next
+    case (ConstantPattern x5)
+    then show ?thesis
+      using eval_match_ConditionalPattern
+      by (metis domI eval_match.ConstantPattern eval_match_ConstantPattern map_le_def match.prems(1) match.prems(2))
+  next
+    case (ConstantVarPattern x6)
+    then show ?thesis
+      by (smt (verit) MATCH.distinct(1) MATCH.distinct(3) MATCH.distinct(5) domI eval_match.simps map_le_def match.prems(1) match.prems(2) unify_superset_idempotence)
+  next
+    case (ParameterPattern x7)
+    then show ?thesis
+      using eval_match_ParameterPattern match
+      by (smt (verit) domI eval_match.simps map_le_def)
+  next
+    case (LeafPattern x8)
+    then show ?thesis
+      using eval_match_LeafPattern match
+      by (smt (verit) domI eval_match.simps map_le_def)
+  qed
+next
+  case (equality x1 x2)
+  from equality show ?case
+    by (metis Equality domIff eval_match_equality map_le_def)
+next
+  case (andthen m1 m2)
+  obtain \<sigma>'' where m1eval: "m1 \<U> \<sigma> = \<sigma>''"
+    by (meson andthen.prems(1) eval_match_andthen)
+  then have m2eval: "m2 \<U> \<sigma>'' = \<sigma>"
+    by (metis andthen.prems(1) eval_match_andthen eval_match_deterministic)
+  then have "\<sigma>'' \<subseteq>\<^sub>m \<sigma>"
+    using andthen.prems(3) eval_match_subset valid_match.simps(4) by blast
+  then show ?case
+    by (metis AndThen andthen.IH(1) andthen.IH(2) andthen.prems(2) andthen.prems(3) eval_match_subset m1eval m2eval map_le_antisym valid_match.simps(4))
+next
+  case noop
+  then show ?case
+    by (metis Noop domIff eval_match_noop map_le_def)
+qed
+
+
+lemma eval_match_idempotent:
+  assumes "m \<U> \<sigma> = \<sigma>'"
+  assumes "valid_match m"
+  shows "m \<U> \<sigma>' = \<sigma>'"
+  using assms proof (induction m arbitrary: \<sigma> \<sigma>')
+  case (match v p)
+  then show ?case proof (cases p)
+    case (UnaryPattern op x)
+    then show ?thesis
+      using eval_match_UnaryPattern match unify_grows unify_idempotent
+      by (smt (verit, ccfv_SIG) domI eval_match.UnaryPattern)
+  next
+    case (BinaryPattern x21 x22 x23)
+    then show ?thesis
+      using eval_match_BinaryPattern match unify_grows unify_idempotent
+      by (smt (verit, best) domI eval_match.BinaryPattern)
+  next
+    case (ConditionalPattern x31 x32 x33)
+    then show ?thesis
+      using eval_match_ConditionalPattern match unify_grows unify_idempotent
+      by (smt (verit, ccfv_SIG) domI eval_match.ConditionalPattern)
+  next
+    case (VariablePattern x4)
+    then show ?thesis
+      using match unify_grows unify_idempotent
+      by (smt (verit) MATCH.distinct(3) domI eval_match.simps)
+  next
+    case (ConstantPattern x5)
+    then show ?thesis
+      using eval_match_ConstantPattern match
+      by blast
+  next
+    case (ConstantVarPattern x6)
+    then show ?thesis
+      by (smt (verit) MATCH.distinct(3) domI eval_match.simps match unify_grows unify_idempotent)
+  next
+    case (ParameterPattern x7)
+    then show ?thesis
+      using eval_match_ParameterPattern match
+      by blast
+  next
+    case (LeafPattern x8)
+    then show ?thesis
+      using eval_match_LeafPattern match by blast
+  qed
+next
+  case (equality x1 x2)
+  then show ?case
+    using eval_match_equality by blast
+next
+  case (andthen m1 m2)
+  obtain \<sigma>'' where m1eval: "m1 \<U> \<sigma> = \<sigma>''"
+    by (meson andthen.prems eval_match_andthen)
+  have validm1: "valid_match m1"
+    using andthen.prems(2) by auto
+  have m1idem: "m1 \<U> \<sigma>'' = \<sigma>''"
+    using andthen.IH(1) m1eval validm1 by auto
+  have m2eval: "m2 \<U> \<sigma>'' = \<sigma>'"
+    by (metis andthen.prems(1) eval_match_andthen eval_match_deterministic m1eval)
+  have validm2: "valid_match m2"
+    using andthen.prems(2) by auto
+  have m2idem: "m2 \<U> \<sigma>' = \<sigma>'"
+    using andthen.IH(2) m2eval validm2 by blast
+  have "\<sigma>'' \<subseteq>\<^sub>m \<sigma>'"
+    using eval_match_subset m2eval validm2 by blast
+  then have "m1 \<U> \<sigma>' = \<sigma>'"
+    using eval_match_superset_idempotence m1idem validm1 by blast
+  then show ?case
+    using AndThen m2idem by auto
+next
+  case noop
+  then show ?case
+    using eval_match_noop by blast
+qed
 
 lemma eval_match_adds_patterns:
   assumes "(e, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
@@ -711,7 +867,7 @@ next
 next
   case (ConstantPattern v' \<Sigma> c)
   have "e\<^sub>g = ConstantExpr c"
-    by (meson ConstantPattern.prems(3) eval_match_ConstantExpr map_upd_Some_unfold)
+    by (meson ConstantPattern.prems(3) eval_match_ConstantPattern map_upd_Some_unfold)
   then show ?case
     by simp
 next
@@ -811,11 +967,11 @@ next
 next
   case (ParameterPattern v' \<Sigma> nid s)
   then show ?case
-    using eval_match_ParameterExpr by fastforce
+    using eval_match_ParameterPattern by fastforce
 next
   case (LeafPattern v' \<Sigma> nid s)
   then show ?case
-    using eval_match_LeafExpr by fastforce
+    using eval_match_LeafPattern by fastforce
 qed
 
 class substitutable =
@@ -868,6 +1024,7 @@ fun ground_IRExpr :: "IRExpr \<Rightarrow> (VarName \<Rightarrow> IRExpr option)
   "(VariableExpr vn s) $ \<sigma> = 
     (case \<sigma> vn of None \<Rightarrow> None
                 | Some e \<Rightarrow> Some e)" |
+  "(ConstantVar vn) $ \<sigma> = None" |
   "ground_IRExpr e \<sigma> = Some e"
 definition varset_IRExpr where
   "varset_IRExpr = \<L>"
@@ -883,6 +1040,13 @@ datatype Rules =
   else Rules Rules (infixl "else" 50) |
   seq Rules Rules (infixl "\<Zsemi>" 49) |
   choice "Rules list"
+
+fun valid_rules :: "Rules \<Rightarrow> bool" where
+  "valid_rules (m ? r) = (valid_match m \<and> valid_rules r)" |
+  "valid_rules (r1 else r2) = (valid_rules r1 \<and> valid_rules r2)" |
+  "valid_rules (r1 \<Zsemi> r2) = (valid_rules r1 \<and> valid_rules r2)" |
+  "valid_rules (choice rules) = (\<forall>r \<in> set rules. valid_rules r)" |
+  "valid_rules _ = True"
 
 fun match_entry_var :: "MATCH \<Rightarrow> VarName option" where
   "match_entry_var (match v p) = Some v" |
@@ -989,6 +1153,294 @@ proof -
     using \<open>match_tree e\<^sub>p e\<^sub>g = Some (\<sigma>' |` \<L> e\<^sub>p)\<close> by auto
 qed
 
+thm_oracles generate_sound
+
+
+section \<open>Optimizations\<close>
+
+inductive groundof :: "Subst \<Rightarrow> IRExpr \<Rightarrow> IRExpr \<Rightarrow> bool" ("_ \<turnstile> _ \<preceq> _" 60) where
+  "\<lbrakk>\<sigma> \<turnstile> x \<preceq> x'\<rbrakk>
+    \<Longrightarrow> \<sigma> \<turnstile> (UnaryExpr op x) \<preceq> (UnaryExpr op x')" |
+  "\<lbrakk>\<sigma> \<turnstile> x \<preceq> x'; \<sigma> \<turnstile> y \<preceq> y'\<rbrakk>
+    \<Longrightarrow> \<sigma> \<turnstile> (BinaryExpr op x y) \<preceq> (BinaryExpr op x' y')" |
+  "\<lbrakk>\<sigma> \<turnstile> c \<preceq> c'; \<sigma> \<turnstile> t \<preceq> t'; \<sigma> \<turnstile> f \<preceq> f'\<rbrakk>
+    \<Longrightarrow> \<sigma> \<turnstile> (ConditionalExpr c t f) \<preceq> (ConditionalExpr c' t' f')" |
+  "\<sigma> \<turnstile> (ParameterExpr i s) \<preceq> (ParameterExpr i s')" |
+  "\<sigma> \<turnstile> (LeafExpr nid s) \<preceq> (LeafExpr nid s')" |
+  "\<sigma> \<turnstile> (ConstantExpr c) \<preceq> (ConstantExpr c)" |
+  "\<lbrakk>\<sigma> vn = Some (ConstantExpr c)\<rbrakk>
+    \<Longrightarrow> \<sigma> \<turnstile> (ConstantExpr c) \<preceq> (ConstantVar vn)" |
+  "\<lbrakk>\<sigma> vn = Some e\<rbrakk>
+    \<Longrightarrow> \<sigma> \<turnstile> e \<preceq> (VariableExpr vn s)"
+
+inductive_cases groundof_UnaryExpr: "\<sigma> \<turnstile> g \<preceq> (UnaryExpr op x)"
+inductive_cases groundof_BinaryExpr: "\<sigma> \<turnstile> g \<preceq> (BinaryExpr op x y)"
+inductive_cases groundof_ConditionalExpr: "\<sigma> \<turnstile> g \<preceq> (ConditionalExpr c t f)"
+inductive_cases groundof_ParameterExpr: "\<sigma> \<turnstile> g \<preceq> (ParameterExpr i s)"
+inductive_cases groundof_LeafExpr: "\<sigma> \<turnstile> g \<preceq> (LeafExpr nid s)"
+inductive_cases groundof_ConstantExpr: "\<sigma> \<turnstile> g \<preceq> (ConstantExpr c)"
+inductive_cases groundof_ConstantVar: "\<sigma> \<turnstile> g \<preceq> (ConstantVar v)"
+inductive_cases groundof_VariableExpr: "\<sigma> \<turnstile> g \<preceq> (VariableExpr vn s)"
+
+
+definition ground_substitution :: "Subst \<Rightarrow> bool" where
+  "ground_substitution \<sigma> = (\<forall>v \<in> dom \<sigma>. (\<forall>e. \<sigma> v = Some e \<longrightarrow> is_ground e))"
+
+definition pattern_refinement :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> bool" where
+  "pattern_refinement e\<^sub>1 e\<^sub>2 = (\<forall>\<sigma>. (ground_substitution \<sigma> \<and> (\<forall>var \<in> \<L> e\<^sub>1. (\<exists>e. \<sigma> var = Some e))) 
+                                \<longrightarrow> (\<forall>ge\<^sub>1 ge\<^sub>2. ((\<sigma> \<turnstile> ge\<^sub>1 \<preceq> e\<^sub>1) \<and> (\<sigma> \<turnstile> ge\<^sub>2 \<preceq> e\<^sub>2)) \<longrightarrow> ge\<^sub>1 \<le> ge\<^sub>2))"
+
+lemma ground_requires_mdom:
+  assumes "m \<turnstile> ge1 \<preceq> e1"
+  shows "(\<forall>var \<in> \<L> e1. (\<exists>e. m var = Some e))"
+  using assms apply (induction rule: groundof.induct) by auto
+
+lemma ground_refinement:
+  assumes "pattern_refinement e\<^sub>1 e\<^sub>2"
+  assumes "ground_substitution \<sigma>"
+  assumes "\<sigma> \<turnstile> ge\<^sub>1 \<preceq> e\<^sub>1"
+  assumes "\<sigma> \<turnstile> ge\<^sub>2 \<preceq> e\<^sub>2"
+  shows "ge\<^sub>1 \<le> ge\<^sub>2"
+proof -
+  have "(\<forall>var \<in> \<L> e\<^sub>1. (\<exists>e. \<sigma> var = Some e))"
+    using ground_requires_mdom assms(3) by simp
+  then have f: "(\<And>ge1 ge2. ((\<sigma> \<turnstile> ge1 \<preceq> e\<^sub>1) \<and> (\<sigma> \<turnstile> ge2 \<preceq> e\<^sub>2)) \<Longrightarrow> ge1 \<le> ge2)"
+    using assms(1,2) unfolding pattern_refinement_def by auto
+  show ?thesis
+    apply (rule f)
+    using assms(3,4) by simp
+qed
+
+lemma is_ground_UnaryExpr:
+  "is_ground (UnaryExpr op x) = is_ground x"
+  by (simp add: is_ground_def varset_IRExpr_def)
+
+lemma is_ground_BinaryExpr:
+  "is_ground (BinaryExpr op x y) = (is_ground x \<and> is_ground y)"
+  by (simp add: is_ground_def varset_IRExpr_def)
+
+lemma is_ground_ConditionalExpr:
+  "is_ground (ConditionalExpr c t f) = (is_ground c \<and> is_ground t \<and> is_ground f)"
+  by (simp add: is_ground_def varset_IRExpr_def)
+
+lemma ground_substitution_union:
+  assumes "ground_substitution \<sigma>\<^sub>1"
+  assumes "ground_substitution \<sigma>\<^sub>2"
+  shows "ground_substitution (\<sigma>\<^sub>1 ++ \<sigma>\<^sub>2)"
+  using assms
+  using ground_substitution_def by auto
+
+
+lemma match_tree_UnaryExpr:
+  assumes "match_tree (UnaryExpr op x) g = Some \<sigma>"
+  shows "\<exists>x'. g = UnaryExpr op x' \<and> match_tree x x' = Some \<sigma>"
+  using assms apply (cases g; auto)
+  apply (metis is_none_simps(1) is_none_simps(2))
+  by (meson option.distinct(1))
+
+lemma match_tree_BinaryExpr:
+  assumes "match_tree (BinaryExpr op x y) g = Some \<sigma>"
+  shows "\<exists>x' y'. g = BinaryExpr op x' y' \<and> match_tree x x' \<uplus> match_tree y y' = Some \<sigma>"
+  using assms apply (cases g; auto)
+   apply (metis is_none_simps(1) is_none_simps(2))
+  unfolding substitution_union.simps
+  by (smt (verit, ccfv_threshold) CodeGenAlt.compatible.simps bind_eq_Some_conv option.distinct(1))
+
+lemma match_tree_BinaryExpr':
+  assumes "match_tree (BinaryExpr op x y) g = Some \<sigma>"
+  shows "\<exists>x' y' \<sigma>\<^sub>x \<sigma>\<^sub>y. g = BinaryExpr op x' y' \<and> Some \<sigma>\<^sub>x = match_tree x x' \<and> Some \<sigma>\<^sub>y = match_tree y y' \<and> compatible \<sigma>\<^sub>x \<sigma>\<^sub>y \<and> \<sigma>\<^sub>x ++ \<sigma>\<^sub>y = \<sigma>"
+  using assms apply (cases g; auto) 
+  apply (metis option.simps(3))
+  by (smt (verit, best) CodeGenAlt.compatible.simps bind_eq_Some_conv option.sel option.simps(3) substitution_union.simps)
+
+lemma match_tree_ConditionalExpr:
+  assumes "match_tree (ConditionalExpr c t f) g = Some \<sigma>"
+  shows "\<exists>c' t' f'. g = ConditionalExpr c' t' f' \<and> match_tree c c' \<uplus> (match_tree t t' \<uplus> match_tree f f') = Some \<sigma>"
+  using assms by (cases g; auto)
+
+lemma match_tree_ConditionalExpr':
+  assumes "match_tree (ConditionalExpr c t f) g = Some \<sigma>"
+  shows "\<exists>c' t' f' \<sigma>\<^sub>c \<sigma>\<^sub>t \<sigma>\<^sub>f. g = ConditionalExpr c' t' f' \<and> Some \<sigma>\<^sub>c = match_tree c c' \<and> Some \<sigma>\<^sub>t = match_tree t t' \<and> Some \<sigma>\<^sub>f = match_tree f f' 
+        \<and> compatible \<sigma>\<^sub>c (\<sigma>\<^sub>t ++ \<sigma>\<^sub>f) \<and> compatible \<sigma>\<^sub>t \<sigma>\<^sub>f \<and> \<sigma>\<^sub>c ++ (\<sigma>\<^sub>t ++ \<sigma>\<^sub>f) = \<sigma>"
+  using assms
+  by (smt (z3) bind_eq_Some_conv match_tree_ConditionalExpr option.distinct(1) option.inject substitution_union.simps)
+
+lemma match_tree_ParameterExpr:
+  assumes "match_tree (ParameterExpr nid s) g = Some \<sigma>"
+  shows "\<exists>s. g = ParameterExpr nid s"
+  using assms apply (cases g; auto)
+  by (metis option.distinct(1))
+
+lemma match_tree_LeafExpr:
+  assumes "match_tree (LeafExpr nid s) g = Some \<sigma>"
+  shows "\<exists>s. g = LeafExpr nid s"
+  using assms apply (cases g; auto)
+  by (metis option.distinct(1))
+
+lemma match_tree_ConstantExpr:
+  assumes "match_tree (ConstantExpr c) g = Some \<sigma>"
+  shows "\<exists>s. g = ConstantExpr c"
+  using assms apply (cases g; auto)
+  by (metis option.distinct(1))
+
+lemma match_tree_ConstantVar:
+  assumes "match_tree (ConstantVar v) g = Some \<sigma>"
+  shows "\<exists>c. g = ConstantExpr c \<and> \<sigma> v = Some (ConstantExpr c)"
+  using assms by (cases g; auto)
+
+
+lemma match_tree_ground:
+  assumes "is_ground e\<^sub>g"
+  assumes "match_tree e\<^sub>p e\<^sub>g = Some \<sigma>"
+  shows "ground_substitution \<sigma>"
+  using assms apply (induction e\<^sub>p arbitrary: e\<^sub>g \<sigma>)
+  using is_ground_UnaryExpr match_tree_UnaryExpr apply blast
+  apply (metis ground_substitution_union is_ground_BinaryExpr match_tree_BinaryExpr')
+  apply (smt (verit) ground_substitution_union is_ground_ConditionalExpr match_tree_ConditionalExpr')
+  apply (metis domIff ground_substitution_def match_tree.simps(4) match_tree_ParameterExpr option.sel)
+  apply (metis domIff ground_substitution_def match_tree.simps(5) match_tree_LeafExpr option.sel)
+  apply (metis domIff ground_substitution_def match_tree.simps(6) match_tree_ConstantExpr option.sel)
+  apply (smt (verit, ccfv_SIG) domI dom_empty equals0D ground_substitution_def map_upd_Some_unfold match_tree.simps(7) match_tree_ConstantVar option.inject)
+  by (metis domI domIff dom_empty dom_fun_upd fun_upd_same ground_substitution_def match_tree.simps(8) option.inject singleton_iff)
+
+lemma ground_groundof:
+  assumes "Some g = p $ \<sigma>"
+  shows "\<sigma> \<turnstile> g \<preceq> p"
+  using assms proof (induction p arbitrary: \<sigma> g)
+  case (UnaryExpr op x)
+  obtain xg where xg: "Some xg = x $ \<sigma>"
+    by (metis UnaryExpr.prems bind_eq_Some_conv ground_IRExpr.simps(1))
+  have "g = UnaryExpr op xg"
+    by (metis UnaryExpr.prems bind.bind_lunit ground_IRExpr.simps(1) option.sel xg)
+  then show ?case
+    using UnaryExpr.IH groundof.intros(1) xg by blast
+next
+  case (BinaryExpr op x y)
+  obtain xg where xg: "Some xg = x $ \<sigma>"
+    by (metis BinaryExpr.prems bind_eq_Some_conv ground_IRExpr.simps(2))
+  obtain yg where yg: "Some yg = y $ \<sigma>"
+    by (metis (no_types, lifting) BinaryExpr.prems bind_eq_Some_conv ground_IRExpr.simps(2))
+  have "g = BinaryExpr op xg yg"
+    by (metis BinaryExpr.prems bind.bind_lunit ground_IRExpr.simps(2) option.sel xg yg)
+  then show ?case
+    by (meson BinaryExpr.IH(1) BinaryExpr.IH(2) groundof.intros(2) xg yg)
+next
+  case (ConditionalExpr c t f)
+  obtain cg where cg: "Some cg = c $ \<sigma>"
+    by (metis (no_types, lifting) ConditionalExpr.prems bind_split ground_IRExpr.simps(3) is_none_code(2) is_none_simps(1))
+  obtain tg where tg: "Some tg = t $ \<sigma>"
+    by (metis (no_types, lifting) ConditionalExpr.prems bind_eq_None_conv ground_IRExpr.simps(3) option.collapse)
+  obtain fg where fg: "Some fg = f $ \<sigma>"
+    by (metis (no_types, lifting) ConditionalExpr.prems bind_eq_None_conv ground_IRExpr.simps(3) option.collapse)
+  have "g = ConditionalExpr cg tg fg"
+    by (metis ConditionalExpr.prems bind.bind_lunit cg fg ground_IRExpr.simps(3) option.inject tg)
+  then show ?case
+    by (simp add: ConditionalExpr.IH(1) ConditionalExpr.IH(2) ConditionalExpr.IH(3) cg fg groundof.intros(3) tg)
+next
+  case (ParameterExpr x1 x2)
+  then show ?case
+    using groundof.intros(4) by force
+next
+  case (LeafExpr x1 x2)
+  then show ?case
+    by (simp add: groundof.intros(5))
+next
+  case (ConstantExpr x)
+  then show ?case
+    using groundof.intros(6) by force
+next
+  case (ConstantVar x)
+  then show ?case
+    by auto
+next
+  case (VariableExpr x1 x2)
+  then show ?case
+    by (simp add: groundof.intros(8) option.split_sel)
+qed
+
+lemma compatible_add:
+  assumes "compatible \<sigma> \<sigma>'"
+  shows "compatible \<sigma> (\<sigma> ++ \<sigma>')"
+  using assms unfolding compatible.simps
+  by (metis map_add_dom_app_simps(1) map_add_dom_app_simps(3))
+
+lemma compatible_map_add_assoc:
+  assumes "compatible \<sigma> \<sigma>'"
+  shows "\<sigma> ++ \<sigma>' = \<sigma>' ++ \<sigma>"
+  using assms unfolding compatible.simps
+  by (smt (verit, ccfv_threshold) domIff map_add_dom_app_simps(1) map_add_dom_app_simps(3) map_le_def map_le_iff_map_add_commute)
+
+lemma groundof_add_lhs:
+  assumes "compatible \<sigma> \<sigma>'"
+  assumes "\<sigma> \<turnstile> e \<preceq> e'"
+  assumes "\<sigma>'' = \<sigma> ++ \<sigma>'"
+  shows "\<sigma>'' \<turnstile> e \<preceq> e'"
+  using assms apply (induction e' arbitrary: \<sigma> \<sigma>' e)
+  apply (metis groundof.intros(1) groundof_UnaryExpr)
+  apply (metis groundof.intros(2) groundof_BinaryExpr)
+  apply (metis groundof.intros(3) groundof_ConditionalExpr)
+  apply (metis groundof.intros(4) groundof_ParameterExpr) 
+  apply (metis groundof.intros(5) groundof_LeafExpr)
+  apply (metis groundof.intros(6) groundof_ConstantExpr) 
+  apply (metis (no_types, opaque_lifting) CodeGenAlt.compatible.elims(2) domI groundof.intros(7) groundof_ConstantVar map_add_Some_iff)
+  by (metis (mono_tags, lifting) CodeGenAlt.compatible.elims(2) domI groundof.intros(8) groundof_VariableExpr map_add_Some_iff)
+
+lemma groundof_add_rhs:
+  assumes "compatible \<sigma> \<sigma>'"
+  assumes "\<sigma>' \<turnstile> e \<preceq> e'"
+  assumes "\<sigma>'' = \<sigma> ++ \<sigma>'"
+  shows "\<sigma>'' \<turnstile> e \<preceq> e'"
+  using groundof_add_lhs compatible_map_add_assoc
+  by (metis compatible.simps assms(1) assms(2) assms(3) domIff)
+
+lemma match_tree_groundof:
+  assumes "match_tree p g = Some \<sigma>"
+  shows "\<sigma> \<turnstile> g \<preceq> p"
+  using assms apply (induction p arbitrary: g \<sigma>)
+  using groundof.intros(1) match_tree_UnaryExpr apply blast
+  using groundof.intros(2) match_tree_BinaryExpr'
+  using groundof_add_lhs groundof_add_rhs apply metis
+  using groundof.intros(3) match_tree_ConditionalExpr'
+  apply (smt (verit, ccfv_threshold) groundof_add_lhs groundof_add_rhs)
+  using groundof.intros(4) match_tree_ParameterExpr apply blast 
+  using groundof.intros(5) match_tree_LeafExpr apply blast
+  apply (metis groundof.intros(6) match_tree_ConstantExpr)
+  apply (metis groundof.intros(7) match_tree_ConstantVar)
+  by (simp add: groundof.intros(8))
+
+theorem sound_exec:
+  assumes "pattern_refinement e\<^sub>r e\<^sub>p"
+  assumes "is_ground e\<^sub>g"
+  assumes "Some e' = exec e\<^sub>p e\<^sub>r e\<^sub>g"
+  shows "e' \<le> e\<^sub>g"
+proof -
+  obtain \<sigma> where m: "match_tree e\<^sub>p e\<^sub>g = Some \<sigma>"
+    using assms(3) exec_def by fastforce
+  then have "ground_substitution \<sigma>"
+    using assms(2) match_tree_ground by auto
+  then have g1: "\<sigma> \<turnstile> e' \<preceq> e\<^sub>r"
+    by (simp add: m assms(3) exec_def ground_groundof)
+  then have g2: "\<sigma> \<turnstile> e\<^sub>g \<preceq> e\<^sub>p"
+    using m match_tree_groundof by presburger
+  then show ?thesis using ground_refinement
+    using \<open>ground_substitution \<sigma>\<close> assms(1) g1 by blast
+qed
+
+thm_oracles sound_exec
+
+
+theorem sound_rules:
+  assumes "pattern_refinement e\<^sub>r e\<^sub>p"
+  assumes "(e\<^sub>p, e\<^sub>r) \<leadsto> (v, r)"
+  assumes "eval_rules r [v \<mapsto> e\<^sub>g] (Some e')"
+  assumes "valid_pattern e\<^sub>p"
+  assumes "\<L> e\<^sub>r \<subseteq> \<L> e\<^sub>p"
+  assumes "is_ground e\<^sub>g"
+  shows "e' \<le> e\<^sub>g"
+  using assms
+  using generate_sound sound_exec by blast
+
+thm_oracles sound_rules
 
 
 section \<open>Meta-optimizations\<close>
@@ -996,7 +1448,7 @@ section \<open>Meta-optimizations\<close>
 locale metaopt =
   fixes opt :: "Rules \<Rightarrow> Rules option"
   fixes size :: "Rules \<Rightarrow> nat"
-  assumes sound: "opt r = Some r' \<Longrightarrow> eval_rules r \<sigma> = eval_rules r' \<sigma>"
+  assumes sound: "valid_rules r \<and> opt r = Some r' \<Longrightarrow> eval_rules r \<sigma> = eval_rules r' \<sigma>"
   assumes terminates: "opt r = Some r' \<Longrightarrow> size r' < size r"
   assumes size_else: "size r1 < size (r1 else r2) \<and> size r2 < size (r1 else r2)"
   assumes size_choice: "\<forall>r \<in> set rules. size r < size (choice rules)"
@@ -1005,8 +1457,11 @@ locale metaopt =
   assumes size_seq: "size r1 < size (r1 \<Zsemi> r2) \<and> size r2 < size (r1 \<Zsemi> r2)"
 begin
 
+definition maybe_opt :: "Rules \<Rightarrow> Rules option" where
+  "maybe_opt r = (if valid_rules r then opt r else None)"
+
 function apply_meta :: "Rules \<Rightarrow> Rules" where
-  "apply_meta m = (case opt m of Some m' \<Rightarrow> apply_meta m' | None \<Rightarrow> 
+  "apply_meta m = (case maybe_opt m of Some m' \<Rightarrow> apply_meta m' | None \<Rightarrow> 
     (case m of
       (r1 else r2) \<Rightarrow> ((apply_meta r1) else (apply_meta r2)) |
       (choice rules) \<Rightarrow> choice (map (apply_meta) rules) |
@@ -1017,6 +1472,22 @@ function apply_meta :: "Rules \<Rightarrow> Rules" where
   apply pat_completeness+
   by simp+
 
+(*function apply_meta :: "Rules \<Rightarrow> Rules" and traverse :: "Rules \<Rightarrow> Rules" where
+  "traverse m = (case m of
+      (r1 else r2) \<Rightarrow> ((apply_meta r1) else (apply_meta r2)) |
+      (choice rules) \<Rightarrow> choice (map (apply_meta) rules) |
+      (m ? r) \<Rightarrow> m ? (apply_meta r) |
+      (base e) \<Rightarrow> (base e) |
+      (r1 \<Zsemi> r2) \<Rightarrow> (apply_meta r1 \<Zsemi> apply_meta r2)
+  )" |
+  "apply_meta m = (case opt m of Some m' \<Rightarrow> apply_meta m' | None \<Rightarrow> 
+    traverse m)"
+  apply pat_completeness+
+  by simp+
+
+definition termination_measure :: "((Rules + Rules) \<times> (Rules + Rules)) set" where
+  "termination_measure = {r'. \<exists>r. r' = (Inl r) \<and> r \<in> measure size}"*)
+
 termination apply_meta apply standard
   apply (relation "measure size")
   apply simp
@@ -1026,13 +1497,14 @@ termination apply_meta apply standard
   using size_seq apply force
   using size_seq apply force
   using size_choice apply force
-  by (simp add: terminates)
+  unfolding maybe_opt_def
+  by (meson in_measure option.distinct(1) terminates)
 
 theorem apply_meta_sound:
   "eval_rules r \<sigma> = eval_rules (apply_meta r) \<sigma>"
 proof (induction r arbitrary: \<sigma> rule: apply_meta.induct)
   case (1 m)
-  then show ?case proof (cases "opt m")
+  then show ?case proof (cases "maybe_opt m")
     case None
     then show ?thesis proof (cases m)
       case (base e)
@@ -1095,7 +1567,7 @@ proof (induction r arbitrary: \<sigma> rule: apply_meta.induct)
   next
     case (Some a)
     then show ?thesis using 1
-      using sound by fastforce
+      by (metis (no_types, lifting) apply_meta.elims domI domIff maybe_opt_def metaopt.sound metaopt_axioms option.simps(5))
   qed
 qed
 
@@ -1166,6 +1638,7 @@ value "run (snd (Predicate.the (generateC
 
 subsection \<open>Eliminate Noop Operations\<close>
 
+(*
 fun elim_noop :: "Rules \<Rightarrow> Rules option" where
   "elim_noop ((noop x) ? r) = Some (r)" |
   "elim_noop _ = None"
@@ -1197,21 +1670,93 @@ interpretation elim_noop : metaopt
   subgoal for rules apply (induction rules; auto) done
   by simp+
 setup \<open>Locale_Code.close_block\<close>
+*)
 
+subsection \<open>Join Equal Conditions\<close>
+
+fun join_conditions :: "Rules \<Rightarrow> Rules option" where
+  "join_conditions (m1 ? r1 else m2 ? r2) = 
+    (if m1 = m2
+      then Some (m1 ? (r1 else r2)) else None)" |
+  "join_conditions (m1 ? (m2 ? r1)) = 
+    (if m1 = m2
+      then Some ((m1 ? r1)) else None)" |
+  "join_conditions _ = None"
+
+lemma join_cond:
+  assumes "valid_match m"
+  shows "eval_rules (m ? (m ? r)) \<sigma> e = eval_rules (m ? r) \<sigma> e" (is "?lhs = ?rhs")
+  using assms
+  by (smt (verit) condE eval_match_deterministic eval_match_idempotent eval_rules.intros(2))
+
+lemma join_else:
+  assumes "valid_match m"
+  shows "eval_rules (m ? r1 else m ? r2) \<sigma> e = eval_rules (m ? (r1 else r2)) \<sigma> e" (is "?lhs = ?rhs")
+  using assms
+  by (smt (z3) condE elseE eval_match_deterministic eval_rules.intros(2) eval_rules.intros(3) eval_rules.intros(4))
+
+lemma join_conditions_sound:
+  assumes "valid_rules r"
+  assumes "join_conditions r = Some r'"
+  shows "eval_rules r \<sigma> = eval_rules r' \<sigma>"
+  using assms proof (cases r)
+  case (base x1)
+  then show ?thesis using assms(2) by simp
+next
+  case (cond x21 x22)
+  obtain m r'' where rdef: "r = m ? (m ? r'')"
+    using assms(2)
+    by (smt (z3) Rules.distinct(9) cond join_conditions.elims option.distinct(1))
+  then have "r' = m ? r''"
+    using assms(2) by force
+  also have "valid_match m"
+    using assms(1) rdef by auto
+  ultimately show ?thesis using rdef join_cond
+    by blast
+next
+  case (else x31 x32)
+  obtain m r1 r2 where rdef: "r = (m ? r1 else m ? r2)"
+    using assms(2)
+    by (smt (z3) Rules.distinct(9) else join_conditions.elims option.distinct(1))
+  then have "r' = m ? (r1 else r2)"
+    using assms(2) by force
+  also have "valid_match m"
+    using assms(1) rdef by auto
+  ultimately show ?thesis using rdef join_else
+    by blast
+next
+  case (seq x41 x42)
+  then show ?thesis using assms(2) by simp
+next
+  case (choice x5)
+  then show ?thesis using assms(2) by simp
+qed
+
+setup \<open>Locale_Code.open_block\<close>
+interpretation join_conditions : metaopt
+  join_conditions
+  size
+  apply standard
+  using join_conditions_sound apply blast
+  apply (smt (z3) Rules.size(7) Rules.size(8) add.right_neutral add_Suc_right join_conditions.elims less_add_Suc1 option.distinct(1) option.sel plus_nat.simps(2))
+  apply simp+
+  subgoal for rules apply (induction rules; auto) done
+  by simp+
+setup \<open>Locale_Code.close_block\<close>
 
 subsection \<open>Combined Meta-optimizations\<close>
 
-fun reduce where "reduce x = (elim_noop.apply_meta o lift_cond.apply_meta) x"
+(*fun reduce where "reduce x = (join_conditions.apply_meta o elim_noop.apply_meta o lift_cond.apply_meta) x"*)
+definition reduce where "reduce = (join_conditions.apply_meta o lift_cond.apply_meta)"
 
-theorem sound:
+
+theorem reduce_sound:
   "eval_rules r \<sigma> = eval_rules (reduce r) \<sigma>"
-  by (metis comp_def elim_noop.metaopt_axioms lift_cond.metaopt_axioms metaopt.apply_meta_sound reduce.elims)
-
+  by (metis comp_eq_dest_lhs join_conditions.apply_meta_sound lift_cond.apply_meta_sound reduce_def)
 
 value "reduce (snd (Predicate.the (generateC 
     (BinaryExpr BinSub (BinaryExpr BinAdd (VariableExpr STR ''x'' default_stamp) (VariableExpr STR ''y'' default_stamp)) (VariableExpr STR ''x'' default_stamp))
     (VariableExpr STR ''x'' default_stamp))))"
-
 
 
 end
