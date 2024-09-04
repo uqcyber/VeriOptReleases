@@ -1,6 +1,161 @@
 theory IRExprCodeGen
-imports Semantics.TermRewrites (*Canonicalizations.Common*)
+imports OptimizationDSL.CodeGenAlt Snippets.Snipping
 begin
+
+notation (output)
+  pattern_refinement ("(_ \<sqsupseteq>\<^bsub>p\<^esub> \<index>)")
+
+snipbegin \<open>expression match\<close>
+text \<open>
+@{thm[display,margin=75] match_tree.simps(1) [no_vars]}
+@{thm[display,margin=70] match_tree.simps(2) [no_vars]}
+@{thm[display,margin=70] match_tree.simps(3) [no_vars]}
+@{thm[display,margin=70] match_tree.simps(4) [no_vars]}
+@{thm[display,margin=70] match_tree.simps(5) [no_vars]}
+@{thm[display,margin=70] match_tree.simps(6) [no_vars]}
+@{thm[display,margin=70] match_tree.simps(7) [no_vars]}
+@{thm[display,margin=70] match_tree.simps(8) [no_vars]}
+\<close>
+snipend -
+
+snipbegin \<open>rewrite\<close>
+text \<open>
+@{thm[display,margin=40] rewrite_def [no_vars]}
+\<close>
+snipend -
+
+snipbegin \<open>isground\<close>
+text \<open>
+@{thm[display,margin=40] is_ground_IRExpr [no_vars]}
+\<close>
+snipend -
+
+snipbegin \<open>ground substitution\<close>
+text \<open>
+@{thm[display,margin=65] ground_substitution_def [no_vars]}
+\<close>
+snipend -
+
+snipbegin \<open>ground substitution is grounded\<close>
+text \<open>
+@{thm[display,margin=65] ground_substitution [no_vars]}
+\<close>
+snipend -
+
+snipbegin \<open>valid pattern preserves freshness\<close>
+text \<open>@{thm[display] valid_pattern_preserves_freshness [no_vars]}\<close>
+snipend -
+
+snipbegin \<open>lower pattern\<close>
+text \<open>
+\induct{@{thm[mode=Rule] lower.intros(1) [no_vars]}}{lower:var1}
+\induct{@{thm[mode=Rule] lower.intros(2) [no_vars]}}{lower:var2}
+\induct{@{thm[mode=Rule] lower.intros(3) [no_vars]}}{lower:const}
+\induct{@{thm[mode=Rule] lower.intros(4) [no_vars]}}{lower:unary}
+\induct{@{thm[mode=Rule] lower.intros(5) [no_vars]}}{lower:binary}
+\induct{@{thm[mode=Rule] lower.intros(6) [no_vars]}}{lower:conditional}
+\induct{@{thm[mode=Rule] lower.intros(9) [no_vars]}}{lower:param}
+\induct{@{thm[mode=Rule] lower.intros(10) [no_vars]}}{lower:leaf}
+\<close>
+snipend -
+
+snipbegin \<open>lower pattern sound\<close>
+text \<open>@{thm[mode=Rule] lower_sound [no_vars]}\<close>
+snipend -
+
+snipbegin \<open>lower rule\<close>
+text \<open>@{thm[mode=Rule] generate.intros(1) [no_vars]}\<close>
+snipend -
+
+snipbegin \<open>lower rule sound\<close>
+text \<open>@{thm[mode=Rule] generate_sound [no_vars]}\<close>
+snipend -
+
+snipbegin \<open>unify\<close>
+text \<open>
+\induct{@{thm[mode=Rule] unify.intros(1) [no_vars]}}{unify:empty}
+\induct{@{thm[mode=Rule] unify.intros(2) [no_vars]}}{unify:exists}
+\induct{@{thm[mode=Rule] unify.intros(3) [no_vars]}}{unify:new}
+\<close>
+snipend -
+
+snipbegin \<open>match semantics\<close>
+text \<open>
+\induct{@{thm[mode=Rule] eval_match.intros(1) [no_vars]}}{eval-match:unary}
+\induct{@{thm[mode=Rule] eval_match.intros(2) [no_vars]}}{eval-match:binary}
+\induct{@{thm[mode=Rule] eval_match.intros(3) [no_vars]}}{eval-match:conditional}
+\induct{@{thm[mode=Rule] eval_match.intros(4) [no_vars]}}{eval-match:constant}
+\induct{@{thm[mode=Rule] eval_match.intros(5) [no_vars]}}{eval-match:param}
+\induct{@{thm[mode=Rule] eval_match.intros(6) [no_vars]}}{eval-match:leaf}
+\induct{@{thm[mode=Rule] eval_match.intros(7) [no_vars]}}{eval-match:equality}
+\induct{@{thm[mode=Rule] eval_match.intros(8) [no_vars]}}{eval-match:andthen}
+\induct{@{thm[mode=Rule] eval_match.intros(9) [no_vars]}}{eval-match:noop}
+\<close>
+snipend -
+
+snipbegin \<open>groundof\<close>
+text \<open>
+\induct{@{thm[mode=Rule] groundof.intros(1) [no_vars]}}{groundof:unary}
+\induct{@{thm[mode=Rule] groundof.intros(2) [no_vars]}}{groundof:binary}
+\induct{@{thm[mode=Rule] groundof.intros(3) [no_vars]}}{groundof:conditional}
+\induct{@{thm[mode=Rule] groundof.intros(4) [no_vars]}}{groundof:param}
+\induct{@{thm[mode=Rule] groundof.intros(5) [no_vars]}}{groundof:leaf}
+\induct{@{thm[mode=Rule] groundof.intros(6) [no_vars]}}{groundof:constant}
+\induct{@{thm[mode=Rule] groundof.intros(8) [no_vars]}}{groundof:var}
+\<close>
+snipend -
+
+(*
+snipbegin \<open>ground substitution\<close>
+text \<open>
+@{thm[display,margin=40] ground_substitution_def [no_vars]}
+\<close>
+snipend -
+*)
+
+snipbegin \<open>pattern refinement\<close>
+text \<open>
+@{thm[display,margin=60] pattern_refinement_def [no_vars]}
+\<close>
+snipend -
+
+snipbegin \<open>ground refinement\<close>
+text \<open>
+@{thm[mode=Rule] ground_refinement [no_vars]}
+\<close>
+snipend -
+
+snipbegin \<open>match ground substitution\<close>
+text \<open>
+@{thm[mode=Rule] match_tree_ground [no_vars]}
+\<close>
+snipend -
+
+snipbegin \<open>grounded is groundof\<close>
+text \<open>
+@{thm[mode=Rule] ground_groundof [no_vars]}
+\<close>
+snipend -
+
+snipbegin \<open>match is groundof\<close>
+text \<open>
+@{thm[mode=Rule] match_tree_groundof [no_vars]}
+\<close>
+snipend -
+
+snipbegin \<open>pattern refinement refines expressions\<close>
+text \<open>
+@{thm[mode=Rule] sound_exec [no_vars]}
+\<close>
+snipend -
+
+snipbegin \<open>lowered patterns refine expressions\<close>
+text \<open>
+@{thm[mode=Rule] sound_rules [no_vars]}
+\<close>
+snipend -
+
+(*
 
 notation cond (infixr "?" 52)
 notation seq (infixl "\<then>" 50)
@@ -177,5 +332,6 @@ text \<open>@{value[display] "preprocess (Evaluate else LeftConst)"}\<close>
 text \<open>@{term "lift_common (Evaluate else LeftConst)"} =\<close>
 text \<open>@{value[display] "lift_common (preprocess (Evaluate else LeftConst))"}\<close>
 snipend -
+*)
 
 end
