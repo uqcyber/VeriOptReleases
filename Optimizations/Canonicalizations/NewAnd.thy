@@ -514,7 +514,7 @@ proof -
     also have "... = and ((xv + (yv mod 2^n)) mod 2^n) zv"
       by (metis take_bit_0 take_bit_eq_mod zero_less_iff_neq_zero mod_dist_over_add_right n_bounds)
     also have "... = and (((xv mod 2^n) + (yv mod 2^n)) mod 2^n) zv"
-      by (metis bits_mod_by_1 mod_dist_over_add n_bounds order_le_imp_less_or_eq power_0)
+      by (metis ValueThms.mod_dist_over_add n_bounds take_bit_0 take_bit_eq_mod zero_less_iff_neq_zero)
     also have "... = and ((xv mod 2^n) mod 2^n) zv"
       using L2 n zv yv assms by auto
     also have "... = and (xv mod 2^n) zv"

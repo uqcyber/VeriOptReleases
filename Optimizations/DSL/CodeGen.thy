@@ -2032,7 +2032,7 @@ datatype Expression =
   IntegerConstant int |
   TrueValue |
   FalseValue |
-  MethodCall Expression MethodName "Expression list" ("_._(_)") |
+  MethodCall Expression MethodName "Expression list" ("_._'(_')") |
   Constructor ClassName "Expression list" ("new _(_)") |
   InstanceOf Expression ClassName VariableName ("_ instanceof _ _") |
   Equal Expression Expression (infix "==" 58) |
@@ -2242,22 +2242,22 @@ fun generate_condition :: "SideCondition \<Rightarrow> Expression" where
 
 fun match_body :: "VarName \<Rightarrow> PatternExpr \<Rightarrow> Statement \<Rightarrow> Statement" where
   "match_body v (UnaryPattern op v1) s =
-    v1 := ((Ref v).''getValue'' []); s" |
+    v1 := ((Ref v).''getValue''([])); s" |
   "match_body v (BinaryPattern op v1 v2) s =
-    v1 := ((Ref v).''getX'' []);
-    v2 := ((Ref v).''getY'' []); s" |
+    v1 := ((Ref v).''getX''([]));
+    v2 := ((Ref v).''getY''([])); s" |
   "match_body v (ConditionalPattern v1 v2 v3) s =
-    v1 := ((Ref v).''condition'' []);
-    v2 := ((Ref v).''trueValue'' []);
-    v3 := ((Ref v).''falseValue'' []); s" |
+    v1 := ((Ref v).''condition''([]));
+    v2 := ((Ref v).''trueValue''([]));
+    v3 := ((Ref v).''falseValue''([])); s" |
   "match_body v (ConstantPattern val) s =
-    if (((Ref v).''getValue'' []) instanceof ''PrimitiveConstant'' (v + STR ''d'')) {
-      if (((Ref (v + STR ''d'')).''asLong'' []) == (generate_value val)) {
+    if (((Ref v).''getValue''([])) instanceof ''PrimitiveConstant'' (v + STR ''d'')) {
+      if (((Ref (v + STR ''d'')).''asLong''([])) == (generate_value val)) {
         s
       }
     }" |
   "match_body v (ConstantVarPattern var) s =
-    if (((Ref v).''getValue'' []) == (Ref var)) {
+    if (((Ref v).''getValue''([])) == (Ref var)) {
       s
     }" |
   "match_body v (VariablePattern var) s =
@@ -3690,4 +3690,13 @@ next
   then show ?case sorry
 qed
 
+
+
+no_notation InstanceOf ("_ instanceof _ _")
+no_notation MethodCall ("_._'(_')")
+no_notation Constructor ("new _(_)")
+no_notation Equal (infix "==" 58)
+no_notation Assignment (infixr ":=" 56)
+no_notation Branch ("if _ {(2//_)//}")
+no_syntax "_seq" :: "Statement \<Rightarrow> Statement => Statement" (infixr ";//" 55)
 end

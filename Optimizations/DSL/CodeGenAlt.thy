@@ -210,11 +210,21 @@ datatype PatternExpr =
 
 datatype MATCH = \<comment> \<open>Note side conditions are temporarily not handled.\<close>
   match VarName PatternExpr |
-  equality VarName VarName (infixl "==" 52) |
-  andthen MATCH MATCH (infixr "&&" 50) |
+  equality VarName VarName |
+  andthen MATCH MATCH |
   (*condition SideCondition |*)
-  
-noop VarName
+  noop VarName
+
+bundle match_syntax begin
+
+notation equality (infixl "==" 52)
+notation andthen (infixr "&&" 50)
+
+end
+
+context
+  includes match_syntax
+begin
 
 fun pattern_variables :: "PatternExpr \<Rightarrow> String.literal set" where
   "pattern_variables (UnaryPattern op x) = {x}" |
@@ -1249,6 +1259,8 @@ next
     using eval_match_LeafPattern by fastforce
 qed
 
+end
+
 class substitutable =
   fixes substitute :: "'a \<Rightarrow> (VarName \<Rightarrow> VarName option) \<Rightarrow> 'a" (infix "\<Zhide>" 70)
   assumes identity: "r \<Zhide> Map.empty = r"
@@ -1271,10 +1283,22 @@ end
 
 datatype Rules =
   base IRExpr |
-  cond MATCH Rules (infixl "?" 52) |
-  else Rules Rules (infixl "else" 50) |
-  seq Rules Rules (infixl "\<Zsemi>" 49) |
+  cond MATCH Rules |
+  either Rules Rules |
+  seq Rules Rules |
   choice "Rules list"
+
+bundle match_pattern_syntax begin
+
+notation cond (infixl "?" 52)
+notation either (infixl "else" 50)
+notation seq (infixl "\<Zsemi>" 49)
+
+end
+
+context 
+  includes match_syntax match_pattern_syntax
+begin
 
 fun valid_rules :: "Rules \<Rightarrow> bool" where
   "valid_rules (m ? r) = (valid_match m \<and> valid_rules r)" |
@@ -1347,6 +1371,9 @@ inductive generate :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> VarName \<Right
   "(e\<^sub>p, {}) \<leadsto> (m, v, \<Sigma>) \<Longrightarrow> (e\<^sub>p, e\<^sub>r) \<leadsto> (v, m ? base e\<^sub>r)"
 
 code_pred (modes: i \<Rightarrow> i \<Rightarrow> o \<Rightarrow> o \<Rightarrow> bool as generateC) generate .
+
+definition generateRule :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> (VarName \<times> Rules)" where
+  "generateRule p r = Predicate.the (generateC p r)"
 
 value "Predicate.the (generateC 
     (BinaryExpr BinSub (BinaryExpr BinAdd (VariableExpr STR ''x'' default_stamp) (VariableExpr STR ''y'' default_stamp)) (VariableExpr STR ''x'' default_stamp))
@@ -1599,6 +1626,7 @@ lemma match_tree_groundof:
   apply (metis groundof.intros(7) match_tree_ConstantVar)
   by (simp add: groundof.intros(8))
 
+
 theorem sound_exec:
   assumes "pattern_refinement e\<^sub>r e\<^sub>p"
   assumes "is_ground e\<^sub>g"
@@ -1660,6 +1688,15 @@ lemma lift_choice:
   using assms using det_variable_rules
   by (metis (no_types, lifting) choiceE option.distinct(1) sound_rules)
 
+lemma lift_else:
+  assumes "\<exists>e\<^sub>r e\<^sub>p v. pattern_refinement e\<^sub>r e\<^sub>p \<and> valid_pattern e\<^sub>p \<and> \<L> e\<^sub>r \<subseteq> \<L> e\<^sub>p \<and> (e\<^sub>p, e\<^sub>r) \<leadsto> (v, r1)"
+  assumes "\<exists>e\<^sub>r e\<^sub>p v. pattern_refinement e\<^sub>r e\<^sub>p \<and> valid_pattern e\<^sub>p \<and> \<L> e\<^sub>r \<subseteq> \<L> e\<^sub>p \<and> (e\<^sub>p, e\<^sub>r) \<leadsto> (v, r2)"
+  assumes "eval_rules (r1 else r2) [v \<mapsto> e\<^sub>g] (Some e')"
+  assumes "is_ground e\<^sub>g"
+  shows "e' \<le> e\<^sub>g"
+  using assms using det_variable_rules
+  by (metis elseE sound_rules)
+
 thm_oracles lift_choice
 
 lemma inductive_choice:
@@ -1713,6 +1750,7 @@ next
   qed
 qed
 
+end
 
 section \<open>Meta-optimizations\<close>
 
@@ -1721,11 +1759,11 @@ locale metaopt =
   fixes size :: "Rules \<Rightarrow> nat"
   assumes sound: "valid_rules r \<and> opt r = Some r' \<Longrightarrow> eval_rules r \<sigma> = eval_rules r' \<sigma>"
   assumes terminates: "opt r = Some r' \<Longrightarrow> size r' < size r"
-  assumes size_else: "size r1 < size (r1 else r2) \<and> size r2 < size (r1 else r2)"
+  assumes size_else: "size r1 < size (either r1 r2) \<and> size r2 < size (either r1 r2)"
   assumes size_choice: "\<forall>r \<in> set rules. size r < size (choice rules)"
-  assumes size_cond: "size r < size (m ? r)"
+  assumes size_cond: "size r < size (cond m r)"
   assumes size_base: "size (base e) = size (base e)"
-  assumes size_seq: "size r1 < size (r1 \<Zsemi> r2) \<and> size r2 < size (r1 \<Zsemi> r2)"
+  assumes size_seq: "size r1 < size (seq r1 r2) \<and> size r2 < size (seq r1 r2)"
 begin
 
 definition maybe_opt :: "Rules \<Rightarrow> Rules option" where
@@ -1734,11 +1772,11 @@ definition maybe_opt :: "Rules \<Rightarrow> Rules option" where
 function apply_meta :: "Rules \<Rightarrow> Rules" where
   "apply_meta m = (case maybe_opt m of Some m' \<Rightarrow> apply_meta m' | None \<Rightarrow> 
     (case m of
-      (r1 else r2) \<Rightarrow> ((apply_meta r1) else (apply_meta r2)) |
+      (either r1 r2) \<Rightarrow> (either (apply_meta r1) (apply_meta r2)) |
       (choice rules) \<Rightarrow> choice (map (apply_meta) rules) |
-      (m ? r) \<Rightarrow> m ? (apply_meta r) |
+      (cond m r) \<Rightarrow> cond m (apply_meta r) |
       (base e) \<Rightarrow> (base e) |
-      (r1 \<Zsemi> r2) \<Rightarrow> (apply_meta r1 \<Zsemi> r2) \<comment> \<open>Avoid recursing through rhs as it could change the entry var\<close>
+      (seq r1 r2) \<Rightarrow> (seq (apply_meta r1) r2) \<comment> \<open>Avoid recursing through rhs as it could change the entry var\<close>
   ))"
   apply pat_completeness+
   by simp+
@@ -1786,37 +1824,37 @@ proof (induction r arbitrary: \<sigma> rule: apply_meta.induct)
       have ih: "eval_rules r \<sigma> = eval_rules (apply_meta r) \<sigma>"
         using None 1
         using cond by blast
-      have app: "apply_meta m = x21 ? apply_meta r"
+      have app: "apply_meta m = cond x21 (apply_meta r)"
         using None cond by fastforce
-      have "\<forall>e. eval_rules (x21 ? r) \<sigma> e = eval_rules (x21 ? (apply_meta r)) \<sigma> e"
+      have "\<forall>e. eval_rules (cond x21 r) \<sigma> e = eval_rules (cond x21 (apply_meta r)) \<sigma> e"
         using ih condE
         by (smt (verit) "1.IH"(1) None cond eval_rules.simps)
       then show ?thesis 
         using app cond
         by auto
     next
-      case (else r1 r2)
+      case (either r1 r2)
       have ih1: "eval_rules r1 \<sigma> = eval_rules (apply_meta r1) \<sigma>"
         using None 1
-        using else by blast
+        using either by blast
       have ih2: "eval_rules r2 \<sigma> = eval_rules (apply_meta r2) \<sigma>"
         using None 1
-        using else by blast
-      have app: "apply_meta m = (apply_meta r1 else apply_meta r2)"
-        using None else by fastforce
-      have "\<forall>e. eval_rules (r1 else r2) \<sigma> e = eval_rules (apply_meta r1 else apply_meta r2) \<sigma> e"
+        using either by blast
+      have app: "apply_meta m = either (apply_meta r1) (apply_meta r2)"
+        using None either by fastforce
+      have "\<forall>e. eval_rules (either r1 r2) \<sigma> e = eval_rules (either (apply_meta r1) (apply_meta r2)) \<sigma> e"
         using ih1 ih2 elseE
         by (metis eval_rules.intros(3) eval_rules.intros(4))
       then show ?thesis
-        using app else by auto
+        using app either by auto
     next
       case (seq r1 r2)
       have ih1: "eval_rules r1 \<sigma> = eval_rules (apply_meta r1) \<sigma>"
         using None 1
         using seq by blast
-      have app: "apply_meta m = (apply_meta r1 \<Zsemi> r2)"
+      have app: "apply_meta m = seq (apply_meta r1) r2"
         using None seq by fastforce
-      have "\<forall>e. eval_rules (r1 \<Zsemi> r2) \<sigma> e = eval_rules (apply_meta r1 \<Zsemi> r2) \<sigma> e"
+      have "\<forall>e. eval_rules (seq r1 r2) \<sigma> e = eval_rules (seq (apply_meta r1) r2) \<sigma> e"
         apply (rule allI; rule iffI)
         using ih1 seqE eval_rules.intros(8) eval_rules.intros(9) eval_rules.intros(10) 
         apply (smt (verit) "1.IH"(4) None Rules.distinct(11) Rules.distinct(15) Rules.distinct(19) Rules.distinct(5) Rules.inject(4) eval_rules.cases list.simps(8) seq)
@@ -1849,6 +1887,9 @@ definition run :: "Rules \<Rightarrow> Rules" where
 
 end
 
+
+context includes match_syntax match_pattern_syntax
+begin
 subsection \<open>Lift Match Sequence to Rule Conditions\<close>
 
 fun lift_cond :: "Rules \<Rightarrow> Rules option" where
@@ -1884,6 +1925,7 @@ proof -
   show ?thesis using lhs rhs
     by simp
 qed
+end
 
 setup \<open>Locale_Code.open_block\<close>
 interpretation lift_cond : metaopt
@@ -1948,6 +1990,8 @@ interpretation elim_noop : metaopt
 setup \<open>Locale_Code.close_block\<close>
 *)
 
+context includes match_syntax match_pattern_syntax
+begin
 subsection \<open>Join Equal Conditions\<close>
 
 fun join_conditions :: "Rules \<Rightarrow> Rules option" where
@@ -1990,10 +2034,10 @@ next
   ultimately show ?thesis using rdef join_cond
     by blast
 next
-  case (else x31 x32)
+  case (either x31 x32)
   obtain m r1 r2 where rdef: "r = (m ? r1 else m ? r2)"
     using assms(2)
-    by (smt (z3) Rules.distinct(9) else join_conditions.elims option.distinct(1))
+    by (smt (z3) Rules.distinct(9) either join_conditions.elims option.distinct(1))
   then have "r' = m ? (r1 else r2)"
     using assms(2) by force
   also have "valid_match m"
@@ -2007,6 +2051,7 @@ next
   case (choice x5)
   then show ?thesis using assms(2) by simp
 qed
+end
 
 setup \<open>Locale_Code.open_block\<close>
 interpretation join_conditions : metaopt
@@ -2093,10 +2138,13 @@ lemma lift_mul:
   by metis
 *)
 
+context includes match_syntax match_pattern_syntax
+begin
 value "(match STR ''X'' (BinaryPattern BinMul STR ''x'' STR ''Xa'') && match STR ''Xa'' (ConstantPattern (IntVal 32 1)))
          ? base (VariableExpr STR ''x'' default_stamp)"
 
 value "(match STR ''X'' (BinaryPattern BinMul STR ''Xa'' STR ''Xb'') && match STR ''Xa'' (ConstantVarPattern STR ''x'')
         && match STR ''Xb'' (ConstantVarPattern STR ''y'')) ? base (ConstantVar x)"
+end
 
 end

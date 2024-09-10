@@ -58,17 +58,56 @@ optimization DefaultFalseBranch: "(false ? x : y) \<longmapsto> y" .
 
 optimization ConditionalEqualBranches: "(e ? x : x) \<longmapsto> x" .
 
-optimization ConditionBoundsX: "((u < v) ? x : y) \<longmapsto> x 
-    when (StampUnder u v && WellFormed u && WellFormed v)"
-  using stamp_under_defn
-  by (smt (verit, ccfv_SIG) BinaryExprE ConditionalExprE StampEvalThms.wf_stamp_def le_expr_def)
-(* by fastforce *)
+abbreviation StampUnder :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> Condition" where
+  "StampUnder u v \<equiv> cond[(((Expr u)..stamp() instanceof IntegerStamp); 
+                          ((Expr v)..stamp() instanceof IntegerStamp)); 
+                          (((Expr u)..stamp()..upper()) < ((Expr v)..stamp()..lower()))]"
 
-optimization ConditionBoundsY: "((u < v) ? x : y) \<longmapsto> y 
-    when (StampUnder v u && WellFormed u && WellFormed v)"
+lemma stamp_under:
+  assumes "\<exists>c'. base_semantics (StampUnder u v) c' \<and> coerce_to_bool c' True"
+  shows "stpi_upper (stamp_expr u) < stpi_lower (stamp_expr v)"
+  sorry
+
+lemma stamp_instanceof:
+  assumes "\<exists>c'. base_semantics (StampUnder u v) c' \<and> coerce_to_bool c' True"
+  shows "is_IntegerStamp (stamp_expr u) \<and> is_IntegerStamp (stamp_expr v)"
+  using assms sorry
+
+lemma stamp_under_lower:
+  assumes "\<exists>c'. base_semantics (StampUnder u v) c' \<and> coerce_to_bool c' True"
+  shows "stamp_under (stamp_expr u) (stamp_expr v)"
+  using assms stamp_instanceof
+  by (smt (verit) Stamp.collapse(1) stamp_under stamp_under.simps(1))
+
+optimization ConditionBoundsX: 
+  (*when "cond[((Expr u)..stamp()..upper()) < ((Expr v)..stamp()..lower())]"*)
+  when "wf_stamp u"
+  when "wf_stamp v"
+  "((u < v) ? x : y) \<longmapsto> x when (StampUnder u v)"
+  apply (rule impI)+
+  subgoal premises assms apply simp apply (rule allI)+ apply (rule impI)+
+    subgoal premises eval
+  proof -
+    have under: "stpi_upper (stamp_expr u) < stpi_lower (stamp_expr v)"
+      using stamp_under assms by blast
+    have u: "is_IntegerStamp (stamp_expr u)" using assms(1,2) eval
+      by (smt (verit) BinaryExprE ConditionalExprE Stamp.disc(2) Stamp.exhaust_sel bin_eval_implies_valid_value never_void stamp_binary.simps(6) stamp_expr.simps(2) valid_value.simps(14) valid_value.simps(15) valid_value.simps(16) valid_value.simps(21) valid_value.simps(22) wf_stamp_def)
+    have v: "is_IntegerStamp (stamp_expr v)" using assms(1,2) eval 
+      by (smt (verit) BinaryExprE ConditionalExprE Stamp.disc(2) Stamp.exhaust_sel bin_eval_implies_valid_value stamp_binary.simps(13) stamp_binary.simps(9) stamp_expr.simps(2) valid_value.simps(14) valid_value.simps(15) valid_value.simps(16) valid_value.simps(21) valid_value.simps(22) wf_stamp_def)
+    have "stamp_under (stamp_expr u) (stamp_expr v)"
+      using u v under
+      by (smt (verit) BinaryExprE ConditionalExprE Stamp.disc(1) Stamp.disc(3) Stamp.disc(4) Stamp.disc(5) Stamp.disc(6) Stamp.exhaust_sel assms(1,2) eval stamp_under.simps(1) valid_value.simps(21) valid_value.simps(22) wf_stamp_def)
+    then show ?thesis
+      using assms(1,2) eval stamp_under_defn by fastforce
+  qed
+  done
+  done
+
+optimization ConditionBoundsY:
+  when "wf_stamp u \<and> wf_stamp v"
+  "((u < v) ? x : y) \<longmapsto> y  when (StampUnder v u)"
   using stamp_under_defn_inverse
-  by (smt (verit, ccfv_threshold) BinaryExprE ConditionalExprE StampEvalThms.wf_stamp_def le_expr_def)
-  (* by fastforce *)
+  by (smt (verit, ccfv_threshold) BinaryExprE ConditionalExprE le_expr_def stamp_under_lower)
 
 (** Start of new proofs **)
 
@@ -82,12 +121,11 @@ lemma val_optimise_integer_test:
   by (metis (mono_tags, lifting) bool_to_val.simps(1) val_to_bool.simps(1) even_iff_mod_2_eq_zero
       odd_iff_mod_2_eq_one and_one_eq)
 
-optimization ConditionalEliminateKnownLess: "((x < y) ? x : y) \<longmapsto> x 
-                                 when (StampUnder x y &&
-                                       WellFormed x && WellFormed y)"
-  using stamp_under_defn
-  by (smt (verit, best) BinaryExprE ConditionalExprE StampEvalThms.wf_stamp_def le_expr_def)
-  (* by fastforce *)
+optimization ConditionalEliminateKnownLess: 
+  when "wf_stamp x \<and> wf_stamp y"
+  "((x < y) ? x : y) \<longmapsto> x when (StampUnder x y)"
+  using stamp_under_defn stamp_under_lower
+  by (meson ConditionBoundsX(1) rewrite_preservation.simps(2))
 
 
 lemma ExpIntBecomesIntVal:

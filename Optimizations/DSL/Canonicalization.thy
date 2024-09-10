@@ -4,25 +4,22 @@ theory Canonicalization
   imports
     Markup
     Phase
-    CodeGen
+    CodeGenAlt
     "HOL-Eisbach.Eisbach"
   keywords
     "phase" :: thy_decl and 
     "terminating" :: quasi_command and
     "print_phases" :: diag and
     "export_phases" :: thy_decl and
-    "optimization" :: thy_goal_defn and
-    "gencode" :: thy_decl
+    "optimization" :: thy_goal_defn (*and
+    "gencode" :: thy_decl*)
 begin
 
 print_methods
 
 ML \<open>
 datatype 'a Rewrite =
-  Transform of 'a * 'a |
-  Conditional of 'a * 'a * term |
-  Sequential of 'a Rewrite * 'a Rewrite |
-  Transitive of 'a Rewrite
+  Rule of 'a * 'a * term option
 
 type rewrite = {
   name: binding,
@@ -141,25 +138,19 @@ ML_file "rewrites.ML"
              
 subsubsection \<open>Semantic Preservation Obligation\<close>
 
-fun rewrite_preservation :: "(IRExpr, Result) Rewrite \<Rightarrow> bool" where
-  "rewrite_preservation (Transform x y) = (result_of y \<le> x)" |
-  "rewrite_preservation (Conditional x y conds) = (eval_condition conds \<longrightarrow> (result_of y \<le> x))" |
-  "rewrite_preservation (Sequential x y) = (rewrite_preservation x \<and> rewrite_preservation y)" |
-  "rewrite_preservation (Transitive x) = rewrite_preservation x"
+fun rewrite_preservation :: "(IRExpr, IRExpr) Rewrite \<Rightarrow> bool" where
+  "rewrite_preservation (Transform x y) = (y \<le> x)" |
+  "rewrite_preservation (Conditional x y conds) = (\<exists>conds'. base_semantics conds conds' \<and> coerce_to_bool conds' True \<longrightarrow> (y \<le> x))"
 
 subsubsection \<open>Termination Obligation\<close>
 
-fun rewrite_termination :: "(IRExpr, Result) Rewrite \<Rightarrow> (IRExpr \<Rightarrow> nat) \<Rightarrow> bool" where
-  "rewrite_termination (Transform x y) trm = (trm x > trm (result_of y))" |
-  "rewrite_termination (Conditional x y conds) trm = (eval_condition conds \<longrightarrow> (trm x > trm (result_of y)))" |
-  "rewrite_termination (Sequential x y) trm = (rewrite_termination x trm \<and> rewrite_termination y trm)" |
-  "rewrite_termination (Transitive x) trm = rewrite_termination x trm"
+fun rewrite_termination :: "(IRExpr, IRExpr) Rewrite \<Rightarrow> (IRExpr \<Rightarrow> nat) \<Rightarrow> bool" where
+  "rewrite_termination (Transform x y) trm = (trm x > trm y)" |
+  "rewrite_termination (Conditional x y conds) trm = (\<forall>conds'. base_semantics conds conds' \<and> coerce_to_bool conds' True \<longrightarrow> (trm x > trm y))"
 
 fun intval :: "(Value, Value) Rewrite \<Rightarrow> bool" where
   "intval (Transform x y) = (x \<noteq> UndefVal \<and> y \<noteq> UndefVal \<longrightarrow> x = y)" |
-  "intval (Conditional x y conds) = (eval_condition conds \<longrightarrow> (x = y))" |
-  "intval (Sequential x y) = (intval x \<and> intval y)" |
-  "intval (Transitive x) = intval x"
+  "intval (Conditional x y conds) = (\<forall>conds'. base_semantics conds conds' \<and> coerce_to_bool conds' True \<longrightarrow> (x = y))"
 
 subsubsection \<open>Standard Termination Measure\<close>
 
@@ -213,15 +204,38 @@ end
 
 structure DSL = DSL_Rewrites(System);
 
+(*val long_keyword =
+  Parse_Spec.includes >> K "" ||
+  Parse_Spec.long_statement_keyword;
+
+val long_statement =
+  Scan.optional (Parse_Spec.thm_name ":" --| Scan.ahead long_keyword) Binding.empty_atts --
+  Scan.optional Parse_Spec.includes [] -- Parse_Spec.long_statement
+    >> (fn ((binding, includes), (elems, concl)) => (true, binding, includes, elems, concl));
+
+val short_statement =
+  Parse_Spec.statement -- Parse_Spec.if_statement -- Parse.for_fixes
+    >> (fn ((shows, assumes), fixes) =>
+      (false, Binding.empty_atts, [], [Element.Fixes fixes, Element.Assumes assumes],
+        Element.Shows shows));
+*)
+
+fun rewrite_cmd ((thm_name, whens), thm) =
+let
+in
+ DSL.rewrite_cmd ((thm_name, whens), thm)
+end
+
 val _ =
   Outer_Syntax.local_theory_to_proof \<^command_keyword>\<open>optimization\<close>
     "define an optimization and open proof obligation"
-    (Parse_Spec.thm_name ":" -- Parse.term
-        >> DSL.rewrite_cmd);
+    ((Parse_Spec.thm_name ":" -- (Scan.repeat (Parse.$$$ "when" -- Parse.term)) -- Parse.term)
+        >> rewrite_cmd);
 \<close>
 
 subsection \<open>Code Generation\<close>
 
+(*
 definition generate :: "Rules \<Rightarrow> string" where
   "generate = (generate_statement 0) o export_rules"
 
@@ -284,6 +298,6 @@ val _ =
     (Parse.path -- Parse.term >>
       (fn (name, term) => Toplevel.theory (fn state => gencode state name term)))
 \<close>
-
+*)
 
 end

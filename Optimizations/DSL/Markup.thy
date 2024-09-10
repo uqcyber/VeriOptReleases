@@ -3,22 +3,20 @@ section \<open>Optization DSL\<close> (* first theory in list, not related to fi
 subsection \<open>Markup\<close>
 
 theory Markup
-  imports CodeGen Snippets.Snipping
+  imports ConditionDSL Snippets.Snipping
 begin
 
 datatype ('a, 'b) Rewrite =
   Transform 'a 'b ("_ \<longmapsto> _" 10) |
-  Conditional 'a 'b "SideCondition" ("_ \<longmapsto> _ when _" 11) |
-  Sequential "('a, 'b) Rewrite" "('a, 'b) Rewrite" |
-  Transitive "('a, 'b) Rewrite"
+  Conditional 'a 'b Condition ("_ \<longmapsto> _ when _" 11)
 
 datatype 'a ExtraNotation =
   ConditionalNotation 'a 'a 'a ("_ ? _ : _" 50) |
-  EqualsNotation 'a 'a ("_ eq _") |
+  EqualsNotation 'a 'a ("_ eq _" 60) |
   ConstantNotation 'a ("const _" 120) |
   TrueNotation ("true") |
   FalseNotation ("false") |
-  ExclusiveOr 'a 'a ("_ \<oplus> _") |
+  ExclusiveOr 'a 'a ("_ ^ _") |
   LogicNegationNotation 'a ("!_") |
   ShortCircuitOr 'a 'a ("_ || _")
 
@@ -156,5 +154,44 @@ value "val[~x]"
 value "exp[~x]"
 
 value "~x"
+
+
+ML \<open>
+structure ConditionTranslator : DSL_TRANSLATION =
+struct
+fun markup DSL_Tokens.Add = @{term Binary} $ @{term BinAdd}
+  | markup DSL_Tokens.Sub = @{term Binary} $ @{term BinSub}
+  | markup DSL_Tokens.Mul = @{term Binary} $ @{term BinMul}
+  | markup DSL_Tokens.And = @{term Binary} $ @{term BinAnd}
+  | markup DSL_Tokens.Or = @{term Binary} $ @{term BinOr}
+  | markup DSL_Tokens.Xor = @{term Binary} $ @{term BinXor}
+  | markup DSL_Tokens.ShortCircuitOr = @{term Binary} $ @{term BinShortCircuitOr}
+  | markup DSL_Tokens.Abs = @{term Unary} $ @{term UnaryAbs}
+  | markup DSL_Tokens.Less = @{term Binary} $ @{term BinIntegerLessThan}
+  | markup DSL_Tokens.Equals = @{term Binary} $ @{term BinIntegerEquals}
+  | markup DSL_Tokens.Not = @{term Unary} $ @{term UnaryNot}
+  | markup DSL_Tokens.Negate = @{term Unary} $ @{term UnaryNeg}
+  | markup DSL_Tokens.LogicNegate = @{term Unary} $ @{term UnaryLogicNegation}
+  | markup DSL_Tokens.LeftShift = @{term Binary} $ @{term BinLeftShift}
+  | markup DSL_Tokens.RightShift = @{term Binary} $ @{term BinRightShift}
+  | markup DSL_Tokens.UnsignedRightShift = @{term Binary} $ @{term BinURightShift}
+  | markup DSL_Tokens.Conditional = @{term Conditional}
+  | markup DSL_Tokens.Constant = @{term Constant}
+  | markup DSL_Tokens.TrueConstant = @{term "Constant 1"}
+  | markup DSL_Tokens.FalseConstant = @{term "Constant 0"}
+end
+structure ConditionMarkup = DSL_Markup(ConditionTranslator);
+\<close>
+
+syntax "_expandCond" :: "term \<Rightarrow> term" ("cond[_]")
+parse_translation \<open> [( @{syntax_const "_expandCond"} , ConditionMarkup.markup_expr [])] \<close>
+
+value "x instanceof xs"
+
+value "cond[x instanceof ConstantNode; !(y instanceof ConstantNode)]"
+value "cond[x..stamp() instanceof IntegerStamp]"
+value "cond[((z..stamp()..upMask()) & (y..stamp()..upMask())) eq (const 0)]"
+value "cond[y..isPowerOf2()]"
+
 
 end

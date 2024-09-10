@@ -13,24 +13,28 @@ end
 
 signature DSL_REWRITES =
 sig
-val of_term: binding -> term -> term -> rewrite;
+val of_term: binding -> term -> term option -> term -> rewrite;
 
-val preservation_of: Proof.context -> rewrite -> term;
+val preservation_of: Proof.context -> rewrite -> term option -> term;
 val termination_of: Proof.context -> rewrite -> term;
 val code_of: Proof.context -> rewrite -> term;
 
-val rewrite_cmd: (binding * Token.src list) * string -> Proof.context -> Proof.state;
+val rewrite_cmd: ((binding * Token.src list) * ((string * string) list)) * string -> Proof.context -> Proof.state;
 
 end
 
 functor DSL_Rewrites(System: RewriteSystem): DSL_REWRITES =
 struct
-fun of_term name term source =
+fun of_term name term whens source =
   case term of
     (((Const ("Markup.Rewrite.Transform", _)) $ lhs) $ rhs) => 
-      {name=name, rewrite=Transform (lhs, rhs), proofs=[], code=[], source=source}
+      {name=name, rewrite=Rule (lhs, rhs, whens), proofs=[], code=[], source=source}
     | ((((Const ("Markup.Rewrite.Conditional", _)) $ lhs) $ rhs) $ cond) => 
-      {name=name, rewrite=Conditional (lhs, rhs, cond), proofs=[], code=[], source=source}
+      (case whens of 
+        NONE =>
+        {name=name, rewrite=Rule (lhs, rhs, SOME cond), proofs=[], code=[], source=source} |
+        SOME extra =>
+        {name=name, rewrite=Rule (lhs, rhs, SOME (@{term "Combine"} $ cond $ extra)), proofs=[], code=[], source=source})
     | _ => raise TERM ("optimization is not a rewrite", [term])
 
 
@@ -39,17 +43,16 @@ fun result rhs ctxt =
     val _ = @{print} (Context_Position.reports_enabled (Context.proof_of (Context_Position.set_visible_generic false (Context.Proof ctxt))));
   in
   case type_of (Syntax.check_term (Context.proof_of (Context_Position.set_visible_generic false (Context.Proof ctxt))) rhs) of
-    @{typ Result} => rhs |
-    _ => @{term "Construct"} $rhs
+    (*@{typ Result} => rhs |*)
+    _ => rhs
   end
 
 fun to_term rewrite ctxt = 
   case (#rewrite rewrite) of
-    Transform (lhs, rhs) => 
-      (Const ("Markup.Rewrite.Transform", @{typ "IRExpr => Result => (IRExpr, Result) Rewrite"})) $ lhs $ result rhs ctxt
-    | Conditional (lhs, rhs, cond) => 
-      (Const ("Markup.Rewrite.Conditional", @{typ "IRExpr => Result \<Rightarrow> SideCondition \<Rightarrow> (IRExpr, Result) Rewrite"})) $ lhs $ result rhs ctxt $ cond
-    | _ => raise TERM ("rewrite cannot be translated yet", [])
+    Rule (lhs, rhs, NONE) => 
+      (Const ("Markup.Rewrite.Transform", @{typ "IRExpr => IRExpr => (IRExpr, IRExpr) Rewrite"})) $ lhs $ result rhs ctxt
+    | Rule (lhs, rhs, SOME cond) => 
+      (Const ("Markup.Rewrite.Conditional", @{typ "IRExpr => IRExpr \<Rightarrow> Condition \<Rightarrow> (IRExpr, IRExpr) Rewrite"})) $ lhs $ result rhs ctxt $ cond
 
 fun lhs (term:term) =
   case term of
@@ -67,9 +70,14 @@ fun rhs (term:term) =
       rhs
     | _ => raise TERM ("optimization is not a rewrite", [term])
 
-fun preservation_of ctxt rewrite =
-  Syntax.check_prop ctxt 
-    (@{const Trueprop} $ (System.preservation $ (to_term rewrite ctxt)))
+fun preservation_of ctxt rewrite assumps =
+  case assumps of
+    NONE =>
+      Syntax.check_prop ctxt 
+        (@{const Trueprop} $ (System.preservation $ (to_term rewrite ctxt))) |
+    SOME im =>
+      Syntax.check_prop ctxt 
+        (@{const Pure.imp} $ (@{const Trueprop} $ im) $ (@{const Trueprop} $ (System.preservation $ (to_term rewrite ctxt))))
 
 fun termination_of' ctxt trm rewrite =
   Syntax.check_prop ctxt 
@@ -122,21 +130,15 @@ fun termination_of ctxt rewrite =
 
 fun rewrite_lhs (rewrite: rewrite) =
   case (#rewrite rewrite) of
-    Transform (lhs, _) => lhs
-    | Conditional (lhs, _, _) => lhs
-    | _ => raise TERM ("rewrite cannot be translated yet", [])
+    Rule (lhs, _, _) => lhs
 
 fun rewrite_rhs (rewrite: rewrite) =
   case (#rewrite rewrite) of
-    Transform (_, rhs) => rhs
-    | Conditional (_, rhs, _) => rhs
-    | _ => raise TERM ("rewrite cannot be translated yet", [])
+    Rule (_, rhs, _) => rhs
 
 fun rewrite_cond (rewrite: rewrite) =
   case (#rewrite rewrite) of
-    Transform (_, _) => NONE
-    | Conditional (_, _, cond) => SOME cond
-    | _ => raise TERM ("rewrite cannot be translated yet", [])
+    Rule (_, _, cond) => cond
 
 fun mkstr ctxt name =
   Syntax.read_term ctxt ("STR ''" ^ name ^ "''")
@@ -185,9 +187,9 @@ fun rewrite_to_term_param ctxt rewrite =
   in
     (ground_IRExpr ctxt lhs, ground_IRExpr ctxt rhs,
        case cond of 
-        NONE => (Const ("Option.option.None", @{typ "SideCondition option"})) |
+        NONE => (Const ("Option.option.None", @{typ "Condition option"})) |
         SOME cond' =>
-          (Const ("Option.option.Some", @{typ "SideCondition => SideCondition option"}) $ ground_IRExpr ctxt cond'))
+          (Const ("Option.option.Some", @{typ "Condition => Condition option"}) $ ground_IRExpr ctxt cond'))
   (*case (#rewrite rewrite) of
     Transform (lhs, rhs) => 
       ground_IRExpr ctxt lhs $ ground_IRExpr ctxt rhs
@@ -198,8 +200,8 @@ fun generate ctxt term =
   let
     val (lhs, rhs, cond) = rewrite_to_term_param ctxt term;
     val generate_term = 
-      (((Const ("CodeGen.generate", @{typ "IRExpr \<Rightarrow> Result \<Rightarrow> SideCondition option \<Rightarrow> Rules"}))
-      $ lhs) $ rhs) $ cond
+      (((Const ("CodeGenAlt.generateRule", @{typ "IRExpr \<Rightarrow> IRExpr \<Rightarrow> (VarName \<times> Rules)"}))
+      $ lhs) $ rhs)
     val value = Code_Evaluation.dynamic_value_strict ctxt generate_term;
   in              
     value
@@ -207,8 +209,8 @@ fun generate ctxt term =
 
 fun code_of ctxt rewrite =
   @{const Trueprop} 
-  $ ((Const ("HOL.eq", @{typ "Rules \<Rightarrow> Rules \<Rightarrow> bool"})
-  $ (Free ((Binding.name_of (#name rewrite)) ^ "_code", @{typ "Rules"}))
+  $ ((Const ("HOL.eq", @{typ "(VarName \<times> Rules) \<Rightarrow> (VarName \<times> Rules) \<Rightarrow> bool"})
+  $ (Free ((Binding.name_of (#name rewrite)) ^ "_code", @{typ "VarName \<times> Rules"}))
   $ generate ctxt rewrite))
 
 
@@ -224,7 +226,54 @@ fun add_proofs (rewrite: rewrite) proofs =
 fun valid_name name =
   not (String.isSubstring "_" name) andalso Char.isUpper (String.sub (name, 0))
 
-fun rewrite_cmd ((bind: binding, options), opt) ctxt = 
+fun interpret_when ctxt when =
+  let
+    val parsed = Syntax.parse_term ctxt when
+  in
+    parsed
+  end
+
+datatype ConditionType = Condition | Prop;
+
+fun select_type when_type =
+  case when_type of
+    Type ("ConditionDSL.Condition", _) => SOME Condition |
+    Type ("HOL.bool", _) => SOME Prop |
+    _ => NONE
+
+fun partition ctxt whens =
+  let
+    val checked = Syntax.check_terms ctxt whens;
+    val props = (filter (fn when => case (select_type (Term.type_of when)) of SOME Prop => true | _ => false) checked);
+    val conds = (filter (fn when => case (select_type (Term.type_of when)) of SOME Condition => true | _ => false) checked);
+    val unrek = (filter (fn when => case (select_type (Term.type_of when)) of NONE => true | _ => false) checked);
+    val _ = (map (fn when => error ((Pretty.string_of (Syntax.pretty_term ctxt when)) ^ " is not of type bool or Condition")) unrek);
+    val _ = (map (fn when => warning ((Pretty.string_of (Syntax.pretty_term ctxt when)) ^ " is a bool condition and therefore not represented in the generated code. This may introduce inconsistencies.")) props);
+  in
+    (props, conds)
+  end
+
+fun generate_condition conditions =
+  case conditions of
+    [] => NONE |
+    [cond] => SOME cond |
+    x :: xs => SOME (fold (fn term => fn condition => (@{term "Combine"} $ term $ condition)) xs (x))
+
+fun generate_assumps assumps =
+  case assumps of
+    [] => NONE |
+    [prop] => SOME prop |
+    x :: xs => SOME (fold (fn term => fn prop => (@{term "conj"} $ term $ prop)) xs (x))
+
+fun generate_whens ctxt (whens: ((string * string) list)) =
+  let
+    val interpretted = (map (interpret_when ctxt o snd) whens);
+    val (props, conds) = partition ctxt interpretted;
+  in
+    (generate_assumps props, generate_condition conds)
+  end
+
+fun rewrite_cmd (((bind: binding, options), whens), opt) ctxt = 
   let
     val name = Binding.name_of bind;
     val _ = (if valid_name name then () 
@@ -236,12 +285,14 @@ fun rewrite_cmd ((bind: binding, options), opt) ctxt =
     val notactic = case options of [[token]] => Token.content_of token = "notactic" | _ => false;
     
     val raw_term = (Syntax.parse_term ctxt opt);
+    val (assumps, conditions) = generate_whens ctxt whens;
+    (*val _ = @{print} (Syntax.pretty_term ctxt conditions);*)
 
-    val rewrite = of_term bind raw_term raw_term;
+    val rewrite = of_term bind raw_term conditions raw_term;
     val raw_term = to_term rewrite ctxt;
 
     val term = IRExprMarkup.markup_expr [] ctxt [raw_term];
-    val rewrite = of_term bind term raw_term;
+    val rewrite = of_term bind term conditions raw_term;
 
     val ctxt = (if subgoals then
       (Specification.abbreviation (Syntax.mode_default)
@@ -268,8 +319,8 @@ fun rewrite_cmd ((bind: binding, options), opt) ctxt =
       then intval_of ctxt (IntValMarkup.markup_expr [term] ctxt [(Syntax.parse_term ctxt opt)])
       else @{term True})
     val extra = (if intval then [(intval_preservation, [intval_preservation])] else [])
-
-    val preservation = preservation_of ctxt rewrite;
+                                  
+    val preservation = preservation_of ctxt rewrite assumps;
     val preservation = if intval 
       then @{term "Pure.imp"} $ intval_preservation $ preservation
       else preservation;
@@ -290,8 +341,10 @@ fun rewrite_cmd ((bind: binding, options), opt) ctxt =
         snd (Local_Theory.note ((bind, []), hd thms) lthy'')
       end
 
+    (*Specification.theorem_cmd*)
     val target = (Proof.theorem NONE after_qed 
         [extra @ [(preservation, [preservation]), (termination, [termination])]] ctxt);
+    (*val target = Proof.assume [] [[(@{term "Trueprop True"}, [@{term "Trueprop True"}])]] [] target;*)
 
     val apply = (Proof.apply 
       ((Method.Source (Token.make_src ("unfold_optimization", Position.start) [])),

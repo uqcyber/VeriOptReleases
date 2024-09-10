@@ -31,6 +31,7 @@ gencode "AllOpts" "(
   SubAfterSubLeft_code,
   SubAfterAddLeft_code,
   SubAfterAddRight_code,
+  SubSelfIsZero_code,
   OrNotOperands_code,
   EliminateRedundantFalse_code,
   OrEqual_code,
