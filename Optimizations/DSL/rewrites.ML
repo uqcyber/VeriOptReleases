@@ -200,8 +200,8 @@ fun generate ctxt term =
   let
     val (lhs, rhs, cond) = rewrite_to_term_param ctxt term;
     val generate_term = 
-      (((Const ("CodeGenAlt.generateRule", @{typ "IRExpr \<Rightarrow> IRExpr \<Rightarrow> (VarName \<times> Rules)"}))
-      $ lhs) $ rhs)
+      ((((Const ("CodeGenAlt.generateRule", @{typ "IRExpr \<Rightarrow> Condition option \<Rightarrow> IRExpr \<Rightarrow> (VarName \<times> Rules)"}))
+      $ lhs) $ cond) $ rhs)
     val value = Code_Evaluation.dynamic_value_strict ctxt generate_term;
   in              
     value
@@ -288,8 +288,8 @@ fun rewrite_cmd (((bind: binding, options), whens), opt) ctxt =
     val (assumps, conditions) = generate_whens ctxt whens;
     (*val _ = @{print} (Syntax.pretty_term ctxt conditions);*)
 
-    val rewrite = of_term bind raw_term conditions raw_term;
-    val raw_term = to_term rewrite ctxt;
+    (*val rewrite = of_term bind raw_term conditions raw_term;
+    val raw_term = to_term rewrite ctxt;*)
 
     val term = IRExprMarkup.markup_expr [] ctxt [raw_term];
     val rewrite = of_term bind term conditions raw_term;

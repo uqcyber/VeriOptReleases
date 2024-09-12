@@ -218,10 +218,13 @@ optimization AndEqual: "x & x \<longmapsto> x"
 value AndEqual_code
 
 value "exp[y & (const x)]"
-optimization AndShiftConstantRight: "(x & y) \<longmapsto> y & x 
-                                         when IsConstantExpr x && Not (IsConstantExpr y)"
+optimization AndShiftConstantRight: 
+  when "cond[(Expr x) instanceof ConstantNode]"
+  when "cond[!((Expr y) instanceof ConstantNode)]"
+  "(x & y) \<longmapsto> y & x"
   using size_flip_binary
-  using is_ConstantExpr_def by auto
+  using is_ConstantExpr_def
+  by (metis combine_cond_lhs combine_cond_rhs instance_of_const instance_of_not_const)
 value AndShiftConstantRight_code
 value "export_rules AndShiftConstantRight_code"
 

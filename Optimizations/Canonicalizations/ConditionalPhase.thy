@@ -58,27 +58,6 @@ optimization DefaultFalseBranch: "(false ? x : y) \<longmapsto> y" .
 
 optimization ConditionalEqualBranches: "(e ? x : x) \<longmapsto> x" .
 
-abbreviation StampUnder :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> Condition" where
-  "StampUnder u v \<equiv> cond[(((Expr u)..stamp() instanceof IntegerStamp); 
-                          ((Expr v)..stamp() instanceof IntegerStamp)); 
-                          (((Expr u)..stamp()..upper()) < ((Expr v)..stamp()..lower()))]"
-
-lemma stamp_under:
-  assumes "\<exists>c'. base_semantics (StampUnder u v) c' \<and> coerce_to_bool c' True"
-  shows "stpi_upper (stamp_expr u) < stpi_lower (stamp_expr v)"
-  sorry
-
-lemma stamp_instanceof:
-  assumes "\<exists>c'. base_semantics (StampUnder u v) c' \<and> coerce_to_bool c' True"
-  shows "is_IntegerStamp (stamp_expr u) \<and> is_IntegerStamp (stamp_expr v)"
-  using assms sorry
-
-lemma stamp_under_lower:
-  assumes "\<exists>c'. base_semantics (StampUnder u v) c' \<and> coerce_to_bool c' True"
-  shows "stamp_under (stamp_expr u) (stamp_expr v)"
-  using assms stamp_instanceof
-  by (smt (verit) Stamp.collapse(1) stamp_under stamp_under.simps(1))
-
 optimization ConditionBoundsX: 
   (*when "cond[((Expr u)..stamp()..upper()) < ((Expr v)..stamp()..lower())]"*)
   when "wf_stamp u"

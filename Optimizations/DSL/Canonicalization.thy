@@ -140,17 +140,17 @@ subsubsection \<open>Semantic Preservation Obligation\<close>
 
 fun rewrite_preservation :: "(IRExpr, IRExpr) Rewrite \<Rightarrow> bool" where
   "rewrite_preservation (Transform x y) = (y \<le> x)" |
-  "rewrite_preservation (Conditional x y conds) = (\<exists>conds'. base_semantics conds conds' \<and> coerce_to_bool conds' True \<longrightarrow> (y \<le> x))"
+  "rewrite_preservation (Conditional x y conds) = (evalCondition conds \<longrightarrow> (y \<le> x))"
 
 subsubsection \<open>Termination Obligation\<close>
 
 fun rewrite_termination :: "(IRExpr, IRExpr) Rewrite \<Rightarrow> (IRExpr \<Rightarrow> nat) \<Rightarrow> bool" where
   "rewrite_termination (Transform x y) trm = (trm x > trm y)" |
-  "rewrite_termination (Conditional x y conds) trm = (\<forall>conds'. base_semantics conds conds' \<and> coerce_to_bool conds' True \<longrightarrow> (trm x > trm y))"
+  "rewrite_termination (Conditional x y conds) trm = (evalCondition conds \<longrightarrow> (trm x > trm y))"
 
 fun intval :: "(Value, Value) Rewrite \<Rightarrow> bool" where
   "intval (Transform x y) = (x \<noteq> UndefVal \<and> y \<noteq> UndefVal \<longrightarrow> x = y)" |
-  "intval (Conditional x y conds) = (\<forall>conds'. base_semantics conds conds' \<and> coerce_to_bool conds' True \<longrightarrow> (x = y))"
+  "intval (Conditional x y conds) = (evalCondition conds \<longrightarrow> (x = y))"
 
 subsubsection \<open>Standard Termination Measure\<close>
 

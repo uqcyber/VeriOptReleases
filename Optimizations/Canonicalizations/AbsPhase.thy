@@ -201,7 +201,7 @@ value AbsIdempotence_code
 optimization AbsNegate: "(abs(-x)) \<longmapsto>  abs(x)"
   using val_abs_negate by auto
 
-value "(AbsIdempotence_code else AbsNegate_code)"
+value "(either (snd AbsIdempotence_code) (snd AbsNegate_code))"
 
 
 end (* End of AbsPhase *)

@@ -19,110 +19,21 @@ lemma binadd_commute:
   shows "bin_eval BinAdd x y = bin_eval BinAdd y x"
   by (simp add: intval_add_sym)
 
-inductive_cases cond_Unary: "base_semantics (Unary op e) v"
-inductive_cases cond_Binary: "base_semantics (Binary op x y) v"
-inductive_cases cond_Conditional: "base_semantics (ConditionDSL.Conditional c t f) v"
-inductive_cases cond_Const: "base_semantics (Constant x) y"
-inductive_cases cond_Value: "base_semantics (Value x) y"
-inductive_cases cond_ExprL: "base_semantics (Expr x) y"
-inductive_cases cond_ExprR: "base_semantics x (Expr y)"
-inductive_cases cond_Stamp: "base_semantics (Stamp x) y"
-inductive_cases cond_Combine: "base_semantics (Combine x y) v"
-inductive_cases cond_InstanceOf: "base_semantics (InstanceOf e c) y"
-inductive_cases coerce_True: "coerce_to_bool c True"
-
-lemma logic_negation_bool:
-  assumes "is_IntVal val"
-  assumes "val_to_bool (unary_eval UnaryLogicNegation val)"
-  shows "\<not>(val_to_bool val)"
-  using assms unfolding unary_eval.simps intval_logic_negation.simps apply (cases val; auto)
-  by (metis logic_negate_def take_bit_of_0)
-
-lemma coerce_to_bool_det:
-  assumes "coerce_to_bool x c"
-  assumes "coerce_to_bool x c'"
-  shows "c = c'"
-  using assms apply (induction x c arbitrary: c' rule: coerce_to_bool.induct)
-  using coerce_to_bool.simps by blast+
-
-lemma base_semantics_det:
-  assumes "base_semantics x c"
-  assumes "base_semantics x c'"
-  shows "c = c'"
-  using assms apply (induction x c arbitrary: c' rule: base_semantics.induct) 
-  apply (metis Condition.inject(5) cond_Unary)
-  apply (metis Condition.inject(5) cond_Binary)
-  apply (metis coerce_to_bool_det cond_Conditional)
-  using cond_Const apply blast
-  using cond_Value apply blast 
-  using cond_ExprL apply blast 
-  using cond_Stamp apply blast 
-  apply (metis cond_Combine)
-     apply (smt (verit, ccfv_threshold) Condition.distinct(91) Condition.inject(7) cond_InstanceOf)
-  apply (smt (verit, ccfv_threshold) Condition.distinct(91) Condition.inject(7) cond_InstanceOf)
-  by (smt (verit, best) Condition.inject(8) Condition.simps(103) cond_InstanceOf)+
-
-lemma instance_of_const:
-  assumes "\<exists>c'. base_semantics (InstanceOf (Expr x) STR ''ConstantNode'') c' \<and> coerce_to_bool c' True"
-  shows "is_ConstantExpr x"
-proof -
-  obtain c' where c': "base_semantics (InstanceOf (Expr x) STR ''ConstantNode'') c' \<and> coerce_to_bool c' True"
-    using assms by blast
-  then have "c' = (Value (IntVal 32 1))"
-    using assms coerce_True
-    by (smt (verit) Condition.distinct(55) Condition.distinct(75) Condition.inject(5) cond_InstanceOf val_to_bool.simps(1))
-  then have "class_name x = Some STR ''ConstantNode''"
-    using assms c'
-    by (smt (verit) Condition.distinct(77) Condition.distinct(91) Condition.inject(10) Condition.inject(5) Condition.inject(7) Condition.simps(117) Condition.simps(29) Condition.simps(47) Condition.simps(63) Condition.simps(77) Value.inject(1) base_semantics.cases cond_ExprL zero_neq_one)
-  then show ?thesis
-    apply (cases x; auto)
-    subgoal for op e by (cases op; auto)
-    subgoal for op x y by (cases op; auto)
-    done
-qed
-
-lemma instance_of_not_const:
-  assumes "\<exists>c'. base_semantics (Unary UnaryLogicNegation (InstanceOf (Expr x) STR ''ConstantNode'')) c' \<and> coerce_to_bool c' True"
-  shows "\<not>(is_ConstantExpr x)"
-proof -
-  obtain val where "base_semantics (InstanceOf (Expr x) STR ''ConstantNode'') (Value val)"
-    using assms
-    by (meson cond_Unary)
-  obtain c' where c': "base_semantics (Unary UnaryLogicNegation (InstanceOf (Expr x) STR ''ConstantNode'')) c' \<and> coerce_to_bool c' True"
-    using assms by blast
-  then have "c' = Value (unary_eval UnaryLogicNegation val)"
-    by (smt (verit) Condition.distinct(91) Condition.inject(5) Condition.inject(7) \<open>base_semantics (InstanceOf (Expr x) STR ''ConstantNode'') (Value val)\<close> assms cond_ExprL cond_InstanceOf cond_Unary)
-  then have "val_to_bool (unary_eval UnaryLogicNegation val)"
-    using assms coerce_True c'
-    by (metis Condition.distinct(55) Condition.distinct(75) Condition.inject(5))
-  then have "\<not>(val_to_bool val)"
-    using logic_negation_bool
-    by (metis Value.disc(2) val_to_bool.elims(2))
-  then have "class_name x \<noteq> Some STR ''ConstantNode''"
-    using assms
-    by (smt (z3) Condition.distinct(77) Condition.distinct(91) Condition.inject(10) Condition.inject(5) Condition.inject(7) Condition.simps(117) Condition.simps(29) Condition.simps(47) Condition.simps(63) Condition.simps(77) \<open>base_semantics (InstanceOf (Expr x) STR ''ConstantNode'') (Value val)\<close> base_semantics.cases cond_ExprL val_to_bool.simps(1) zero_neq_one)
-  then show ?thesis
-    by (cases x; auto)
-qed
-
-lemma combine_cond_lhs:
-  assumes "\<exists>c'. base_semantics (x; y) c' \<and> coerce_to_bool c' True"
-  shows "\<exists>x'. base_semantics x x' \<and> coerce_to_bool x' True"
-  using assms using cond_Combine
-  by (metis Condition.distinct(63) Condition.inject(9) Condition.simps(87) coerce_True)
-
-lemma combine_cond_rhs:
-  assumes "\<exists>c'. base_semantics (x; y) c' \<and> coerce_to_bool c' True"
-  shows "\<exists>y'. base_semantics y y' \<and> coerce_to_bool y' True"
-  using assms using cond_Combine
-  by (metis Condition.distinct(63) Condition.inject(9) Condition.simps(87) coerce_True)
-
 optimization AddShiftConstantRight:
   when "cond[(Expr x) instanceof ConstantNode]"
   when "cond[!((Expr y) instanceof ConstantNode)]"
   "(x + y) \<longmapsto> (y + x)"
-   apply (smt (verit) IRExpr.collapse(6) combine_cond_lhs combine_cond_rhs instance_of_const instance_of_not_const size_flip_binary)
+  subgoal premises assms
+  proof -
+    from assms have "evalCondition (InstanceOf (Expr x) STR ''ConstantNode'')" using combine_cond_lhs combine_cond_rhs
+      by blast
+    then have "is_ConstantExpr x"
+      using instance_of_const by presburger
+    show ?thesis
+      using assms by (smt (verit) IRExpr.collapse(6) combine_cond_lhs combine_cond_rhs instance_of_const instance_of_not_const size_flip_binary)
+  qed
   using le_expr_def binadd_commute by blast
+  
 
 value AddShiftConstantRight_code
 

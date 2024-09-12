@@ -1,5 +1,5 @@
 theory ConditionDSL
-  imports CodeGenAlt JavaAST
+  imports JavaAST
   keywords
     "register_method" :: thy_decl and
     "define_semantics" :: thy_decl
@@ -57,14 +57,13 @@ fun stamp_class_name :: "Stamp \<Rightarrow> ClassName" where
 datatype Condition =
   Unary IRUnaryOp Condition |
   Binary IRBinaryOp Condition Condition |
-  Conditional Condition Condition Condition |
   Constant int |
   Value Value |
   Variable String.literal |
   Expr IRExpr |
   Stamp Stamp |
 
-  Combine Condition Condition ("_; _") |
+  Combine Condition Condition (infixl ";" 86) |
 
   InstanceOf Condition String.literal |
   Method Condition String.literal "Condition list"
@@ -78,9 +77,7 @@ inductive base_semantics :: "Condition \<Rightarrow> Condition \<Rightarrow> boo
   "base_semantics e (Value v) \<and> res = (unary_eval op v) \<Longrightarrow> base_semantics (Unary op e) (Value res)" |
   "base_semantics x (Value xv) \<and> base_semantics y (Value yv) \<and> res = (bin_eval op xv yv) 
     \<Longrightarrow> base_semantics (Binary op x y) (Value res)" |
-  "base_semantics c c' \<and> base_semantics t t' \<and> base_semantics f f' \<and> coerce_to_bool c con
-    \<Longrightarrow> base_semantics (Conditional c t f) (if con then t' else f')" |
-  "base_semantics (Constant v') (Value (IntVal 32 (word_of_int v')))" |
+  "base_semantics (Constant v') (Value (IntVal 64 (word_of_int v')))" |
   "base_semantics (Value v) (Value v)" |
   "base_semantics (Expr e) (Expr e)" |
   "base_semantics (Stamp s) (Stamp s)" |
@@ -415,5 +412,8 @@ value "export cond[y..isPowerOf2()]"
 *)
 
 end
+
+definition evalCondition :: "Condition \<Rightarrow> bool" where
+  "evalCondition c = (\<exists>c'. stampConditions c c' \<and> coerce_to_bool c' True)"
 
 end
