@@ -39,13 +39,8 @@ fun of_term name term whens source =
 
 
 fun result rhs ctxt =
-  let
-    val _ = @{print} (Context_Position.reports_enabled (Context.proof_of (Context_Position.set_visible_generic false (Context.Proof ctxt))));
-  in
   case type_of (Syntax.check_term (Context.proof_of (Context_Position.set_visible_generic false (Context.Proof ctxt))) rhs) of
-    (*@{typ Result} => rhs |*)
     _ => rhs
-  end
 
 fun to_term rewrite ctxt = 
   case (#rewrite rewrite) of
@@ -87,36 +82,6 @@ fun intval_of ctxt term =
   Syntax.check_prop ctxt 
     (@{const Trueprop} $ (System.intval $ term))
 
-fun value_def ctxt name rewrite =
-  ((Const ("Pure.eq", @{typ "bool \<Rightarrow> bool \<Rightarrow> prop"})
-  $ (Free ("val_" ^ (Binding.name_of name), @{typ "bool"}))
-  $ (
-      (((Const ("HOL.eq", @{typ "Value \<Rightarrow> Value \<Rightarrow> bool"}))
-      $ (IntValMarkup.markup_expr [] ctxt [lhs rewrite])
-      $ (IntValMarkup.markup_expr [] ctxt [rhs rewrite])))
-    )))
-
-fun val_def_const ctxt name rewrite =
-  @{const Trueprop}
-  $ ((Const ("HOL.eq", @{typ "bool \<Rightarrow> bool \<Rightarrow> bool"})
-  $ (Free ("val_" ^ (Binding.name_of name), @{typ "bool"}))
-  $ (
-      ((Const ("HOL.eq", @{typ "int \<Rightarrow> int \<Rightarrow> bool"}))
-      (*$ Var (("x", 0), @{typ int})*)
-      $ @{term "(10::int) + (-(12::int))"}
-      $ @{term "(10::int) + (-(12::int))"}))
-    ))
-
-fun word_def ctxt name rewrite =
-  ((Const ("HOL.eq", @{typ "bool \<Rightarrow> bool \<Rightarrow> bool"})
-  $ (Free ("word_" ^ name, @{typ "bool"}))
-  $ (
-      (@{const Trueprop}
-      $ ((Const ("HOL.eq", @{typ "('a::len) word \<Rightarrow> 'a word \<Rightarrow> bool"}))
-      $ (WordMarkup.markup_expr [] ctxt [lhs rewrite])
-      $ (WordMarkup.markup_expr [] ctxt [rhs rewrite])))
-    )))
-
 fun termination_of ctxt rewrite =
   let
     val state = RewritePhase.current (Proof_Context.theory_of ctxt);
@@ -144,19 +109,26 @@ fun mkstr ctxt name =
   Syntax.read_term ctxt ("STR ''" ^ name ^ "''")
 
 fun create_var ctxt name = 
-  @{term "VariableExpr"} $ mkstr ctxt name $ @{term "VoidStamp"}
+  (@{term "VariableExprPattern"} $ mkstr ctxt name)
 
 fun create_const ctxt name = 
-  (@{term "ConstantVar"} $ mkstr ctxt name)
+  (@{term "ConstantVarPattern"} $ mkstr ctxt name)
 
 fun ground_IRExpr ctxt trm =
   (case trm of
-    Const ("\<^const>IRTreeEval.IRExpr.ConstantExpr", _) $ (Free (str, _)) => create_const ctxt str
-    | Const ("IRTreeEval.IRExpr.ConstantExpr", _) $ (Free (str, _)) => create_const ctxt str
+    Const ("\<^const>CodeGenAltAlt.PatternExpr.ConstantExprPattern", _) $ (Free (str, _)) => create_const ctxt str
+    | Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern", _) $ (Free (str, _)) => create_const ctxt str
     | (x $ y) => (ground_IRExpr ctxt x $ ground_IRExpr ctxt y)
     | Abs (str, typ, trm) => Abs (str, typ, ground_IRExpr ctxt trm)
-    | Free (str, @{typ IRExpr}) => create_var ctxt str
+    | Free (str, @{typ PatternExpr}) => create_var ctxt str
     | Free (str, @{typ Value}) => create_const ctxt str
+    | _ => trm)
+
+fun ground_Condition_code ctxt trm =
+  (case trm of
+    (x $ y) => (ground_Condition_code ctxt x $ ground_Condition_code ctxt y)
+    | Abs (str, typ, trm) => Abs (str, typ, ground_Condition_code ctxt trm)
+    | Free (str, @{typ Condition}) => (@{term "Variable"} $ mkstr ctxt str)
     | _ => trm)
 
 fun type_checked_rewrites ctxt rewrite =
@@ -172,11 +144,11 @@ fun type_checked_rewrites ctxt rewrite =
     end
     | SOME c =>
     let
-      val [lhs, rhs, c'] =
+      val c' = ground_Condition_code ctxt (Syntax.check_term ctxt c);
+      val [lhs, rhs] =
           (Syntax.check_terms ctxt
             [(rewrite_lhs rewrite),
-             (rewrite_rhs rewrite),
-             c])
+             (rewrite_rhs rewrite)]);
     in
       (lhs, rhs, SOME c')
     end
@@ -189,18 +161,14 @@ fun rewrite_to_term_param ctxt rewrite =
        case cond of 
         NONE => (Const ("Option.option.None", @{typ "Condition option"})) |
         SOME cond' =>
-          (Const ("Option.option.Some", @{typ "Condition => Condition option"}) $ ground_IRExpr ctxt cond'))
-  (*case (#rewrite rewrite) of
-    Transform (lhs, rhs) => 
-      ground_IRExpr ctxt lhs $ ground_IRExpr ctxt rhs
-    | _ => raise TERM ("rewrite cannot be translated yet", [])*)
+          (Const ("Option.option.Some", @{typ "Condition => Condition option"}) $ cond'))
   end
 
 fun generate ctxt term =
   let
     val (lhs, rhs, cond) = rewrite_to_term_param ctxt term;
     val generate_term = 
-      ((((Const ("CodeGenAlt.generateRule", @{typ "IRExpr \<Rightarrow> Condition option \<Rightarrow> IRExpr \<Rightarrow> (VarName \<times> Rules)"}))
+      ((((Const ("CodeGenAltAlt.generateRule", @{typ "PatternExpr \<Rightarrow> Condition option \<Rightarrow> PatternExpr \<Rightarrow> (VarName \<times> Rules)"}))
       $ lhs) $ cond) $ rhs)
     val value = Code_Evaluation.dynamic_value_strict ctxt generate_term;
   in              
@@ -241,9 +209,18 @@ fun select_type when_type =
     Type ("HOL.bool", _) => SOME Prop |
     _ => NONE
 
+fun ground_Condition_proof ctxt trm =
+  (case trm of
+    (x $ y) => (ground_Condition_proof ctxt x $ ground_Condition_proof ctxt y)
+    | Abs (str, typ, trm) => Abs (str, typ, ground_Condition_proof ctxt trm)
+    | Free (str, @{typ Condition}) => (@{term "Expr"} $ Free (str, @{typ IRExpr}))
+    | Free (str, @{typ IRExpr}) => (@{term "Expr"} $ Free (str, @{typ IRExpr}))
+    | Free (str, typ) => Free (str, typ)
+    | _ => trm)
+
 fun partition ctxt whens =
   let
-    val checked = Syntax.check_terms ctxt whens;
+    val checked = map (Syntax.check_term ctxt) whens;
     val props = (filter (fn when => case (select_type (Term.type_of when)) of SOME Prop => true | _ => false) checked);
     val conds = (filter (fn when => case (select_type (Term.type_of when)) of SOME Condition => true | _ => false) checked);
     val unrek = (filter (fn when => case (select_type (Term.type_of when)) of NONE => true | _ => false) checked);
@@ -265,13 +242,62 @@ fun generate_assumps assumps =
     [prop] => SOME prop |
     x :: xs => SOME (fold (fn term => fn prop => (@{term "conj"} $ term $ prop)) xs (x))
 
-fun generate_whens ctxt (whens: ((string * string) list)) =
+fun generate_whens ctxt do_ground (whens: ((string * string) list)) =
   let
     val interpretted = (map (interpret_when ctxt o snd) whens);
     val (props, conds) = partition ctxt interpretted;
+    val conds = if do_ground then (map (ground_Condition_proof ctxt) conds) else conds;
   in
     (generate_assumps props, generate_condition conds)
   end
+val at = @{typ "num \<Rightarrow> 64 word"};
+fun rewrite_constants_proofs ctxt is_lhs trm =
+  (case trm of
+    Const ("\<^const>IRTreeEval.IRExpr.ConstantExpr", typ) $ (Const ("\<^const>Num.numeral_class.numeral", _) $ c)
+      => Const ("\<^const>IRTreeEval.IRExpr.ConstantExpr", typ) $ (@{term "IntVal b"} $ (Const ("Num.numeral_class.numeral", at) $ c))
+    | Const ("IRTreeEval.IRExpr.ConstantExpr", typ) $ (Const ("Num.numeral_class.numeral", _) $ c)
+      => Const ("IRTreeEval.IRExpr.ConstantExpr", typ) $ (@{term "IntVal b"} $ (Const ("Num.numeral_class.numeral", at) $ c))
+    | Const ("IRTreeEval.IRExpr.ConstantExpr", typ) $ (Const ("Groups.zero_class.zero", _))
+      => Const ("IRTreeEval.IRExpr.ConstantExpr", typ) $ (@{term "IntVal b 0"})
+    | Const ("IRTreeEval.IRExpr.ConstantExpr", typ) $ (Const ("Groups.one_class.one", _))
+      => Const ("IRTreeEval.IRExpr.ConstantExpr", typ) $ (@{term "IntVal b 0"})
+    | Const ("\<^const>IRTreeEval.IRExpr.ConstantExpr", typ) $ e => Const ("\<^const>IRTreeEval.IRExpr.ConstantExpr", typ) $ (if is_lhs then e else IntValMarkup.markup_expr [] ctxt [e])
+    | Const ("IRTreeEval.IRExpr.ConstantExpr", typ) $ e => Const ("IRTreeEval.IRExpr.ConstantExpr", typ) $ (if is_lhs then e else IntValMarkup.markup_expr [] ctxt [e])
+    | (e as (Const ("Markup.Rewrite.Conditional",_))) $ lhs $ rhs $ cond => 
+      e $ rewrite_constants_proofs ctxt true lhs $ rewrite_constants_proofs ctxt false rhs $ cond
+    | (e as (Const ("Markup.Rewrite.Transform",_))) $ lhs $ rhs => 
+      e $ rewrite_constants_proofs ctxt true lhs $ rewrite_constants_proofs ctxt false rhs
+    | (x $ y) => (rewrite_constants_proofs ctxt is_lhs x $ rewrite_constants_proofs ctxt is_lhs y)
+    | Abs (str, typ, trm) => Abs (str, typ, rewrite_constants_proofs ctxt is_lhs trm)
+    | _ => trm)
+
+fun rewrite_constants_code ctxt is_lhs trm =
+  let val _ = @{print} trm in
+  (case trm of
+    Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ (Const ("Num.numeral_class.numeral", _) $ c)
+      => Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ (@{term "IntVal b"} $ (Const ("Num.numeral_class.numeral", at) $ c))
+    | Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ (Const ("Groups.zero_class.zero", _))
+      => Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ (@{term "IntVal b 0"})
+    | Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ (Const ("Groups.one_class.one", _))
+      => Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ (@{term "IntVal b 0"})
+    | Const ("\<^const>CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ (Free (str, _)) => create_const ctxt str
+    | Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ (Free (str, _)) => create_const ctxt str
+    | Const ("\<^const>CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ e => 
+      (if is_lhs then trm else
+       (Const ("\<^const>CodeGenAltAlt.PatternExpr.ConstantLiteralPattern", @{typ "PatternExpr \<Rightarrow> PatternExpr"})
+        $ (ground_IRExpr ctxt (Syntax.check_term ctxt (PatternExprMarkup.markup_expr [] ctxt [e])))))
+    | Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ e => 
+      (if is_lhs then trm else
+       (Const ("CodeGenAltAlt.PatternExpr.ConstantLiteralPattern", @{typ "PatternExpr \<Rightarrow> PatternExpr"})
+         $ (ground_IRExpr ctxt (Syntax.check_term ctxt (PatternExprMarkup.markup_expr [] ctxt [e])))))
+    | (e as (Const ("Markup.Rewrite.Conditional",_))) $ lhs $ rhs $ cond => 
+      e $ rewrite_constants_code ctxt true lhs $ rewrite_constants_code ctxt false rhs $ cond
+    | (e as (Const ("Markup.Rewrite.Transform",_))) $ lhs $ rhs => 
+      e $ rewrite_constants_code ctxt true lhs $ rewrite_constants_code ctxt false rhs
+    | (x $ y) => (rewrite_constants_code ctxt is_lhs x $ rewrite_constants_code ctxt is_lhs y)
+    | Abs (str, typ, trm) => Abs (str, typ, rewrite_constants_code ctxt is_lhs trm)
+    | _ => trm)
+end
 
 fun rewrite_cmd (((bind: binding, options), whens), opt) ctxt = 
   let
@@ -279,41 +305,25 @@ fun rewrite_cmd (((bind: binding, options), whens), opt) ctxt =
     val _ = (if valid_name name then () 
              else (warning "Optimization name should be UpperCase not snake_case or camelCase"));
     
-    val intval = case options of [[token]] => Token.content_of token = "intval" | _ => false;
-    val subgoals = case options of [[token]] => Token.content_of token = "subgoals" | _ => false;
-    
+    val intval = case options of [[token]] => Token.content_of token = "intval" | _ => false;    
     val notactic = case options of [[token]] => Token.content_of token = "notactic" | _ => false;
+    val nogen = case options of [[token]] => Token.content_of token = "nogen" | _ => false;
     
     val raw_term = (Syntax.parse_term ctxt opt);
-    val (assumps, conditions) = generate_whens ctxt whens;
+    val (assumps, conditions) = generate_whens ctxt true whens;
     (*val _ = @{print} (Syntax.pretty_term ctxt conditions);*)
 
     (*val rewrite = of_term bind raw_term conditions raw_term;
     val raw_term = to_term rewrite ctxt;*)
 
-    val term = IRExprMarkup.markup_expr [] ctxt [raw_term];
+    val _ = @{print} (Syntax.pretty_term ctxt raw_term);
+    val term = IRExprMarkup.markup_expr [] ctxt [(Type.strip_constraints raw_term)];
+    val _ = @{print} (Syntax.pretty_term ctxt term);
+    val _ = @{print} term;
+    val term = rewrite_constants_proofs ctxt false term;
+    val _ = @{print} (Syntax.pretty_term ctxt term);
+    val _ = @{print} term;
     val rewrite = of_term bind term conditions raw_term;
-
-    val ctxt = (if subgoals then
-      (Specification.abbreviation (Syntax.mode_default)
-        NONE []
-        (val_def_const ctxt (#name rewrite) raw_term)
-        false ctxt)
-        (*((Binding.prefix_name "val_" bind, []), value_def ctxt (#name rewrite) raw_term) ctxt)*)
-      else ctxt);
-
-    (*val ctxt = (if subgoals then
-      snd (Specification.definition
-        NONE [] []
-        ((Binding.prefix_name "val_" bind, []), value_def ctxt (#name rewrite) raw_term) ctxt)
-      else ctxt);*)
-
-    (*val ctxt = (if subgoals then
-      (Specification.abbreviation (Syntax.mode_default)
-        NONE []
-        (word_def ctxt (#name rewrite) raw_term)
-        false ctxt)
-      else ctxt);*)
 
     val intval_preservation = (if intval 
       then intval_of ctxt (IntValMarkup.markup_expr [term] ctxt [(Syntax.parse_term ctxt opt)])
@@ -325,7 +335,15 @@ fun rewrite_cmd (((bind: binding, options), whens), opt) ctxt =
       then @{term "Pure.imp"} $ intval_preservation $ preservation
       else preservation;
     val termination = termination_of ctxt rewrite;
-    val code = code_of ctxt rewrite;
+
+    val code = if nogen then @{term True} else (let
+      val (_, code_conditions) = generate_whens ctxt false whens;
+      val pattern_term = PatternExprMarkup.markup_expr [] ctxt [(Type.strip_constraints raw_term)];
+      val pattern_term = rewrite_constants_code ctxt false pattern_term;
+      val pattern_rewrite = of_term bind pattern_term code_conditions raw_term;
+      in 
+        code_of ctxt pattern_rewrite
+      end)
 
     val register = fn proofs => RewritePhase.register (bind, (add_proofs rewrite proofs));
 
@@ -333,18 +351,18 @@ fun rewrite_cmd (((bind: binding, options), whens), opt) ctxt =
       let
         val lthy' = Local_Theory.background_theory (register (hd thms)) lthy;
 
-        val (_, lthy'') = Specification.definition
+        val lthy'' = snd (if nogen then ((@{term True}, ("", @{thm All_def})), lthy') else
+        (Specification.definition
             NONE [] []
             ((Binding.suffix_name "_code" bind, []), code)
             lthy'
+        ))
       in
         snd (Local_Theory.note ((bind, []), hd thms) lthy'')
       end
 
-    (*Specification.theorem_cmd*)
     val target = (Proof.theorem NONE after_qed 
         [extra @ [(preservation, [preservation]), (termination, [termination])]] ctxt);
-    (*val target = Proof.assume [] [[(@{term "Trueprop True"}, [@{term "Trueprop True"}])]] [] target;*)
 
     val apply = (Proof.apply 
       ((Method.Source (Token.make_src ("unfold_optimization", Position.start) [])),

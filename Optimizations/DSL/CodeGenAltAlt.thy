@@ -1,7 +1,7 @@
 text_raw "\\newpage"
-section \<open>Alternative Code Generation\<close>
+section \<open>Alternative Alternative Code Generation\<close>
 
-theory CodeGenAlt
+theory CodeGenAltAlt
 imports
     Semantics.IRTreeEvalThms
     Semantics.TreeToGraphThms
@@ -13,6 +13,8 @@ begin
 
 hide_const is_ground compatible
 declare [[show_types=false]]
+no_notation Combine (infixl ";" 86)
+no_syntax "_seq" :: "Statement \<Rightarrow> Statement => Statement" (infixr ";//" 55)
 
 subsection \<open>IRExpr Matching Semantics\<close>
 
@@ -38,124 +40,185 @@ lemma substitution_union:
   "(\<exists>\<sigma>'. substitution_union s\<^sub>1 s\<^sub>2 = Some \<sigma>') = (\<exists>\<sigma>\<^sub>1 \<sigma>\<^sub>2. s\<^sub>1 = Some \<sigma>\<^sub>1 \<and> s\<^sub>2 = Some \<sigma>\<^sub>2 \<and> compatible \<sigma>\<^sub>1 \<sigma>\<^sub>2)"
   by (smt (z3) Option.is_none_def bind_eq_Some_conv is_none_code(2) substitution_union.simps)
 
-fun match_tree :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> Subst option" where
-  "match_tree (UnaryExpr op x) (UnaryExpr op' x') = 
+datatype (discs_sels) PatternExpr =
+    UnaryExprPattern IRUnaryOp PatternExpr
+  | BinaryExprPattern IRBinaryOp PatternExpr PatternExpr
+  | ConditionalExprPattern PatternExpr PatternExpr PatternExpr
+  | ConstantExprPattern Value
+  | ConstantVarPattern String.literal
+  | VariableExprPattern String.literal
+  | ConstantLiteralPattern PatternExpr
+
+\<comment> \<open>Semantics for the evaluation of a constant literal\<close>
+fun evaluate :: "PatternExpr \<Rightarrow> Value option" where
+  "evaluate (UnaryExprPattern op e) = do {
+    e' <- evaluate e;
+    Some (unary_eval op e')
+  }" |
+  "evaluate (BinaryExprPattern op x y) =  do {
+    x' <- evaluate x;
+    y' <- evaluate y;
+    Some (bin_eval op x' y')
+  }"|
+  "evaluate (ConditionalExprPattern c t f) = do {
+    c' <- evaluate c;
+    (if val_to_bool c' then (evaluate t) else (evaluate f))
+  }"|
+  "evaluate (ConstantExprPattern val) = Some val" |
+  "evaluate _ = None"
+
+fun match_tree :: "PatternExpr \<Rightarrow> IRExpr \<Rightarrow> Subst option" where
+  "match_tree (UnaryExprPattern op x) (UnaryExpr op' x') = 
       (if op = op' then match_tree x x' else None)" |
-  "match_tree (BinaryExpr op x y) (BinaryExpr op' x' y') = 
+  "match_tree (BinaryExprPattern op x y) (BinaryExpr op' x' y') = 
       (if op = op' then (match_tree x x') \<uplus> (match_tree y y') else None)" |
-  "match_tree (ConditionalExpr c t f) (ConditionalExpr c' t' f') = 
+  "match_tree (ConditionalExprPattern c t f) (ConditionalExpr c' t' f') = 
       (match_tree c c') \<uplus> ((match_tree t t') \<uplus> (match_tree f f'))" |
-  "match_tree (ParameterExpr i1 s1) (ParameterExpr i2 s2) = 
-      (if i1 = i2 then Some Map.empty else None)" |
-  "match_tree (LeafExpr n1 s1) (LeafExpr n2 s2) = 
-      (if n1 = n2 then Some Map.empty else None)" |
-  "match_tree (ConstantExpr v) (ConstantExpr v') = 
+  "match_tree (ConstantExprPattern v) (ConstantExpr v') = 
       (if v = v' then Some Map.empty else None)" |
-  "match_tree (ConstantVar vn) (ConstantExpr v) = 
+  "match_tree (ConstantVarPattern vn) (ConstantExpr v) = 
       Some ([vn \<mapsto> (ConstantExpr v)])" |
-  "match_tree (VariableExpr vn s) e = 
+  "match_tree (VariableExprPattern vn) e = 
       Some ([vn \<mapsto> e])" |
   "match_tree _ _ = None"
 
 lemma match_tree_UnaryExpr:
-  assumes "match_tree (UnaryExpr op x) g = Some \<sigma>"
+  assumes "match_tree (UnaryExprPattern op x) g = Some \<sigma>"
   shows "\<exists>x'. g = UnaryExpr op x' \<and> match_tree x x' = Some \<sigma>"
   using assms apply (cases g; auto)
   apply (metis is_none_simps(1) is_none_simps(2))
   by (meson option.distinct(1))
 
 lemma match_tree_BinaryExpr:
-  assumes "match_tree (BinaryExpr op x y) g = Some \<sigma>"
+  assumes "match_tree (BinaryExprPattern op x y) g = Some \<sigma>"
   shows "\<exists>x' y'. g = BinaryExpr op x' y' \<and> match_tree x x' \<uplus> match_tree y y' = Some \<sigma>"
   using assms apply (cases g; auto)
    apply (metis is_none_simps(1) is_none_simps(2))
   unfolding substitution_union.simps
-  by (smt (verit, ccfv_threshold) CodeGenAlt.compatible.simps bind_eq_Some_conv option.distinct(1))
+  by (smt (verit, ccfv_threshold) compatible.simps bind_eq_Some_conv option.distinct(1))
 
 lemma match_tree_BinaryExpr':
-  assumes "match_tree (BinaryExpr op x y) g = Some \<sigma>"
+  assumes "match_tree (BinaryExprPattern op x y) g = Some \<sigma>"
   shows "\<exists>x' y' \<sigma>\<^sub>x \<sigma>\<^sub>y. g = BinaryExpr op x' y' \<and> Some \<sigma>\<^sub>x = match_tree x x' \<and> Some \<sigma>\<^sub>y = match_tree y y' \<and> compatible \<sigma>\<^sub>x \<sigma>\<^sub>y \<and> \<sigma>\<^sub>x ++ \<sigma>\<^sub>y = \<sigma>"
   using assms apply (cases g; auto) 
   apply (metis option.simps(3))
-  by (smt (verit, best) CodeGenAlt.compatible.simps bind_eq_Some_conv option.distinct(1) option.simps(1) substitution_union.simps)
+  by (smt (verit, best) compatible.simps bind_eq_Some_conv option.distinct(1) option.simps(1) substitution_union.simps)
 
 lemma match_tree_ConditionalExpr:
-  assumes "match_tree (ConditionalExpr c t f) g = Some \<sigma>"
+  assumes "match_tree (ConditionalExprPattern c t f) g = Some \<sigma>"
   shows "\<exists>c' t' f'. g = ConditionalExpr c' t' f' \<and> match_tree c c' \<uplus> (match_tree t t' \<uplus> match_tree f f') = Some \<sigma>"
   using assms by (cases g; auto)
 
 lemma match_tree_ConditionalExpr':
-  assumes "match_tree (ConditionalExpr c t f) g = Some \<sigma>"
+  assumes "match_tree (ConditionalExprPattern c t f) g = Some \<sigma>"
   shows "\<exists>c' t' f' \<sigma>\<^sub>c \<sigma>\<^sub>t \<sigma>\<^sub>f. g = ConditionalExpr c' t' f' \<and> Some \<sigma>\<^sub>c = match_tree c c' \<and> Some \<sigma>\<^sub>t = match_tree t t' \<and> Some \<sigma>\<^sub>f = match_tree f f' 
         \<and> compatible \<sigma>\<^sub>c (\<sigma>\<^sub>t ++ \<sigma>\<^sub>f) \<and> compatible \<sigma>\<^sub>t \<sigma>\<^sub>f \<and> \<sigma>\<^sub>c ++ (\<sigma>\<^sub>t ++ \<sigma>\<^sub>f) = \<sigma>"
   using assms
   by (smt (z3) bind_eq_Some_conv match_tree_ConditionalExpr option.distinct(1) option.inject substitution_union.simps)
 
-lemma match_tree_ParameterExpr:
-  assumes "match_tree (ParameterExpr nid s) g = Some \<sigma>"
-  shows "\<exists>s. g = ParameterExpr nid s"
-  using assms apply (cases g; auto)
-  by (metis option.distinct(1))
-
-lemma match_tree_LeafExpr:
-  assumes "match_tree (LeafExpr nid s) g = Some \<sigma>"
-  shows "\<exists>s. g = LeafExpr nid s"
-  using assms apply (cases g; auto)
-  by (metis option.distinct(1))
-
 lemma match_tree_ConstantExpr:
-  assumes "match_tree (ConstantExpr c) g = Some \<sigma>"
+  assumes "match_tree (ConstantExprPattern c) g = Some \<sigma>"
   shows "\<exists>s. g = ConstantExpr c"
   using assms apply (cases g; auto)
   by (metis option.distinct(1))
 
 lemma match_tree_ConstantVar:
-  assumes "match_tree (ConstantVar v) g = Some \<sigma>"
+  assumes "match_tree (ConstantVarPattern v) g = Some \<sigma>"
   shows "\<exists>c. g = ConstantExpr c \<and> \<sigma> v = Some (ConstantExpr c)"
   using assms by (cases g; auto)
 
-fun vars :: "IRExpr \<Rightarrow> VarName set" where
-  "vars (VariableExpr vn s) = {vn}" |
-  "vars (ConstantVar vn) = {vn}" |
-  "vars (ConstantExpr c) = {}" |
-  "vars (UnaryExpr op x) = vars x" |
-  "vars (BinaryExpr op x y) = vars x \<union> vars y" |
-  "vars (ConditionalExpr c t f) = vars c \<union> vars t \<union> vars f" |
-  "vars (ParameterExpr nid s) = {}" |
-  "vars (LeafExpr nid s) = {}"
+fun vars :: "PatternExpr \<Rightarrow> VarName set" where
+  "vars (VariableExprPattern vn) = {vn}" |
+  "vars (ConstantVarPattern vn) = {vn}" |
+  "vars (ConstantExprPattern c) = {}" |
+  "vars (UnaryExprPattern op x) = vars x" |
+  "vars (BinaryExprPattern op x y) = vars x \<union> vars y" |
+  "vars (ConditionalExprPattern c t f) = vars c \<union> vars t \<union> vars f" |
+  "vars (ConstantLiteralPattern c) = {}"
 
-class groundable =
-  fixes ground :: "'a \<Rightarrow> (VarName \<Rightarrow> IRExpr option) \<Rightarrow> 'a option" (infix "$" 70)
+class pattern = 
   fixes \<L> :: "'a \<Rightarrow> VarName set"
+
+definition is_ground :: "'a::pattern \<Rightarrow> bool" where
+  "is_ground e = (\<L> e = {})"
+
+class groundable = pattern +
+  fixes ground :: "'a \<Rightarrow> (VarName \<Rightarrow> IRExpr option) \<Rightarrow> 'a option" (infix "$" 70)
   (*assumes grounds: "(e $ \<sigma>) = Some g \<Longrightarrow> varset g = {}"
   assumes idempotent: "(e $ \<sigma>) = Some g \<Longrightarrow> g $ \<sigma>' = Some g"*)
   assumes restricted: "\<L> e \<subseteq> S \<Longrightarrow> e $ \<sigma> = e $ (\<sigma>|`S)"
 
-definition is_ground :: "'a::groundable \<Rightarrow> bool" where
-  "is_ground e = (\<L> e = {})"
+instantiation PatternExpr :: pattern begin
+definition \<L>_PatternExpr where
+  "\<L>_PatternExpr \<equiv> vars"
+instance
+  by standard
+end
 
-instantiation IRExpr :: groundable begin
-fun ground_IRExpr :: "IRExpr \<Rightarrow> (VarName \<Rightarrow> IRExpr option) \<Rightarrow> IRExpr option" where
-  "UnaryExpr op x $ \<sigma> = do {
-    x' <- x $ \<sigma>;
+declare \<L>_PatternExpr_def [simp add]
+
+
+fun ground_PatternExpr :: "PatternExpr \<Rightarrow> (VarName \<Rightarrow> IRExpr option) \<Rightarrow> IRExpr option" (infix "$$" 70)
+  where
+  "UnaryExprPattern op x $$ \<sigma> = do {
+    x' <- x $$ \<sigma>;
     Some (UnaryExpr op x')
   }" |
-  "BinaryExpr op x y $ \<sigma> = do {
-    x' <- x $ \<sigma>;
-    y' <- y $ \<sigma>;
+  "BinaryExprPattern op x y $$ \<sigma> = do {
+    x' <- x $$ \<sigma>;
+    y' <- y $$ \<sigma>;
     Some (BinaryExpr op x' y')
   }" |
-  "(ConditionalExpr c t f) $ \<sigma> = do {
+  "(ConditionalExprPattern c t f) $$ \<sigma> = do {
+    c' <- c $$ \<sigma>;
+    t' <- t $$ \<sigma>;
+    f' <- f $$ \<sigma>;
+    Some (ConditionalExpr c' t' f')
+  }" |
+  "(ConstantExprPattern c) $$ \<sigma> = Some (ConstantExpr c)" |
+  "(VariableExprPattern vn) $$ \<sigma> = 
+    (case \<sigma> vn of None \<Rightarrow> None
+                | Some e \<Rightarrow> Some e)" |
+  "(ConstantVarPattern vn) $$ \<sigma> =
+    (case \<sigma> vn of Some (ConstantExpr c) \<Rightarrow> Some (ConstantExpr c)
+                | _ \<Rightarrow> None)" |
+  "(ConstantLiteralPattern c) $$ \<sigma> =
+    (case evaluate c of None \<Rightarrow> None | Some val \<Rightarrow> Some (ConstantExpr val))"
+(* Do we want to mix evaluation with grounding (case evaluate c of None \<Rightarrow> None | Some val \<Rightarrow> Some (ConstantExpr val))" *) 
+
+lemma ground_PatternExpr_restricted:
+  "\<L> e \<subseteq> S \<Longrightarrow> e $$ \<sigma> = e $$ (\<sigma>|`S)"
+  apply (induction e) by (simp)+
+
+lemma ground_PatternExpr_restriction:
+  assumes "\<L> e \<subseteq> S"
+  shows "e $$ \<sigma> = e $$ (\<sigma>|`S)"
+  using assms ground_PatternExpr_restricted
+  by blast
+
+
+(*instantiation PatternExpr :: groundable begin
+fun ground_IRExpr :: "PatternExpr \<Rightarrow> (VarName \<Rightarrow> IRExpr option) \<Rightarrow> PatternExpr option" where
+  "UnaryExprPattern op x $ \<sigma> = do {
+    x' <- x $ \<sigma>;
+    Some (UnaryExprPattern op x')
+  }" |
+  "BinaryExprPattern op x y $ \<sigma> = do {
+    x' <- x $ \<sigma>;
+    y' <- y $ \<sigma>;
+    Some (BinaryExprPattern op x' y')
+  }" |
+  "(ConditionalExprPattern c t f) $ \<sigma> = do {
     c' <- c $ \<sigma>;
     t' <- t $ \<sigma>;
     f' <- f $ \<sigma>;
-    Some (ConditionalExpr c' t' f')
+    Some (ConditionalExprPattern c' t' f')
   }" |
-  "(VariableExpr vn s) $ \<sigma> = 
+  "(VariableExprPattern vn) $ \<sigma> = 
     (case \<sigma> vn of None \<Rightarrow> None
                 | Some e \<Rightarrow> Some e)" |
-  "(ConstantVar vn) $ \<sigma> =
-    (case \<sigma> vn of Some (ConstantExpr c) \<Rightarrow> Some (ConstantExpr c)
+  "(ConstantVarPattern vn) $ \<sigma> =
+    (case \<sigma> vn of Some (ConstantExpr c) \<Rightarrow> Some (ConstantExprPattern c)
                 | _ \<Rightarrow> None)" |
   "ground_IRExpr e \<sigma> = Some e"
 definition \<L>_IRExpr where
@@ -164,21 +227,7 @@ instance apply standard
   subgoal for e apply (induction e)
     by (simp add: \<L>_IRExpr_def)+
   done
-end
-
-(*fun map_option :: "('a \<Rightarrow> 'a option) \<Rightarrow> 'a list \<Rightarrow> ('a list) option" where
-  "map_option f [] = Some []" |
-  "map_option f (x # xs) = do {
-    x' <- f x;
-    xs' <- map_option f xs;
-    Some (x' # xs')
-  }"
-
-definition map_option :: "('a \<Rightarrow> 'a option) \<Rightarrow> 'a list \<Rightarrow> ('a list) option" where
-  "map_option f xs = (fold (\<lambda>x y. case y of None \<Rightarrow> None | Some xs' \<Rightarrow> (case f x of None \<Rightarrow> None | Some x' \<Rightarrow> (Some (x' # xs')))) xs (Some []))"
-*)
-
-(*definition maybe_list :: "'a option list \<Rightarrow> 'a list option"*)
+end*)
 
 instantiation Condition :: groundable begin
 fun ground_Condition :: "Condition \<Rightarrow> (VarName \<Rightarrow> IRExpr option) \<Rightarrow> Condition option" where
@@ -246,18 +295,21 @@ instance apply standard
   done
 end
 
-lemma is_ground_IRExpr:
+(*
+lemma is_ground_PatternExpr:
   "is_ground (e::IRExpr) = (\<L> e = {})"
   by (simp add: is_ground_def \<L>_IRExpr_def)
+*)
 
 (*lemma
-  "\<L> e \<subseteq> dom \<sigma> \<Longrightarrow> \<exists>e'. e $ \<sigma> = Some e'"
+  "vars e \<subseteq> dom \<sigma> \<Longrightarrow> \<exists>e'. e $$ \<sigma> = Some e'"
   apply (induction e arbitrary: \<sigma>) 
-  apply (metis \<L>.simps(4) bind.bind_lunit ground_IRExpr.simps(1)) 
-  apply (metis Un_subset_iff \<L>.simps(5) bind.bind_lunit ground_IRExpr.simps(2)) 
-  apply (metis Un_subset_iff \<L>.simps(6) bind.bind_lunit ground_IRExpr.simps(3))
-  apply simp+ sorry*)
+  apply (metis vars.simps(4) bind.bind_lunit ground_PatternExpr.simps(1)) 
+  apply (metis Un_subset_iff vars.simps(5) bind.bind_lunit ground_PatternExpr.simps(2)) 
+  apply (metis Un_subset_iff vars.simps(6) bind.bind_lunit ground_PatternExpr.simps(3))
+  apply simp+*)
 
+(*
 definition ground_substitution :: "Subst \<Rightarrow> bool" where
   "ground_substitution \<sigma> = (\<forall>v \<in> dom \<sigma>. (\<forall>e. \<sigma> v = Some e \<longrightarrow> is_ground e))"
 
@@ -273,29 +325,30 @@ lemma ground_substitution:
   using is_ground_IRExpr \<L>_IRExpr_def apply force+
   apply (smt (verit, best) IRExpr.case_eq_if IRExpr.collapse(6) domD domIff ground_IRExpr.simps(5) ground_substitution_def option.case_eq_if option.distinct(1) option.sel)
   by (metis domIff ground_IRExpr.simps(4) ground_substitution_def option.case_eq_if option.collapse option.distinct(1))
+*)
 
-definition rewrite :: "IRExpr \<Rightarrow> Condition option \<Rightarrow> IRExpr \<Rightarrow> IRExpr \<Rightarrow> IRExpr option" where
+definition rewrite :: "PatternExpr \<Rightarrow> Condition option \<Rightarrow> PatternExpr \<Rightarrow> IRExpr \<Rightarrow> IRExpr option" where
   "rewrite e\<^sub>p c e\<^sub>r e\<^sub>g = (case match_tree e\<^sub>p e\<^sub>g of 
                           Some \<sigma> \<Rightarrow> 
                            (case c of 
-                            None \<Rightarrow> e\<^sub>r $ \<sigma> | 
-                            Some c' \<Rightarrow> (case c' $ \<sigma> of None \<Rightarrow> None | Some c'' \<Rightarrow> if evalCondition c'' then e\<^sub>r $ \<sigma> else None))
+                            None \<Rightarrow> e\<^sub>r $$ \<sigma> | 
+                            Some c' \<Rightarrow> (case c' $ \<sigma> of None \<Rightarrow> None | Some c'' \<Rightarrow> if evalCondition c'' then e\<^sub>r $$ \<sigma> else None))
                         | None \<Rightarrow> None)"
 
 subsection \<open>MATCH Datatype\<close>
 
-datatype PatternExpr =
+datatype CodePattern =
     UnaryPattern IRUnaryOp VarName
   | BinaryPattern IRBinaryOp VarName VarName
   | ConditionalPattern VarName VarName VarName
   | VariablePattern VarName
   | ConstantPattern Value
-  | ConstantVarPattern VarName
+  | ConstantVariablePattern VarName
   | ParameterPattern nat
   | LeafPattern nat
 
 datatype MATCH = \<comment> \<open>Note side conditions are temporarily not handled.\<close>
-  match VarName PatternExpr |
+  match VarName CodePattern |
   equality VarName VarName |
   andthen MATCH MATCH |
   condition Condition |
@@ -312,17 +365,17 @@ context
   includes match_syntax
 begin
 
-fun pattern_variables :: "PatternExpr \<Rightarrow> String.literal set" where
+fun pattern_variables :: "CodePattern \<Rightarrow> String.literal set" where
   "pattern_variables (UnaryPattern op x) = {x}" |
   "pattern_variables (BinaryPattern op x y) = {x, y}" |
   "pattern_variables (ConditionalPattern c t f) = {c, t, f}" |
   "pattern_variables (VariablePattern v) = {v}" |
   "pattern_variables (ConstantPattern v) = {}" |
-  "pattern_variables (ConstantVarPattern v) = {v}" |
+  "pattern_variables (ConstantVariablePattern v) = {v}" |
   "pattern_variables (ParameterPattern nid) = {}" |
   "pattern_variables (LeafPattern nid) = {}"
 
-fun valid_patternx :: "PatternExpr \<Rightarrow> bool" where
+fun valid_patternx :: "CodePattern \<Rightarrow> bool" where
   "valid_patternx (BinaryPattern op x y) = (x \<noteq> y)" |
   "valid_patternx (ConditionalPattern c t f) = (c \<noteq> t \<and> c \<noteq> f \<and> t \<noteq> f)" |
   "valid_patternx _ = True"
@@ -331,14 +384,16 @@ fun def_vars :: "MATCH \<Rightarrow> String.literal set" where
   "def_vars (match v p) = pattern_variables p" |
   "def_vars (equality e1 e2) = {e1}" |
   "def_vars (m1 && m2) = def_vars m1 \<union> def_vars m2" |
-  "def_vars (noop v) = {}"
+  "def_vars (noop v) = {}" |
+  "def_vars (condition c) = {}"
 
 fun use_vars :: "MATCH \<Rightarrow> String.literal set" where
   "use_vars (match v p) = {v}" |
   "use_vars (equality e1 e2) = {}" |
   (*"use_vars (m1 && m2) = use_vars m1 \<union> (use_vars m2 - def_vars m1)" |*)
   "use_vars (m1 && m2) = use_vars m1 \<union> use_vars m2" |
-  "use_vars (noop v) = {v}"
+  "use_vars (noop v) = {v}" |
+  "use_vars (condition c) = {}"
 
 fun valid_match :: "MATCH \<Rightarrow> bool" where
   "valid_match (match v p) = (v \<notin> pattern_variables p \<and> valid_patternx p)" |
@@ -410,15 +465,14 @@ definition starts_with :: "VarName \<Rightarrow> char \<Rightarrow> bool" where
 definition safe_prefix :: "VarName \<Rightarrow> bool" where
   "safe_prefix v = (\<not>(starts_with v CHR ''X''))"
 
-fun valid_pattern :: "IRExpr \<Rightarrow> bool" where
-  "valid_pattern (VariableExpr vn s) = safe_prefix vn" |
-  "valid_pattern (ConstantVar vn) = safe_prefix vn" |
-  "valid_pattern (ConstantExpr c) = True" |
-  "valid_pattern (UnaryExpr op x) = valid_pattern x" |
-  "valid_pattern (BinaryExpr op x y) = (valid_pattern x \<and> valid_pattern y)" |
-  "valid_pattern (ConditionalExpr c t f) = (valid_pattern c \<and> valid_pattern t \<and> valid_pattern f)" |
-  "valid_pattern (ParameterExpr nid s) = True" |
-  "valid_pattern (LeafExpr nid s) = True"
+fun valid_pattern :: "PatternExpr \<Rightarrow> bool" where
+  "valid_pattern (VariableExprPattern vn) = safe_prefix vn" |
+  "valid_pattern (ConstantVarPattern vn) = safe_prefix vn" |
+  "valid_pattern (ConstantExprPattern c) = True" |
+  "valid_pattern (UnaryExprPattern op x) = valid_pattern x" |
+  "valid_pattern (BinaryExprPattern op x y) = (valid_pattern x \<and> valid_pattern y)" |
+  "valid_pattern (ConditionalExprPattern c t f) = (valid_pattern c \<and> valid_pattern t \<and> valid_pattern f)" |
+  "valid_pattern (ConstantLiteralPattern c) = False"
 
 lemma fresh_var_prefix:
   assumes "safe_prefix s"
@@ -435,7 +489,7 @@ lemma prefix_preserves_freshness:
 lemma valid_pattern_preserves_freshness:
   assumes "valid_pattern e"
   shows "\<forall>\<Sigma>. fresh_var \<Sigma> \<notin> \<L> e"
-  using assms \<L>_IRExpr_def apply (induction e) apply auto
+  using assms apply (induction e) apply auto
   using fresh_var_prefix safe_prefix_def by blast+
 
 lemma freshness:
@@ -443,65 +497,64 @@ lemma freshness:
   shows "fresh_var \<Sigma> \<notin> \<Sigma>"
   by (simp add: assms(1) fresh_notIn fresh_var_def)
 
-inductive lower :: "IRExpr \<Rightarrow> VarName set \<Rightarrow> MATCH \<Rightarrow> VarName \<Rightarrow> VarName set \<Rightarrow> bool"
+inductive lower :: "PatternExpr \<Rightarrow> VarName set \<Rightarrow> MATCH \<Rightarrow> VarName \<Rightarrow> VarName set \<Rightarrow> bool"
   ("'(_, _') \<leadsto> '(_, _, _')" 70) where
   VariableUnseen:
-  "vn \<notin> \<Sigma> \<Longrightarrow> (VariableExpr vn s, \<Sigma>) \<leadsto> (noop vn, vn, \<Sigma> \<union> {vn})" |
+  "vn \<notin> \<Sigma> \<Longrightarrow> (VariableExprPattern vn, \<Sigma>) \<leadsto> (noop vn, vn, \<Sigma> \<union> {vn})" |
   VariableSeen:
-  "\<lbrakk>vn \<in> \<Sigma>; v' = fresh_var \<Sigma>\<rbrakk> \<Longrightarrow> (VariableExpr vn s, \<Sigma>) \<leadsto> (v' == vn, v', \<Sigma> \<union> {v'})" |
+  "\<lbrakk>vn \<in> \<Sigma>; v' = fresh_var \<Sigma>\<rbrakk> \<Longrightarrow> (VariableExprPattern vn, \<Sigma>) \<leadsto> (v' == vn, v', \<Sigma> \<union> {v'})" |
   ConstantPattern:
-  "v' = fresh_var \<Sigma> \<Longrightarrow> (ConstantExpr c, \<Sigma>) \<leadsto> (match v' (ConstantPattern c), v', \<Sigma> \<union> {v'})" |
+  "v' = fresh_var \<Sigma> \<Longrightarrow> (ConstantExprPattern c, \<Sigma>) \<leadsto> (match v' (ConstantPattern c), v', \<Sigma> \<union> {v'})" |
   UnaryPattern:
   "\<lbrakk>(x, \<Sigma>) \<leadsto> (m\<^sub>x, v\<^sub>x, \<Sigma>\<^sub>x);
     v' = fresh_var \<Sigma>\<^sub>x\<rbrakk>
-  \<Longrightarrow> (UnaryExpr op x, \<Sigma>) \<leadsto> (match v' (UnaryPattern op v\<^sub>x) && m\<^sub>x, v', \<Sigma>\<^sub>x \<union> {v'})" |
+  \<Longrightarrow> (UnaryExprPattern op x, \<Sigma>) \<leadsto> (match v' (UnaryPattern op v\<^sub>x) && m\<^sub>x, v', \<Sigma>\<^sub>x \<union> {v'})" |
   BinaryPattern:
   "\<lbrakk>(x, \<Sigma>) \<leadsto> (m\<^sub>x, v\<^sub>x, \<Sigma>\<^sub>x); (y, \<Sigma>\<^sub>x) \<leadsto> (m\<^sub>y, v\<^sub>y, \<Sigma>\<^sub>y);
     v' = fresh_var \<Sigma>\<^sub>y\<rbrakk>
-  \<Longrightarrow> (BinaryExpr op x y, \<Sigma>) \<leadsto> (match v' (BinaryPattern op v\<^sub>x v\<^sub>y) && m\<^sub>x && m\<^sub>y, v', \<Sigma>\<^sub>y \<union> {v'})" |
+  \<Longrightarrow> (BinaryExprPattern op x y, \<Sigma>) \<leadsto> (match v' (BinaryPattern op v\<^sub>x v\<^sub>y) && m\<^sub>x && m\<^sub>y, v', \<Sigma>\<^sub>y \<union> {v'})" |
   ConditionalPattern:
   "\<lbrakk>(c, \<Sigma>) \<leadsto> (m\<^sub>c, v\<^sub>c, \<Sigma>\<^sub>c); (t, \<Sigma>\<^sub>c) \<leadsto> (m\<^sub>t, v\<^sub>t, \<Sigma>\<^sub>t);
     (f, \<Sigma>\<^sub>t) \<leadsto> (m\<^sub>f, v\<^sub>f, \<Sigma>\<^sub>f); v' = fresh_var \<Sigma>\<^sub>f\<rbrakk>
-  \<Longrightarrow> (ConditionalExpr c t f, \<Sigma>) \<leadsto> (match v' (ConditionalPattern v\<^sub>c v\<^sub>t v\<^sub>f) && m\<^sub>c && m\<^sub>t && m\<^sub>f, v', \<Sigma>\<^sub>f \<union> {v'})" |
+  \<Longrightarrow> (ConditionalExprPattern c t f, \<Sigma>) \<leadsto> (match v' (ConditionalPattern v\<^sub>c v\<^sub>t v\<^sub>f) && m\<^sub>c && m\<^sub>t && m\<^sub>f, v', \<Sigma>\<^sub>f \<union> {v'})" |
 
   ConstantVariableUnseen:
-  "\<lbrakk>vn \<notin> \<Sigma>; v' = fresh_var \<Sigma>\<rbrakk> \<Longrightarrow> (ConstantVar vn, \<Sigma>) \<leadsto> (match v' (ConstantVarPattern vn), v', \<Sigma> \<union> {vn, v'})" | 
+  "\<lbrakk>vn \<notin> \<Sigma>; v' = fresh_var \<Sigma>\<rbrakk> \<Longrightarrow> (ConstantVarPattern vn, \<Sigma>) \<leadsto> (match v' (ConstantVariablePattern vn), v', \<Sigma> \<union> {vn, v'})" | 
   ConstantVariableSeen:
   "\<lbrakk>vn \<in> \<Sigma>; v' = fresh_var \<Sigma>; v'' = fresh_var (\<Sigma> \<union> {v'})\<rbrakk>
-   \<Longrightarrow> (ConstantVar vn, \<Sigma>) \<leadsto> (match v' (ConstantVarPattern v'') && v'' == vn, v', \<Sigma> \<union> {v', v''})" |
+   \<Longrightarrow> (ConstantVarPattern vn, \<Sigma>) \<leadsto> (match v' (ConstantVariablePattern v'') && v'' == vn, v', \<Sigma> \<union> {v', v''})"
   (*ConstantVariableUnseen:
   "vn \<notin> \<Sigma> \<Longrightarrow> (ConstantVar vn, \<Sigma>) \<leadsto> (noop vn, vn, \<Sigma> \<union> {vn})" | \<comment> \<open>Note that constant variables are also not properly handled currently.\<close>
   ConstantVariableSeen:
-  "vn \<in> \<Sigma> \<and> v' = fresh_var \<Sigma> \<Longrightarrow> (ConstantVar vn, \<Sigma>) \<leadsto> (v' == vn, v', \<Sigma> \<union> {v'})" |*)
+  "vn \<in> \<Sigma> \<and> v' = fresh_var \<Sigma> \<Longrightarrow> (ConstantVar vn, \<Sigma>) \<leadsto> (v' == vn, v', \<Sigma> \<union> {v'})" |
   ParameterPattern:
   "v' = fresh_var \<Sigma> \<Longrightarrow> (ParameterExpr nid s, \<Sigma>) \<leadsto> (match v' (ParameterPattern nid), v', \<Sigma> \<union> {v'})" |
   LeafPattern:
-  "v' = fresh_var \<Sigma> \<Longrightarrow> (LeafExpr nid s, \<Sigma>) \<leadsto> (match v' (LeafPattern nid), v', \<Sigma> \<union> {v'})"
+  "v' = fresh_var \<Sigma> \<Longrightarrow> (LeafExpr nid s, \<Sigma>) \<leadsto> (match v' (LeafPattern nid), v', \<Sigma> \<union> {v'})"*)
 
 
 
 code_pred (modes: i \<Rightarrow> i \<Rightarrow> o \<Rightarrow> o \<Rightarrow> o \<Rightarrow> bool as lowerC) lower .
 
-inductive_cases lower_VariableExpr: "(VariableExpr vn s, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
-inductive_cases lower_ConstantExpr: "(ConstantExpr c, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
-inductive_cases lower_UnaryExpr: "(UnaryExpr op x, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
-inductive_cases lower_BinaryExpr: "(BinaryExpr op x y, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
-inductive_cases lower_ConditionalExpr: "(ConditionalExpr c t f, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
-inductive_cases lower_ConstantVar: "(ConstantVar c, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
-inductive_cases lower_ParameterExpr: "(ParameterExpr nid s, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
-inductive_cases lower_LeafExpr: "(LeafExpr nid s, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
+inductive_cases lower_VariableExpr: "(VariableExprPattern vn, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
+inductive_cases lower_ConstantExpr: "(ConstantExprPattern c, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
+inductive_cases lower_UnaryExpr: "(UnaryExprPattern op x, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
+inductive_cases lower_BinaryExpr: "(BinaryExprPattern op x y, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
+inductive_cases lower_ConditionalExpr: "(ConditionalExprPattern c t f, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
+inductive_cases lower_ConstantVar: "(ConstantVarPattern c, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
 
 values "{(m, v, \<Sigma>) | m v \<Sigma>. 
-(lower ((VariableExpr STR ''x'' default_stamp)) {} m v \<Sigma>)}"
+(lower ((VariableExprPattern STR ''x'')) {} m v \<Sigma>)}"
 values "{(m, v, \<Sigma>) | m v \<Sigma>. 
-(lower (ConditionalExpr (VariableExpr STR ''x'' default_stamp) (VariableExpr STR ''y'' default_stamp) (VariableExpr STR ''x'' default_stamp)) {} m v \<Sigma>)}"
+(lower (ConditionalExprPattern (VariableExprPattern STR ''x'') (VariableExprPattern STR ''y'') (VariableExprPattern STR ''x'')) {} m v \<Sigma>)}"
 
-value "Predicate.the (lowerC (ConditionalExpr (VariableExpr STR ''x'' default_stamp) (VariableExpr STR ''y'' default_stamp) (VariableExpr STR ''x'' default_stamp)) {})"
+value "Predicate.the (lowerC (ConditionalExprPattern (VariableExprPattern STR ''x'') (VariableExprPattern STR ''y'') (VariableExprPattern STR ''x'')) {})"
 
-lemma lower_total:
+(*lemma lower_total:
   "\<exists>m v \<Sigma>'. (e, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
   apply (induction e arbitrary: \<Sigma>)
   by (meson lower.intros)+
+*)
 
 lemma lower_deterministic:
   assumes "(e, \<Sigma>) \<leadsto> (m\<^sub>1, v\<^sub>1, \<Sigma>'\<^sub>1)"
@@ -515,9 +568,7 @@ lemma lower_deterministic:
       apply (smt (verit, best) Un_empty_right Un_insert_right lower_BinaryExpr)
       apply (smt (z3) Un_commute insert_is_Un lower_ConditionalExpr)
      apply (metis Un_insert_right boolean_algebra.disj_zero_right lower_ConstantVar) 
-    apply (metis Un_insert_right lower_ConstantVar sup_bot_right)
-   using lower_ParameterExpr apply blast
-   using lower_LeafExpr by blast
+  by (metis Un_insert_right lower_ConstantVar sup_bot_right)
 
 lemma lower_sigma_update:
   assumes "(e, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
@@ -542,10 +593,10 @@ lemma lower_sigma_update2:
   assumes "(e, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
   shows "\<Sigma> \<inter> ({v} \<union> use_vars m \<union> def_vars m) = {}"
   using assms(2,1) proof (induction rule: lower.induct)
-  case (VariableUnseen vn \<Sigma> s)
+  case (VariableUnseen vn \<Sigma>)
   then show ?case by simp
 next
-  case (VariableSeen vn \<Sigma> v' s)
+  case (VariableSeen vn \<Sigma> v')
   then show ?case
     by (simp add: freshness)
 next
@@ -609,15 +660,7 @@ next
   case (ConstantVariableSeen vn \<Sigma> v')
   then show ?case
     by (metis Int_empty_right Int_insert_right_if0 UnCI Un_insert_right def_vars.simps(1) def_vars.simps(2) def_vars.simps(3) finite_insert freshness pattern_variables.simps(6) sup_bot_right use_vars.simps(1) use_vars.simps(2) use_vars.simps(3))
-next
-  case (ParameterPattern v' \<Sigma> nid s)
-  then show ?case
-    by (simp add: freshness)
-next
-  case (LeafPattern v' \<Sigma> nid s)
-  then show ?case
-    by (simp add: freshness)
-qed 
+qed
 
 lemma lower_valid_matches:
   assumes "finite \<Sigma>"
@@ -626,10 +669,10 @@ lemma lower_valid_matches:
   shows "valid_match m"
   using assms(3,2,1)
 proof (induction rule: lower.induct)
-  case (VariableUnseen vn \<Sigma> s)
+  case (VariableUnseen vn \<Sigma>)
   then show ?case by simp
 next
-  case (VariableSeen vn \<Sigma> v' s)
+  case (VariableSeen vn \<Sigma> v')
   then show ?case by simp
 next
   case (ConstantPattern v' \<Sigma> c)
@@ -641,14 +684,14 @@ next
     by (metis UnCI insertCI lower_finite)
   have "fresh_var \<Sigma>\<^sub>x \<noteq> v\<^sub>x \<and> fresh_var \<Sigma>\<^sub>x \<notin> def_vars m\<^sub>x"
     by (metis "UnaryPattern.hyps"(1) "UnaryPattern.prems"(2) UnCI \<open>fresh_var \<Sigma>\<^sub>x \<noteq> v\<^sub>x\<close> freshness lower_finite lower_sigma_update)
-  then show ?case using UnaryPattern \<L>_IRExpr_def by simp
+  then show ?case using UnaryPattern by simp
 next
   case (BinaryPattern x \<Sigma> m\<^sub>x v\<^sub>x \<Sigma>\<^sub>x y m\<^sub>y v\<^sub>y \<Sigma>\<^sub>y v' op)
   have vmx: "valid_match m\<^sub>x"
-    using BinaryPattern \<L>_IRExpr_def by fastforce
+    using BinaryPattern by fastforce
   have vmy: "valid_match m\<^sub>y"
     using BinaryPattern lower_finite
-    by (metis UnCI \<L>_IRExpr_def vars.simps(5))
+    by (metis UnCI \<L>_PatternExpr_def vars.simps(5))
   have "fresh_var \<Sigma>\<^sub>y \<noteq> v\<^sub>x" using BinaryPattern
     by (metis UnCI freshness insertCI lower_finite lower_sigma_update)
   also have "fresh_var \<Sigma>\<^sub>y \<noteq> v\<^sub>y" using BinaryPattern
@@ -664,11 +707,11 @@ next
 next
   case (ConditionalPattern c \<Sigma> m\<^sub>c v\<^sub>c \<Sigma>\<^sub>c t m\<^sub>t v\<^sub>t \<Sigma>\<^sub>t f m\<^sub>f v\<^sub>f \<Sigma>\<^sub>f v')
   have vmc: "valid_match m\<^sub>c"
-    using ConditionalPattern \<L>_IRExpr_def by force
+    using ConditionalPattern by force
   have vmt: "valid_match m\<^sub>t"
-    using ConditionalPattern lower_finite \<L>_IRExpr_def by auto
+    using ConditionalPattern lower_finite by auto
   have vmf: "valid_match m\<^sub>f"
-    by (metis ConditionalPattern.IH(3) ConditionalPattern.hyps(1,2) ConditionalPattern.prems(1,2) UnI2 vars.simps(6) \<L>_IRExpr_def lower_finite)
+    by (metis \<L>_PatternExpr_def ConditionalPattern.IH(3) ConditionalPattern.hyps(1,2) ConditionalPattern.prems(1,2) UnI2 vars.simps(6) lower_finite)
   have v'ne: "v' \<noteq> v\<^sub>c \<and> v' \<noteq> v\<^sub>t \<and> v' \<noteq> v\<^sub>f"
     by (smt (verit) ConditionalPattern Un_insert_left Un_insert_right freshness insert_iff lower_finite lower_sigma_update)
   have dij: "v\<^sub>c \<noteq> v\<^sub>t \<and> v\<^sub>c \<noteq> v\<^sub>f \<and> v\<^sub>t \<noteq> v\<^sub>f"
@@ -688,19 +731,11 @@ next
 next
   case (ConstantVariableUnseen vn \<Sigma>)
   then show ?case
-    using \<L>_IRExpr_def by simp
+    by simp
 next
   case (ConstantVariableSeen vn v' \<Sigma>)
   then show ?case
     by (metis Int_empty_right Int_insert_right_if0 UnI2 def_vars.simps(2) finite.emptyI finite.insertI finite_UnI freshness insertE insert_absorb insert_not_empty pattern_variables.simps(6) use_vars.simps(1) valid_match.simps(1) valid_match.simps(2) valid_match.simps(3) valid_patternx.simps(6))
-next
-  case (ParameterPattern v' \<Sigma> nid s)
-  then show ?case
-    by simp
-next
-  case (LeafPattern v' \<Sigma> nid s)
-  then show ?case
-    by simp
 qed
 
 
@@ -740,7 +775,7 @@ inductive eval_match :: "MATCH \<Rightarrow> Subst \<Rightarrow> Subst \<Rightar
   ConstantPattern:
   "\<sigma> v = Some (ConstantExpr c) \<Longrightarrow> (match v (ConstantPattern c)) \<U> \<sigma> = \<sigma>" |
   ConstantVarPattern:
-  "\<lbrakk>\<sigma> v = Some (ConstantExpr c); \<sigma> v = \<sigma> v'\<rbrakk> \<Longrightarrow> (match v (ConstantVarPattern v')) \<U> \<sigma> = \<sigma>" |
+  "\<lbrakk>\<sigma> v = Some (ConstantExpr c); \<sigma> v = \<sigma> v'\<rbrakk> \<Longrightarrow> (match v (ConstantVariablePattern v')) \<U> \<sigma> = \<sigma>" |
   ParameterPattern:
   "\<sigma> v = Some (ParameterExpr nid s) \<Longrightarrow> (match v (ParameterPattern nid)) \<U> \<sigma> = \<sigma>" |
   LeafPattern:
@@ -760,7 +795,7 @@ inductive_cases eval_match_UnaryPattern: "(match v (UnaryPattern op x)) \<U> \<s
 inductive_cases eval_match_BinaryPattern: "(match v (BinaryPattern op x y)) \<U> \<sigma> = \<sigma>'"
 inductive_cases eval_match_ConditionalPattern: "(match v (ConditionalPattern c t f)) \<U> \<sigma> = \<sigma>'"
 inductive_cases eval_match_ConstantPattern: "(match v (ConstantPattern c)) \<U> \<sigma> = \<sigma>'"
-inductive_cases eval_match_ConstantVarPattern: "(match v (ConstantVarPattern c)) \<U> \<sigma> = \<sigma>'"
+inductive_cases eval_match_ConstantVariablePattern: "(match v (ConstantVariablePattern c)) \<U> \<sigma> = \<sigma>'"
 inductive_cases eval_match_ParameterPattern: "(match v (ParameterPattern nid)) \<U> \<sigma> = \<sigma>'"
 inductive_cases eval_match_LeafPattern: "(match v (LeafPattern nid)) \<U> \<sigma> = \<sigma>'"
 inductive_cases eval_match_equality: "(v\<^sub>1 == v\<^sub>2) \<U> \<sigma> = \<sigma>'"
@@ -803,7 +838,7 @@ lemma eval_match_deterministic:
        apply (metis IRExpr.inject(2) eval_match_BinaryPattern option.inject unify_deterministic)
       apply (metis IRExpr.inject(3) eval_match_ConditionalPattern option.sel unify_deterministic)
   using eval_match_ConstantPattern apply blast
-  using eval_match_ConstantVarPattern apply blast
+  using eval_match_ConstantVariablePattern apply blast
   using eval_match_ParameterPattern apply blast
   using eval_match_LeafPattern apply blast
   using eval_match_equality apply blast
@@ -844,7 +879,7 @@ lemma eval_match_subset:
     then show ?thesis
       by (metis def_vars.simps(1) empty_iff map_le_def match.prems(1) eval_match_preserves pattern_variables.simps(5))
   next
-    case (ConstantVarPattern x6)
+    case (ConstantVariablePattern x6)
     then show ?thesis 
       using match.prems(1) eval_match.cases by fastforce
   next
@@ -918,13 +953,13 @@ lemma ground_condition_subset:
   assumes "c $ \<sigma> = Some c'"
   assumes "\<sigma> \<subseteq>\<^sub>m \<sigma>'"
   shows "c $ \<sigma>' = Some c'"
-  using assms apply (induction c arbitrary: \<sigma> \<sigma>' c')
+  using assms apply (induction c arbitrary:  c')
   apply (smt (verit, ccfv_threshold) bind_eq_Some_conv ground_Condition.simps(1))
           apply (smt (verit, ccfv_threshold) bind_eq_Some_conv ground_Condition.simps(2))
          apply simp+ 
        apply (metis bind_eq_None_conv domIff map_le_def option.discI) apply simp apply simp
     apply (smt (verit, ccfv_threshold) bind_eq_Some_conv ground_Condition.simps(4))
-  apply (smt (verit) bind_eq_None_conv bind_split_asm ground_Condition.simps(5) is_none_code(2))
+   apply (smt (verit) bind_eq_None_conv bind_split_asm ground_Condition.simps(5) is_none_code(2))
   using those_map_defn
   by (smt (z3) bind.bind_lunit bind_eq_None_conv ground_Condition.simps(6) map_ext option.collapse)
 
@@ -953,16 +988,16 @@ lemma eval_match_superset_idempotence:
   next
     case (VariablePattern x4)
     then show ?thesis
-      by (smt (verit) MATCH.distinct(6) MATCH.distinct(7) MATCH.inject(1) MATCH.simps(7) MATCH.simps(9) PatternExpr.simps(14) PatternExpr.simps(26) PatternExpr.simps(36) PatternExpr.simps(46) PatternExpr.simps(48) PatternExpr.simps(50) PatternExpr.simps(52) eval_match.simps match.prems(1))
+      by (smt (z3) CodePattern.distinct(17) CodePattern.distinct(27) CodePattern.distinct(37) CodePattern.distinct(39) CodePattern.distinct(41) CodePattern.distinct(43) CodePattern.distinct(5) MATCH.simps(1) MATCH.simps(11) MATCH.simps(13) MATCH.simps(7) MATCH.simps(9) eval_match.cases match.prems(1))
   next
     case (ConstantPattern x5)
     then show ?thesis
       using eval_match_ConditionalPattern
       by (metis domI eval_match.ConstantPattern eval_match_ConstantPattern map_le_def match.prems(1) match.prems(2))
   next
-    case (ConstantVarPattern x6)
+    case (ConstantVariablePattern x6)
     then show ?thesis
-      by (smt (verit) domI eval_match.simps eval_match_ConstantVarPattern map_le_def match.prems(1) match.prems(2))
+      by (smt (verit) domI eval_match.simps eval_match_ConstantVariablePattern map_le_def match.prems(1) match.prems(2))
   next
     case (ParameterPattern x7)
     then show ?thesis
@@ -1031,7 +1066,7 @@ lemma eval_match_idempotent:
       using eval_match_ConstantPattern match
       by blast
   next
-    case (ConstantVarPattern x6)
+    case (ConstantVariablePattern x6)
     then show ?thesis
       by (smt (verit) MATCH.distinct(3) domI eval_match.simps match unify_grows unify_idempotent)
   next
@@ -1085,19 +1120,19 @@ lemma eval_match_adds_patterns:
   shows "\<L> e \<subseteq> dom \<sigma>'"
   using assms proof (induct arbitrary: v \<Sigma>' \<sigma> \<sigma>' rule: lower.induct)
   case (VariableUnseen vn \<Sigma> s)
-  then show ?case
-    by (metis \<L>_IRExpr_def vars.simps(1) eval_match_noop singletonD subsetI)
+  then show ?case using \<L>_PatternExpr_def
+    by (metis vars.simps(1) eval_match_noop singletonD subsetI)
 next
   case (VariableSeen vn \<Sigma> v' s)
-  then show ?case 
-    by (metis \<L>_IRExpr_def vars.simps(1) eval_match_equality singletonD subsetI)
+  then show ?case using \<L>_PatternExpr_def
+    by (metis vars.simps(1) eval_match_equality singletonD subsetI)
 next
   case (ConstantPattern v' \<Sigma> c)
-  then show ?case using \<L>_IRExpr_def by simp
+  then show ?case by simp
 next
   case (UnaryPattern x \<Sigma> m\<^sub>x v\<^sub>x \<Sigma>\<^sub>x v' op)
-  then show ?case
-    by (metis \<L>_IRExpr_def vars.simps(4) eval_match_andthen valid_match.simps(2))
+  then show ?case using \<L>_PatternExpr_def
+    by (metis vars.simps(4) eval_match_andthen valid_match.simps(2))
 next
   case (BinaryPattern x \<Sigma> m\<^sub>x v\<^sub>x \<Sigma>\<^sub>x y m\<^sub>y v\<^sub>y \<Sigma>\<^sub>y v' op)
   obtain \<sigma>\<^sub>m where \<sigma>\<^sub>m: "match v' (BinaryPattern op v\<^sub>x v\<^sub>y) \<U> \<sigma> = \<sigma>\<^sub>m"
@@ -1106,16 +1141,16 @@ next
     by (metis BinaryPattern.prems(2) eval_match_andthen eval_match_deterministic)
   then obtain \<sigma>\<^sub>y where \<sigma>\<^sub>y: "m\<^sub>y \<U> \<sigma>\<^sub>x = \<sigma>\<^sub>y"
     by (metis BinaryPattern.prems(2) \<open>match v' (BinaryPattern op v\<^sub>x v\<^sub>y) \<U> \<sigma> = \<sigma>\<^sub>m\<close> eval_match_andthen eval_match_deterministic)
-  have xs: "\<L> x \<subseteq> dom \<sigma>\<^sub>x"
+  have xs: "vars x \<subseteq> dom \<sigma>\<^sub>x"
     using BinaryPattern.hyps(2) \<sigma>\<^sub>x BinaryPattern.prems(1) by auto
-  have ys: "\<L> y \<subseteq> dom \<sigma>\<^sub>y"
+  have ys: "vars y \<subseteq> dom \<sigma>\<^sub>y"
     using BinaryPattern.hyps(4) \<sigma>\<^sub>y BinaryPattern.prems(1) by auto
-  have "\<L> (BinaryExpr op x y) = \<L> x \<union> \<L> y"
-    using \<L>_IRExpr_def by simp
+  have "vars (BinaryExprPattern op x y) = \<L> x \<union> \<L> y"
+    by simp
   have "dom \<sigma>\<^sub>x \<union> dom \<sigma>\<^sub>y \<subseteq> dom \<sigma>'"
     by (metis AndThen BinaryPattern.prems(1) BinaryPattern.prems(2) \<sigma>\<^sub>m \<sigma>\<^sub>x \<sigma>\<^sub>y eval_match_deterministic eval_match_subset map_le_implies_dom_le subset_iff_psubset_eq sup_absorb2 valid_match.simps(2))
   then show ?case
-    by (metis Un_subset_iff \<open>\<L> (BinaryExpr op x y) = \<L> x \<union> \<L> y\<close> sup.absorb_iff1 xs ys)
+    by (metis Un_subset_iff \<L>_PatternExpr_def \<open>vars (BinaryExprPattern op x y) = \<L> x \<union> \<L> y\<close> sup.absorb_iff1 xs ys)
 next
   case (ConditionalPattern c \<Sigma> m\<^sub>c v\<^sub>c \<Sigma>\<^sub>c t m\<^sub>t v\<^sub>t \<Sigma>\<^sub>t f m\<^sub>f v\<^sub>f \<Sigma>\<^sub>f v')
   obtain \<sigma>\<^sub>m where \<sigma>\<^sub>m: "match v' (ConditionalPattern v\<^sub>c v\<^sub>t v\<^sub>f) \<U> \<sigma> = \<sigma>\<^sub>m"
@@ -1126,33 +1161,27 @@ next
     by (metis ConditionalPattern.prems(2) \<sigma>\<^sub>m eval_match_andthen eval_match_deterministic)
   then obtain \<sigma>\<^sub>f where \<sigma>\<^sub>f: "m\<^sub>f \<U> \<sigma>\<^sub>t = \<sigma>\<^sub>f"
     by (metis ConditionalPattern.prems(2) \<sigma>\<^sub>c \<sigma>\<^sub>m eval_match_andthen eval_match_deterministic)
-  have cs: "\<L> c \<subseteq> dom \<sigma>\<^sub>c"
+  have cs: "vars c \<subseteq> dom \<sigma>\<^sub>c"
     using ConditionalPattern.hyps(2) \<sigma>\<^sub>c ConditionalPattern.prems(1) by auto
-  have ts: "\<L> t \<subseteq> dom \<sigma>\<^sub>t"
+  have ts: "vars t \<subseteq> dom \<sigma>\<^sub>t"
     using ConditionalPattern.hyps(4) \<sigma>\<^sub>t ConditionalPattern.prems(1) by auto
-  have fs: "\<L> f \<subseteq> dom \<sigma>\<^sub>f"
+  have fs: "vars f \<subseteq> dom \<sigma>\<^sub>f"
     using ConditionalPattern.hyps(4) \<sigma>\<^sub>f ConditionalPattern.prems(1)
-    by (simp add: ConditionalPattern.hyps(6))
-  have "\<L> (ConditionalExpr c t f) = \<L> c \<union> \<L> t \<union> \<L> f"
-    using \<L>_IRExpr_def by simp
+    using ConditionalPattern.hyps(6) by auto
+  have vu: "vars (ConditionalExprPattern c t f) = \<L> c \<union> \<L> t \<union> \<L> f"
+    by simp
   have "dom \<sigma>\<^sub>c \<union> dom \<sigma>\<^sub>t \<union> dom \<sigma>\<^sub>f \<subseteq> dom \<sigma>'"
     by (metis ConditionalPattern.prems(1) ConditionalPattern.prems(2) Un_absorb1 \<sigma>\<^sub>c \<sigma>\<^sub>f \<sigma>\<^sub>m \<sigma>\<^sub>t eval_match_andthen eval_match_deterministic eval_match_subset map_le_implies_dom_le set_eq_subset valid_match.simps(2))
   then show ?case
-    by (metis \<open>\<L> (ConditionalExpr c t f) = \<L> c \<union> \<L> t \<union> \<L> f\<close> cs fs order.trans sup_mono ts)
+    by (metis vu \<L>_PatternExpr_def cs fs order.trans sup_mono ts)
 next
   case (ConstantVariableUnseen vn \<Sigma>)
-  then show ?case
-    by (metis \<L>_IRExpr_def vars.simps(2) domI eval_match_ConstantVarPattern singletonD subset_iff)
+  then show ?case using \<L>_PatternExpr_def
+    by (metis vars.simps(2) domI eval_match_ConstantVariablePattern singletonD subset_iff)
 next
   case (ConstantVariableSeen vn \<Sigma> v')
-  then show ?case
-    by (metis \<L>_IRExpr_def vars.simps(2) eval_match_andthen eval_match_equality singletonD subsetI)
-next
-  case (ParameterPattern v' \<Sigma> nid s)
-  then show ?case using \<L>_IRExpr_def by simp
-next
-  case (LeafPattern v' \<Sigma> nid s)
-  then show ?case using \<L>_IRExpr_def by simp
+  then show ?case using \<L>_PatternExpr_def
+    by (metis vars.simps(2) eval_match_andthen eval_match_equality singletonD subsetI)
 qed
 
 lemma restricted_union:
@@ -1182,29 +1211,29 @@ theorem lower_sound:
   assumes "m \<U> \<sigma>(v \<mapsto> e\<^sub>g) = \<sigma>'"
   shows "match_tree e\<^sub>p e\<^sub>g = Some (\<sigma>'|`(\<L> e\<^sub>p))"
   using assms(3,2,1,4) proof (induct arbitrary: \<sigma> e\<^sub>g \<sigma>' rule: lower.induct)
-  case (VariableUnseen vn \<Sigma> s)
+  case (VariableUnseen vn \<Sigma>)
   have "\<sigma>' = \<sigma>(vn \<mapsto> e\<^sub>g)"
     using VariableUnseen.prems
     by (meson eval_match_noop)
-  then have "(\<sigma>' |` \<L> (VariableExpr vn s)) = (\<sigma> |` \<L> (VariableExpr vn s))(vn \<mapsto> e\<^sub>g)"
-    using \<L>_IRExpr_def by simp
+  then have "(\<sigma>' |` \<L> (VariableExprPattern vn)) = (\<sigma> |` \<L> (VariableExprPattern vn))(vn \<mapsto> e\<^sub>g)"
+    by simp
   then show ?case
-    using \<L>_IRExpr_def by force
+    by force
 next
-  case (VariableSeen vn \<Sigma> v' s)
+  case (VariableSeen vn \<Sigma> v')
   have "v' \<noteq> vn"
-    using VariableSeen.hyps VariableSeen.prems(2) valid_pattern_preserves_freshness \<L>_IRExpr_def by fastforce
+    using VariableSeen.hyps VariableSeen.prems(2) valid_pattern_preserves_freshness by fastforce
   also have "\<sigma>' = \<sigma>(v' \<mapsto> e\<^sub>g)"
     using VariableSeen.prems(3) calculation(1) 
     using eval_match.simps by blast
   ultimately show ?case
-    using VariableSeen.prems(3) eval_match_equality \<L>_IRExpr_def by fastforce
+    using VariableSeen.prems(3) eval_match_equality by fastforce
 next
   case (ConstantPattern v' \<Sigma> c)
   have "e\<^sub>g = ConstantExpr c"
     by (meson ConstantPattern.prems(3) eval_match_ConstantPattern map_upd_Some_unfold)
   then show ?case
-    using \<L>_IRExpr_def by simp
+    by simp
 next
   case (UnaryPattern x \<Sigma> m\<^sub>x v\<^sub>x \<Sigma>\<^sub>x v' op)
   obtain \<sigma>\<^sub>m where m1: "match v' (UnaryPattern op v\<^sub>x) \<U> \<sigma>(v' \<mapsto> e\<^sub>g) = \<sigma>\<^sub>m"
@@ -1225,7 +1254,7 @@ next
       using UnaryPattern by fastforce
   qed
   then show ?case
-    using e\<^sub>g \<L>_IRExpr_def by auto
+    using e\<^sub>g by auto
 next
   case (BinaryPattern x \<Sigma> m\<^sub>x v\<^sub>x \<Sigma>\<^sub>x y m\<^sub>y v\<^sub>y \<Sigma>\<^sub>y v' op)
   obtain \<sigma>\<^sub>m where s1: "match v' (BinaryPattern op v\<^sub>x v\<^sub>y) \<U> \<sigma>(v' \<mapsto> e\<^sub>g) = \<sigma>\<^sub>m"
@@ -1259,10 +1288,10 @@ next
       by (metis list.set_intros(1) m2 unify_unempty)
     then show ?thesis
       using BinaryPattern
-      using lower_finite valid_pattern.simps(5) by blast
+      using lower_finite by fastforce
   qed
   have comp: "compatible \<sigma>\<^sub>x \<sigma>'" using mx
-    using  CodeGenAlt.compatible.elims(3) eval_match_andthen eval_match_deterministic eval_match_subset m1 map_le_def s1 valid_match.simps(4)
+    using compatible.elims(3) eval_match_andthen eval_match_deterministic eval_match_subset m1 map_le_def s1 valid_match.simps(4)
     compatible_alt by (metis BinaryPattern.hyps(1,3) BinaryPattern.prems(1,2,3) lower_finite lower_valid_matches valid_pattern.simps(5) valid_pattern_preserves_freshness)
   then have comp': "compatible (\<sigma>\<^sub>x |` \<L> x) (\<sigma>' |` \<L> y)"
     using compatible_alt by (metis (full_types) domIff restrict_in restrict_out)
@@ -1270,19 +1299,19 @@ next
     using mx
     by (metis BinaryPattern.hyps(1,3) BinaryPattern.prems(1,2,3) eval_match_andthen eval_match_deterministic eval_match_subset lower_finite lower_valid_matches m1 map_add_subsumed1 s1 valid_pattern.simps(5) valid_pattern_preserves_freshness)
   have "(dom \<sigma>' - dom \<sigma>\<^sub>x) \<inter> \<L> x = {}" \<comment> \<open>Ian: This is the troublesome case\<close>
-    using eval_match_adds_patterns
+    using eval_match_adds_patterns \<L>_PatternExpr_def
     by (metis BinaryPattern.hyps(1) BinaryPattern.prems(1,2) DiffD2 disjoint_iff lower_valid_matches m1 subset_eq valid_pattern.simps(5) valid_pattern_preserves_freshness)
   then have "(\<sigma>\<^sub>x |` \<L> x) ++ (\<sigma>' |` \<L> y) = (\<sigma>' |` \<L> x) ++ (\<sigma>' |` \<L> y)"
     using compatible_alt by (metis (no_types, lifting) \<open>\<sigma>\<^sub>x ++ \<sigma>' = \<sigma>'\<close> comp map_add_None map_le_def restricted_unchanged)
-  then have "(\<sigma>\<^sub>x |` \<L> x) ++ (\<sigma>' |` \<L> y) = (\<sigma>' |` (\<L> x \<union> \<L> y))"
+  then have "(\<sigma>\<^sub>x |` \<L> x) ++ (\<sigma>' |` \<L> y) = (\<sigma>' |` (vars x \<union> \<L> y))"
     by (simp add: restricted_union)
-  then have "(\<sigma>\<^sub>x |` \<L> x) ++ (\<sigma>' |` \<L> y) = (\<sigma>' |` \<L> (BinaryExpr op x y))"
-    using \<L>_IRExpr_def by auto
-  then have "Some (\<sigma>\<^sub>x |` \<L> x) \<uplus> Some (\<sigma>' |` \<L> y) = Some (\<sigma>' |` \<L> (BinaryExpr op x y))"
+  then have "(\<sigma>\<^sub>x |` \<L> x) ++ (\<sigma>' |` \<L> y) = (\<sigma>' |` \<L> (BinaryExprPattern op x y))"
+    by auto
+  then have "Some (\<sigma>\<^sub>x |` \<L> x) \<uplus> Some (\<sigma>' |` \<L> y) = Some (\<sigma>' |` \<L> (BinaryExprPattern op x y))"
     using comp' unfolding substitution_union.simps
     by fastforce
   then show ?case using mt1 mt2 e\<^sub>g
-    using match_tree.simps(2) by presburger
+    by simp
 next
   case (ConditionalPattern c \<Sigma> m\<^sub>c v\<^sub>c \<Sigma>\<^sub>c t m\<^sub>t v\<^sub>t \<Sigma>\<^sub>t f m\<^sub>f v\<^sub>f \<Sigma>\<^sub>f v')
   obtain \<sigma>\<^sub>m where s1: "match v' (ConditionalPattern v\<^sub>c v\<^sub>t v\<^sub>f) \<U> \<sigma>(v' \<mapsto> e\<^sub>g) = \<sigma>\<^sub>m"
@@ -1314,9 +1343,7 @@ next
       using m1 m2 u1 unify_partition
       by (metis list.set_intros(1) mx unify_unempty)
     then show ?thesis
-      using ConditionalPattern
-      using lower_finite valid_pattern.simps(6)
-      by meson
+      using ConditionalPattern lower_finite by fastforce
   qed
   then have mt3: "match_tree f e\<^sub>f = Some (\<sigma>' |` \<L> f)"
   proof -
@@ -1328,8 +1355,7 @@ next
       by (meson list.set_intros(1) list.set_intros(2) map_le_trans mx mxt)
     then show ?thesis
       using ConditionalPattern
-      using lower_finite valid_pattern.simps(6)
-      by meson
+      by (metis \<L>_PatternExpr_def lower_finite valid_pattern.simps(6))
   qed
   then have mxs: "\<sigma>\<^sub>t \<subseteq>\<^sub>m \<sigma>'"
     by (metis ConditionalPattern.hyps(1) ConditionalPattern.hyps(3) ConditionalPattern.hyps(5) ConditionalPattern.prems(1) ConditionalPattern.prems(2) ConditionalPattern.prems(3) eval_match_andthen eval_match_deterministic eval_match_subset lower_finite lower_valid_matches m1 m2 s1 valid_pattern.simps(6) valid_pattern_preserves_freshness)
@@ -1346,7 +1372,7 @@ next
     using mx
     by (metis ConditionalPattern.hyps(1) ConditionalPattern.hyps(3) ConditionalPattern.hyps(5) ConditionalPattern.prems(1) ConditionalPattern.prems(2) ConditionalPattern.prems(3) eval_match_andthen eval_match_deterministic eval_match_subset lower_finite lower_valid_matches m1 m2 map_add_subsumed1 s1 valid_pattern.simps(6) valid_pattern_preserves_freshness)
   have "(dom \<sigma>\<^sub>t - dom \<sigma>\<^sub>c) \<inter> \<L> c= {}" \<comment> \<open>Ian: This is the troublesome case\<close>
-    using eval_match_adds_patterns
+    using eval_match_adds_patterns \<L>_PatternExpr_def
     by (metis ConditionalPattern.hyps(1) ConditionalPattern.prems(1) ConditionalPattern.prems(2) DiffD2 disjoint_iff in_mono lower_valid_matches m1 valid_pattern.simps(6) valid_pattern_preserves_freshness)
   then have tplus: "(\<sigma>\<^sub>c |` \<L> c) ++ (\<sigma>\<^sub>t |` \<L> t) = (\<sigma>\<^sub>t |` \<L> c) ++ (\<sigma>\<^sub>t |` \<L> t)"
     by (simp add: mxt restricted_unchanged)
@@ -1354,50 +1380,41 @@ next
     using eval_match_adds_patterns
     using ConditionalPattern.hyps(1) ConditionalPattern.prems(1) ConditionalPattern.prems(2) lower_valid_matches m1 valid_pattern_preserves_freshness by fastforce
   then have tplus: "(\<sigma>\<^sub>c |` \<L> c) ++ (\<sigma>\<^sub>t |` \<L> t) = (\<sigma>' |` \<L> c) ++ (\<sigma>' |` \<L> t)"
-    using tplus mxs
+    using tplus mxs \<L>_PatternExpr_def
     by (smt (verit, ccfv_threshold) ConditionalPattern.hyps(1) ConditionalPattern.hyps(3) ConditionalPattern.prems(1) ConditionalPattern.prems(2) Diff_disjoint disjoint_iff eval_match_adds_patterns in_mono lower_finite lower_valid_matches m1 m2 map_le_trans mxt restricted_unchanged valid_pattern.simps(6) valid_pattern_preserves_freshness)
   then have "(\<sigma>\<^sub>c |` \<L> c) ++ ((\<sigma>\<^sub>t |` \<L> t) ++ (\<sigma>' |` \<L> f)) = ((\<sigma>' |` \<L> c) ++ (\<sigma>' |` \<L> t)) ++ (\<sigma>' |` \<L> f)"
     by simp
   then have uadd: "(\<sigma>\<^sub>c |` \<L> c) ++ ((\<sigma>\<^sub>t |` \<L> t) ++ (\<sigma>' |` \<L> f)) = (\<sigma>' |` (\<L> c \<union> \<L> t \<union> \<L> f))"
     by (simp add: restricted_union)
-  then have "(\<sigma>\<^sub>c |` \<L> c) ++ ((\<sigma>\<^sub>t |` \<L> t) ++ (\<sigma>' |` \<L> f)) = (\<sigma>' |` \<L> (ConditionalExpr c t f))"
-    using \<L>_IRExpr_def by auto
-  then have "Some (\<sigma>\<^sub>c |` \<L> c) \<uplus> (Some (\<sigma>\<^sub>t |` \<L> t) \<uplus> Some (\<sigma>' |` \<L> f)) = Some (\<sigma>' |` \<L> (ConditionalExpr c t f))"
+  then have "(\<sigma>\<^sub>c |` \<L> c) ++ ((\<sigma>\<^sub>t |` \<L> t) ++ (\<sigma>' |` \<L> f)) = (\<sigma>' |` \<L> (ConditionalExprPattern c t f))"
+    by auto
+  then have "Some (\<sigma>\<^sub>c |` \<L> c) \<uplus> (Some (\<sigma>\<^sub>t |` \<L> t) \<uplus> Some (\<sigma>' |` \<L> f)) = Some (\<sigma>' |` \<L> (ConditionalExprPattern c t f))"
     using compc compt unfolding substitution_union.simps apply simp
     using uadd
     by (metis Int_iff UnE domIff map_add_dom_app_simps(1) map_add_dom_app_simps(3) map_le_def mxs mxt restrict_in restrict_out)
-  then show ?case using mt1 mt2 mt3 e\<^sub>g
-    using match_tree.simps(3) by presburger
+  then show ?case using mt1 mt2 mt3 e\<^sub>g by simp
 next
   case (ConstantVariableUnseen vn \<Sigma> v')
   obtain c where "e\<^sub>g = ConstantExpr c"
-    by (meson ConstantVariableUnseen.prems(3) eval_match_ConstantVarPattern map_upd_Some_unfold)
-  then have mt: "match_tree (ConstantVar vn) e\<^sub>g = Some [vn \<mapsto> ConstantExpr c]"
+    by (meson ConstantVariableUnseen.prems(3) eval_match_ConstantVariablePattern map_upd_Some_unfold)
+  then have mt: "match_tree (ConstantVarPattern vn) e\<^sub>g = Some [vn \<mapsto> ConstantExpr c]"
     by auto
   have "\<sigma>' vn = Some (ConstantExpr c)"
-    by (metis ConstantVariableUnseen.prems(3) \<open>e\<^sub>g = ConstantExpr c\<close> eval_match_ConstantVarPattern fun_upd_same)
+    by (metis ConstantVariableUnseen.prems(3) \<open>e\<^sub>g = ConstantExpr c\<close> eval_match_ConstantVariablePattern fun_upd_same)
   also have "\<sigma>' |` {vn} = [vn \<mapsto> ConstantExpr c]"
     using calculation by auto
-  then show ?case using mt \<L>_IRExpr_def by auto
+  then show ?case using mt by auto
 next
   case (ConstantVariableSeen vn \<Sigma> v' v'')
   obtain c where "e\<^sub>g = ConstantExpr c"
-    by (meson ConstantVariableSeen.prems(3) eval_match_ConstantVarPattern eval_match_andthen map_upd_Some_unfold)
-  then have mt: "match_tree (ConstantVar vn) e\<^sub>g = Some [vn \<mapsto> ConstantExpr c]"
+    by (meson ConstantVariableSeen.prems(3) eval_match_ConstantVariablePattern eval_match_andthen map_upd_Some_unfold)
+  then have mt: "match_tree (ConstantVarPattern vn) e\<^sub>g = Some [vn \<mapsto> ConstantExpr c]"
     by auto
   have "\<sigma>' vn = Some (ConstantExpr c)"
-    by (metis ConstantVariableSeen.prems(3) \<open>e\<^sub>g = ConstantExpr c\<close> eval_match_ConstantVarPattern eval_match_andthen eval_match_equality fun_upd_same)
+    by (metis ConstantVariableSeen.prems(3) \<open>e\<^sub>g = ConstantExpr c\<close> eval_match_ConstantVariablePattern eval_match_andthen eval_match_equality fun_upd_same)
   also have "\<sigma>' |` {vn} = [vn \<mapsto> ConstantExpr c]"
     using calculation by auto
-  then show ?case using mt \<L>_IRExpr_def by auto
-next
-  case (ParameterPattern v' \<Sigma> nid s)
-  then show ?case
-    using eval_match_ParameterPattern \<L>_IRExpr_def by fastforce
-next
-  case (LeafPattern v' \<Sigma> nid s)
-  then show ?case
-    using eval_match_LeafPattern \<L>_IRExpr_def by fastforce
+  then show ?case using mt by auto
 qed
 
 end
@@ -1423,7 +1440,7 @@ instance apply standard
 end
 
 datatype Rules =
-  base IRExpr |
+  base PatternExpr |
   cond MATCH Rules |
   either Rules Rules |
   seq Rules Rules |
@@ -1450,8 +1467,9 @@ fun valid_rules :: "Rules \<Rightarrow> bool" where
 
 fun match_entry_var :: "MATCH \<Rightarrow> VarName option" where
   "match_entry_var (match v p) = Some v" |
-  "match_entry_var (v1 == v2) = None" |
+  "match_entry_var (equality v1 v2) = None" |
   "match_entry_var (m1 && m2) = (case match_entry_var m1 of Some v \<Rightarrow> Some v | None \<Rightarrow> match_entry_var m2)" |
+  "match_entry_var (condition c) = None" |
   "match_entry_var (noop v) = None"
 
 abbreviation map_filter :: "('a \<Rightarrow> 'b option) \<Rightarrow> 'a list \<Rightarrow> 'b list" where
@@ -1466,7 +1484,7 @@ fun entry_var :: "Rules \<Rightarrow> VarName option" where
 
 inductive eval_rules :: "Rules \<Rightarrow> Subst \<Rightarrow> IRExpr option \<Rightarrow> bool" where
   \<comment> \<open>Evaluate the result\<close>
-  "eval_rules (base e) \<sigma> (e $ \<sigma>)" |
+  "eval_rules (base e) \<sigma> (e $$ \<sigma>)" |
 
   \<comment> \<open>Evaluate a condition\<close>
   "\<lbrakk>m \<U> \<sigma> = \<sigma>';
@@ -1507,20 +1525,20 @@ inductive_cases choiceE: "eval_rules (choice r) u e"
 inductive_cases seqE: "eval_rules (r1 \<Zsemi> r2) u e"
 
 
-inductive generate :: "IRExpr \<Rightarrow> Condition option \<Rightarrow> IRExpr \<Rightarrow> VarName \<Rightarrow> Rules \<Rightarrow> bool"
+inductive generate :: "PatternExpr \<Rightarrow> Condition option \<Rightarrow> PatternExpr \<Rightarrow> VarName \<Rightarrow> Rules \<Rightarrow> bool"
   ("'(_, _, _') \<leadsto> '(_, _')" 70) where
   "(e\<^sub>p, {}) \<leadsto> (m, v, \<Sigma>) \<Longrightarrow> (e\<^sub>p, Some c, e\<^sub>r) \<leadsto> (v, m ? (condition c ? base e\<^sub>r))" |
   "(e\<^sub>p, {}) \<leadsto> (m, v, \<Sigma>) \<Longrightarrow> (e\<^sub>p, None, e\<^sub>r) \<leadsto> (v, m ? base e\<^sub>r)"
 
 code_pred (modes: i \<Rightarrow> i \<Rightarrow> i \<Rightarrow> o \<Rightarrow> o \<Rightarrow> bool as generateC) generate .
 
-definition generateRule :: "IRExpr \<Rightarrow> Condition option \<Rightarrow> IRExpr \<Rightarrow> (VarName \<times> Rules)" where
+definition generateRule :: "PatternExpr \<Rightarrow> Condition option \<Rightarrow> PatternExpr \<Rightarrow> (VarName \<times> Rules)" where
   "generateRule p c r = Predicate.the (generateC p c r)"
 
 value "Predicate.the (generateC 
-    (BinaryExpr BinSub (BinaryExpr BinAdd (VariableExpr STR ''x'' default_stamp) (VariableExpr STR ''y'' default_stamp)) (VariableExpr STR ''x'' default_stamp))
+    (BinaryExprPattern BinSub (BinaryExprPattern BinAdd (VariableExprPattern STR ''x'') (VariableExprPattern STR ''y'')) (VariableExprPattern STR ''x''))
     None 
-    (VariableExpr STR ''x'' default_stamp))"
+    (VariableExprPattern STR ''x''))"
 
 lemma ground_restriction:
   assumes "\<L> e \<subseteq> S"
@@ -1542,20 +1560,20 @@ proof -
     by (metis assms(1) assms(2) condE generate.cases lower_deterministic)
   then have "eval_rules (base e\<^sub>r) \<sigma>' e"
     by (smt (verit, ccfv_threshold) assms(1) assms(2) condE eval_match_condition eval_match_deterministic generate.simps lower_deterministic mgen)
-  then have e: "e = (e\<^sub>r $ \<sigma>')"
+  then have e: "e = (e\<^sub>r $$ \<sigma>')"
     using eval_rules.simps by blast
   have "valid_match m"
     using mgen assms(3) lower_valid_matches valid_pattern_preserves_freshness by blast
   then have mt: "match_tree e\<^sub>p e\<^sub>g = Some (\<sigma>'|`(\<L> e\<^sub>p))"
     using lower_sound
-    using mgen meval assms(3) by blast
-  then have mtsimp: "e\<^sub>r $ the (match_tree e\<^sub>p e\<^sub>g) = e\<^sub>r $ \<sigma>'"
-    using ground_restriction assms(4)
-    by (metis option.sel \<L>_IRExpr_def)
+    by (metis \<L>_PatternExpr_def assms(3) finite.emptyI meval mgen)
+  then have mtsimp: "e\<^sub>r $$ the (match_tree e\<^sub>p e\<^sub>g) = e\<^sub>r $$ \<sigma>'"
+    using ground_PatternExpr_restriction assms(4) \<L>_PatternExpr_def
+    by (metis option.sel)
   then show ?thesis proof (cases c)
     case None
     then show ?thesis
-      using \<open>e\<^sub>r $ the (match_tree e\<^sub>p e\<^sub>g) = e\<^sub>r $ \<sigma>'\<close> \<open>match_tree e\<^sub>p e\<^sub>g = Some (\<sigma>' |` \<L> e\<^sub>p)\<close> e rewrite_def by auto
+      using \<open>e\<^sub>r $$ the (match_tree e\<^sub>p e\<^sub>g) = e\<^sub>r $$ \<sigma>'\<close> \<open>match_tree e\<^sub>p e\<^sub>g = Some (\<sigma>' |` \<L> e\<^sub>p)\<close> e rewrite_def by auto
   next
     case (Some c)
     obtain c' where "c $ \<sigma>' = Some c'"
@@ -1572,31 +1590,29 @@ thm_oracles generate_sound
 
 section \<open>Optimizations\<close>
 
-inductive groundof :: "Subst \<Rightarrow> IRExpr \<Rightarrow> IRExpr \<Rightarrow> bool" ("_ \<turnstile> _ \<preceq> _" 60) where
+inductive groundof :: "Subst \<Rightarrow> IRExpr \<Rightarrow> PatternExpr \<Rightarrow> bool" ("_ \<turnstile> _ \<preceq> _" 60) where
   "\<lbrakk>\<sigma> \<turnstile> x \<preceq> x'\<rbrakk>
-    \<Longrightarrow> \<sigma> \<turnstile> (UnaryExpr op x) \<preceq> (UnaryExpr op x')" |
+    \<Longrightarrow> \<sigma> \<turnstile> (UnaryExpr op x) \<preceq> (UnaryExprPattern op x')" |
   "\<lbrakk>\<sigma> \<turnstile> x \<preceq> x'; \<sigma> \<turnstile> y \<preceq> y'\<rbrakk>
-    \<Longrightarrow> \<sigma> \<turnstile> (BinaryExpr op x y) \<preceq> (BinaryExpr op x' y')" |
+    \<Longrightarrow> \<sigma> \<turnstile> (BinaryExpr op x y) \<preceq> (BinaryExprPattern op x' y')" |
   "\<lbrakk>\<sigma> \<turnstile> c \<preceq> c'; \<sigma> \<turnstile> t \<preceq> t'; \<sigma> \<turnstile> f \<preceq> f'\<rbrakk>
-    \<Longrightarrow> \<sigma> \<turnstile> (ConditionalExpr c t f) \<preceq> (ConditionalExpr c' t' f')" |
-  "\<sigma> \<turnstile> (ParameterExpr i s) \<preceq> (ParameterExpr i s')" |
-  "\<sigma> \<turnstile> (LeafExpr nid s) \<preceq> (LeafExpr nid s')" |
-  "\<sigma> \<turnstile> (ConstantExpr c) \<preceq> (ConstantExpr c)" |
+    \<Longrightarrow> \<sigma> \<turnstile> (ConditionalExpr c t f) \<preceq> (ConditionalExprPattern c' t' f')" |
+  "\<sigma> \<turnstile> (ConstantExpr c) \<preceq> (ConstantExprPattern c)" |
   "\<lbrakk>\<sigma> vn = Some (ConstantExpr c)\<rbrakk>
-    \<Longrightarrow> \<sigma> \<turnstile> (ConstantExpr c) \<preceq> (ConstantVar vn)" |
+    \<Longrightarrow> \<sigma> \<turnstile> (ConstantExpr c) \<preceq> (ConstantVarPattern vn)" |
   "\<lbrakk>\<sigma> vn = Some e\<rbrakk>
-    \<Longrightarrow> \<sigma> \<turnstile> e \<preceq> (VariableExpr vn s)"
+    \<Longrightarrow> \<sigma> \<turnstile> e \<preceq> (VariableExprPattern vn)" |
+  "\<lbrakk>evaluate c = Some c'\<rbrakk>
+    \<Longrightarrow> \<sigma> \<turnstile> (ConstantExpr c') \<preceq> (ConstantLiteralPattern c)"
 
 
-inductive_cases groundof_UnaryExpr: "\<sigma> \<turnstile> g \<preceq> (UnaryExpr op x)"
-inductive_cases groundof_BinaryExpr: "\<sigma> \<turnstile> g \<preceq> (BinaryExpr op x y)"
-inductive_cases groundof_ConditionalExpr: "\<sigma> \<turnstile> g \<preceq> (ConditionalExpr c t f)"
-inductive_cases groundof_ParameterExpr: "\<sigma> \<turnstile> g \<preceq> (ParameterExpr i s)"
-inductive_cases groundof_LeafExpr: "\<sigma> \<turnstile> g \<preceq> (LeafExpr nid s)"
-inductive_cases groundof_ConstantExpr: "\<sigma> \<turnstile> g \<preceq> (ConstantExpr c)"
-inductive_cases groundof_ConstantVar: "\<sigma> \<turnstile> g \<preceq> (ConstantVar v)"
-inductive_cases groundof_VariableExpr: "\<sigma> \<turnstile> g \<preceq> (VariableExpr vn s)"
-
+inductive_cases groundof_UnaryExpr: "\<sigma> \<turnstile> g \<preceq> (UnaryExprPattern op x)"
+inductive_cases groundof_BinaryExpr: "\<sigma> \<turnstile> g \<preceq> (BinaryExprPattern op x y)"
+inductive_cases groundof_ConditionalExpr: "\<sigma> \<turnstile> g \<preceq> (ConditionalExprPattern c t f)"
+inductive_cases groundof_ConstantExpr: "\<sigma> \<turnstile> g \<preceq> (ConstantExprPattern c)"
+inductive_cases groundof_ConstantVar: "\<sigma> \<turnstile> g \<preceq> (ConstantVarPattern v)"
+inductive_cases groundof_VariableExpr: "\<sigma> \<turnstile> g \<preceq> (VariableExprPattern vn)"
+inductive_cases groundof_ConstantLiteralPattern: "\<sigma> \<turnstile> g \<preceq> (ConstantLiteralPattern e)"
 
 (*
 definition pattern_refinement :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> bool" where
@@ -1607,30 +1623,31 @@ definition pattern_refinement :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> bool
   "pattern_refinement e\<^sub>1 e\<^sub>2 = (\<forall>\<sigma>. (ground_substitution \<sigma> \<and> \<L> e\<^sub>1 \<subseteq> dom \<sigma>) 
                                 \<longrightarrow> (\<forall>ge\<^sub>1 ge\<^sub>2. ((\<sigma> \<turnstile> ge\<^sub>1 \<preceq> e\<^sub>1) \<and> (\<sigma> \<turnstile> ge\<^sub>2 \<preceq> e\<^sub>2)) \<longrightarrow> ge\<^sub>1 \<le> ge\<^sub>2))"
 *)
-definition pattern_refinement :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> bool" where
+definition pattern_refinement :: "PatternExpr \<Rightarrow> PatternExpr \<Rightarrow> bool" where
   "pattern_refinement e\<^sub>1 e\<^sub>2 = (\<forall>\<sigma>. \<forall>ge\<^sub>1 ge\<^sub>2. (\<sigma> \<turnstile> ge\<^sub>1 \<preceq> e\<^sub>1) \<and> (\<sigma> \<turnstile> ge\<^sub>2 \<preceq> e\<^sub>2) \<longrightarrow> ge\<^sub>1 \<le> ge\<^sub>2)"
 
 lemma ground_requires_mdom:
   assumes "m \<turnstile> ge1 \<preceq> e1"
   shows "(\<forall>var \<in> \<L> e1. (\<exists>e. m var = Some e))"
-  using assms \<L>_IRExpr_def apply (induction rule: groundof.induct) by auto
+  using assms apply (induction rule: groundof.induct) by auto
 
 lemma ground_refinement:
   assumes "pattern_refinement e\<^sub>1 e\<^sub>2"
-  assumes "ground_substitution \<sigma>"
   assumes "\<sigma> \<turnstile> ge\<^sub>1 \<preceq> e\<^sub>1"
   assumes "\<sigma> \<turnstile> ge\<^sub>2 \<preceq> e\<^sub>2"
   shows "ge\<^sub>1 \<le> ge\<^sub>2"
 proof -
   have "(\<forall>var \<in> \<L> e\<^sub>1. (\<exists>e. \<sigma> var = Some e))"
-    using ground_requires_mdom assms(3) by simp
+    using ground_requires_mdom
+    using assms(2) by presburger
   then have f: "(\<And>ge1 ge2. ((\<sigma> \<turnstile> ge1 \<preceq> e\<^sub>1) \<and> (\<sigma> \<turnstile> ge2 \<preceq> e\<^sub>2)) \<Longrightarrow> ge1 \<le> ge2)"
     using assms(1,2) unfolding pattern_refinement_def by auto
   show ?thesis
     apply (rule f)
-    using assms(3,4) by simp
+    by (simp add: assms(2) assms(3))
 qed
 
+(*
 lemma is_ground_UnaryExpr:
   "is_ground (UnaryExpr op x) = is_ground x"
   by (simp add: is_ground_def \<L>_IRExpr_def)
@@ -1663,63 +1680,61 @@ lemma match_tree_ground:
   apply (metis domIff ground_substitution_def match_tree.simps(6) match_tree_ConstantExpr option.sel)
   apply (smt (verit, ccfv_SIG) domI dom_empty equals0D ground_substitution_def map_upd_Some_unfold match_tree.simps(7) match_tree_ConstantVar option.inject)
   by (metis domI domIff dom_empty dom_fun_upd fun_upd_same ground_substitution_def match_tree.simps(8) option.inject singleton_iff)
+*)
 
 lemma ground_groundof:
-  assumes "Some g = p $ \<sigma>"
+  assumes "Some g = p $$ \<sigma>"
   shows "\<sigma> \<turnstile> g \<preceq> p"
   using assms proof (induction p arbitrary: \<sigma> g)
-  case (UnaryExpr op x)
-  obtain xg where xg: "Some xg = x $ \<sigma>"
-    by (metis UnaryExpr.prems bind_eq_Some_conv ground_IRExpr.simps(1))
+  case (UnaryExprPattern op x)
+  obtain xg where xg: "Some xg = x $$ \<sigma>"
+    by (metis UnaryExprPattern.prems bind_eq_Some_conv ground_PatternExpr.simps(1))
   have "g = UnaryExpr op xg"
-    by (metis UnaryExpr.prems bind.bind_lunit ground_IRExpr.simps(1) option.sel xg)
+    by (metis UnaryExprPattern.prems bind.bind_lunit ground_PatternExpr.simps(1) option.sel xg)
   then show ?case
-    using UnaryExpr.IH groundof.intros(1) xg by blast
+    using UnaryExprPattern.IH groundof.intros(1) xg by blast
 next
-  case (BinaryExpr op x y)
-  obtain xg where xg: "Some xg = x $ \<sigma>"
-    by (metis BinaryExpr.prems bind_eq_Some_conv ground_IRExpr.simps(2))
-  obtain yg where yg: "Some yg = y $ \<sigma>"
-    by (metis (no_types, lifting) BinaryExpr.prems bind_eq_Some_conv ground_IRExpr.simps(2))
+  case (BinaryExprPattern op x y)
+  obtain xg where xg: "Some xg = x $$ \<sigma>"
+    by (metis BinaryExprPattern.prems bind_eq_Some_conv ground_PatternExpr.simps(2))
+  obtain yg where yg: "Some yg = y $$ \<sigma>"
+    by (metis (no_types, lifting) BinaryExprPattern.prems bind_eq_Some_conv ground_PatternExpr.simps(2))
   have "g = BinaryExpr op xg yg"
-    by (metis BinaryExpr.prems bind.bind_lunit ground_IRExpr.simps(2) option.sel xg yg)
+    by (metis BinaryExprPattern.prems bind.bind_lunit ground_PatternExpr.simps(2) option.sel xg yg)
   then show ?case
-    by (meson BinaryExpr.IH(1) BinaryExpr.IH(2) groundof.intros(2) xg yg)
+    by (meson BinaryExprPattern.IH(1) BinaryExprPattern.IH(2) groundof.intros(2) xg yg)
 next
-  case (ConditionalExpr c t f)
-  obtain cg where cg: "Some cg = c $ \<sigma>"
-    by (metis (no_types, lifting) ConditionalExpr.prems bind_split ground_IRExpr.simps(3) is_none_code(2) is_none_simps(1))
-  obtain tg where tg: "Some tg = t $ \<sigma>"
-    by (metis (no_types, lifting) ConditionalExpr.prems bind_eq_None_conv ground_IRExpr.simps(3) option.collapse)
-  obtain fg where fg: "Some fg = f $ \<sigma>"
-    by (metis (no_types, lifting) ConditionalExpr.prems bind_eq_None_conv ground_IRExpr.simps(3) option.collapse)
+  case (ConditionalExprPattern c t f)
+  obtain cg where cg: "Some cg = c $$ \<sigma>"
+    by (metis (no_types, lifting) ConditionalExprPattern.prems bind_split ground_PatternExpr.simps(3) is_none_code(2) is_none_simps(1))
+  obtain tg where tg: "Some tg = t $$ \<sigma>"
+    by (metis (no_types, lifting) ConditionalExprPattern.prems bind_eq_None_conv ground_PatternExpr.simps(3) option.collapse)
+  obtain fg where fg: "Some fg = f $$ \<sigma>"
+    by (metis (no_types, lifting) ConditionalExprPattern.prems bind_eq_None_conv ground_PatternExpr.simps(3) option.collapse)
   have "g = ConditionalExpr cg tg fg"
-    by (metis ConditionalExpr.prems bind.bind_lunit cg fg ground_IRExpr.simps(3) option.inject tg)
+    by (metis ConditionalExprPattern.prems bind.bind_lunit cg fg ground_PatternExpr.simps(3) option.inject tg)
   then show ?case
-    by (simp add: ConditionalExpr.IH(1) ConditionalExpr.IH(2) ConditionalExpr.IH(3) cg fg groundof.intros(3) tg)
+    by (simp add: ConditionalExprPattern.IH(1) ConditionalExprPattern.IH(2) ConditionalExprPattern.IH(3) cg fg groundof.intros(3) tg)
 next
-  case (ParameterExpr x1 x2)
+  case (ConstantExprPattern x)
   then show ?case
     using groundof.intros(4) by force
 next
-  case (LeafExpr x1 x2)
-  then show ?case
-    by (simp add: groundof.intros(5))
-next
-  case (ConstantExpr x)
-  then show ?case
-    using groundof.intros(6) by force
-next
-  case (ConstantVar x)
+  case (ConstantVarPattern x)
   obtain c where "\<sigma> x = Some (ConstantExpr c)"
-    by (smt (verit, ccfv_threshold) ConstantVar IRExpr.case_eq_if IRExpr.collapse(6) ground_IRExpr.simps(5) option.case_eq_if option.collapse option.distinct(1))  
+    using ground_PatternExpr.simps(6)
+    by (smt (verit, ccfv_threshold) ConstantVarPattern IRExpr.case_eq_if IRExpr.collapse(6) ground_PatternExpr.simps(5) option.case_eq_if option.collapse option.distinct(1))  
   then show ?case
-    using groundof.intros(7) ground_IRExpr.simps(5)
-    using ConstantVar by auto
+    using groundof.intros(5) ground_PatternExpr.simps(3)
+    using ConstantVarPattern by auto
 next
-  case (VariableExpr x1 x2)
+  case (VariableExprPattern x1 x2)
   then show ?case
-    by (simp add: groundof.intros(8) option.split_sel)
+    by (simp add: groundof.intros(6) option.split_sel)
+next
+  case (ConstantLiteralPattern c)
+  then show ?case
+    by (simp add: groundof.intros(7) option.split_sel)
 qed
 
 (*
@@ -1728,7 +1743,7 @@ lemma
   apply (induction p arbitrary: \<sigma> g)
   apply (metis (no_types, lifting) bind.bind_lunit ground_IRExpr.simps(1) ground_groundof groundof_UnaryExpr) 
   apply (smt (verit, best) bind.bind_lunit ground_IRExpr.simps(2) ground_groundof groundof_BinaryExpr) 
-  apply (smt (verit, del_insts) bind.bind_lunit ground_IRExpr.simps(3) ground_groundof groundof_ConditionalExpr) sorry
+  apply (smt (verit, del_insts) bind.bind_lunit ground_IRExpr.simps(3) ground_groundof groundof_ConditionalExpr)
 *)
 
 lemma compatible_add:
@@ -1752,11 +1767,10 @@ lemma groundof_add_lhs:
   apply (metis groundof.intros(1) groundof_UnaryExpr)
   apply (metis groundof.intros(2) groundof_BinaryExpr)
   apply (metis groundof.intros(3) groundof_ConditionalExpr)
-  apply (metis groundof.intros(4) groundof_ParameterExpr) 
-  apply (metis groundof.intros(5) groundof_LeafExpr)
-  apply (metis groundof.intros(6) groundof_ConstantExpr)
-   apply (metis (no_types, opaque_lifting) compatible_alt domI groundof.intros(7) groundof_ConstantVar map_add_Some_iff)
-  by (metis (mono_tags, lifting) compatible_alt domI groundof.intros(8) groundof_VariableExpr map_add_Some_iff)
+  apply (metis groundof.intros(4) groundof_ConstantExpr)
+   apply (metis (no_types, opaque_lifting) compatible_alt domI groundof.intros(5) groundof_ConstantVar map_add_Some_iff)
+   apply (metis (mono_tags, lifting) compatible_alt domI groundof.intros(6) groundof_VariableExpr map_add_Some_iff)
+  by (metis groundof.intros(7) groundof_ConstantLiteralPattern)
 
 lemma groundof_add_rhs:
   assumes "compatible \<sigma> \<sigma>'"
@@ -1775,29 +1789,25 @@ lemma match_tree_groundof:
   using groundof_add_lhs groundof_add_rhs apply metis
   using groundof.intros(3) match_tree_ConditionalExpr'
   apply (smt (verit, ccfv_threshold) groundof_add_lhs groundof_add_rhs)
-  using groundof.intros(4) match_tree_ParameterExpr apply blast 
-  using groundof.intros(5) match_tree_LeafExpr apply blast
-  apply (metis groundof.intros(6) match_tree_ConstantExpr)
-  apply (metis groundof.intros(7) match_tree_ConstantVar)
-  by (simp add: groundof.intros(8))
+  apply (metis groundof.intros(4) match_tree_ConstantExpr)
+  apply (metis groundof.intros(5) match_tree_ConstantVar)
+   apply (simp add: groundof.intros(6))
+  by simp
 
 
 theorem sound_exec:
   assumes "pattern_refinement e\<^sub>r e\<^sub>p"
-  assumes "is_ground e\<^sub>g"
   assumes "Some e' = rewrite e\<^sub>p c e\<^sub>r e\<^sub>g"
   shows "e' \<le> e\<^sub>g"
 proof -
   obtain \<sigma> where m: "match_tree e\<^sub>p e\<^sub>g = Some \<sigma>"
-    using assms(3) rewrite_def by fastforce
-  then have "ground_substitution \<sigma>"
-    using assms(2) match_tree_ground by auto
+    using assms(2) rewrite_def by fastforce
   then have g1: "\<sigma> \<turnstile> e' \<preceq> e\<^sub>r"
-    by (smt (verit, best) assms(3) ground_groundof m option.case_eq_if option.simps(3) option.simps(5) rewrite_def)
+    by (smt (verit, best) assms(2) ground_groundof m option.case_eq_if option.simps(3) option.simps(5) rewrite_def)
   then have g2: "\<sigma> \<turnstile> e\<^sub>g \<preceq> e\<^sub>p"
     using m match_tree_groundof by presburger
   then show ?thesis using ground_refinement
-    using \<open>ground_substitution \<sigma>\<close> assms(1) g1 by blast
+    using assms(1) g1 by blast
 qed
 
 thm_oracles sound_exec
@@ -1818,7 +1828,7 @@ proof -
   then have g2: "\<sigma> \<turnstile> e\<^sub>g \<preceq> e\<^sub>p"
     using m match_tree_groundof by presburger
   then show ?thesis using ground_refinement
-    using \<open>ground_substitution \<sigma>\<close> assms(1) g1 sorry
+    using \<open>ground_substitution \<sigma>\<close> assms(1) g1
 qed
 *)
 
@@ -1830,7 +1840,6 @@ theorem sound_rules:
   assumes "valid_pattern e\<^sub>p"
   assumes "\<L> e\<^sub>r \<subseteq> \<L> e\<^sub>p"
   assumes "\<L> c \<subseteq> \<L> e\<^sub>p"
-  assumes "is_ground e\<^sub>g"
   shows "e' \<le> e\<^sub>g"
   using assms
   using generate_sound sound_exec by blast
@@ -1858,7 +1867,6 @@ lemma det_variable_rules:
 lemma lift_choice:
   assumes "\<forall> r \<in> set rules. \<exists>e\<^sub>r c e\<^sub>p v. pattern_refinement e\<^sub>r e\<^sub>p \<and> (e\<^sub>p, c, e\<^sub>r) \<leadsto> (v, r) \<and> valid_pattern e\<^sub>p \<and> \<L> e\<^sub>r \<subseteq> \<L> e\<^sub>p \<and> \<L> c \<subseteq> \<L> e\<^sub>p"
   assumes "eval_rules (choice rules) [v \<mapsto> e\<^sub>g] (Some e')"
-  assumes "is_ground e\<^sub>g"
   shows "e' \<le> e\<^sub>g"
   using assms using det_variable_rules
   by (metis (no_types, lifting) choiceE option.distinct(1) sound_rules)
@@ -1867,7 +1875,6 @@ lemma lift_else:
   assumes "\<exists>e\<^sub>r c e\<^sub>p v. pattern_refinement e\<^sub>r e\<^sub>p \<and> valid_pattern e\<^sub>p \<and> \<L> e\<^sub>r \<subseteq> \<L> e\<^sub>p \<and> \<L> c \<subseteq> \<L> e\<^sub>p \<and> (e\<^sub>p, c, e\<^sub>r) \<leadsto> (v, r1)"
   assumes "\<exists>e\<^sub>r c e\<^sub>p v. pattern_refinement e\<^sub>r e\<^sub>p \<and> valid_pattern e\<^sub>p \<and> \<L> e\<^sub>r \<subseteq> \<L> e\<^sub>p \<and> \<L> c \<subseteq> \<L> e\<^sub>p \<and> (e\<^sub>p, c, e\<^sub>r) \<leadsto> (v, r2)"
   assumes "eval_rules (r1 else r2) [v \<mapsto> e\<^sub>g] (Some e')"
-  assumes "is_ground e\<^sub>g"
   shows "e' \<le> e\<^sub>g"
   using assms using det_variable_rules
   by (metis elseE sound_rules)
@@ -2130,14 +2137,14 @@ thm lift_cond.apply_meta_sound
 thm_oracles lift_cond.apply_meta_sound
 
 value "(snd (Predicate.the (generateC 
-    (BinaryExpr BinSub (BinaryExpr BinAdd (VariableExpr STR ''x'' default_stamp) (VariableExpr STR ''y'' default_stamp)) (VariableExpr STR ''x'' default_stamp))
+    (BinaryExprPattern BinSub (BinaryExprPattern BinAdd (VariableExprPattern STR ''x'') (VariableExprPattern STR ''y'')) (VariableExprPattern STR ''x''))
     None
-    (VariableExpr STR ''x'' default_stamp))))"
+    (VariableExprPattern STR ''x''))))"
 
 value "run (snd (Predicate.the (generateC 
-    (BinaryExpr BinSub (BinaryExpr BinAdd (VariableExpr STR ''x'' default_stamp) (VariableExpr STR ''y'' default_stamp)) (VariableExpr STR ''x'' default_stamp))
+    (BinaryExprPattern BinSub (BinaryExprPattern BinAdd (VariableExprPattern STR ''x'') (VariableExprPattern STR ''y'')) (VariableExprPattern STR ''x''))
     None
-    (VariableExpr STR ''x'' default_stamp))))"
+    (VariableExprPattern STR ''x''))))"
 
 
 
@@ -2154,7 +2161,7 @@ proof -
   have "\<forall>e. eval_rules (noop x ? r) \<sigma> e = eval_rules (r) \<sigma> e"
     using condE apply auto[1] 
      apply (smt (verit, ccfv_threshold) eval_match_andthen eval_match_noop eval_rules.intros(2))
-    sorry (* doesn't hold due to our little noop = assert situation *)
+     (* doesn't hold due to our little noop = assert situation *)
   then show ?thesis 
     by blast
 qed
@@ -2263,30 +2270,30 @@ theorem reduce_sound:
   by (metis comp_eq_dest_lhs join_conditions.apply_meta_sound lift_cond.apply_meta_sound reduce_def)
 
 value "reduce (snd (Predicate.the (generateC 
-    (BinaryExpr BinSub (BinaryExpr BinAdd (VariableExpr STR ''x'' default_stamp) (VariableExpr STR ''y'' default_stamp)) (VariableExpr STR ''x'' default_stamp))
+    (BinaryExprPattern BinSub (BinaryExprPattern BinAdd (VariableExprPattern STR ''x'') (VariableExprPattern STR ''y'')) (VariableExprPattern STR ''x''))
     None
-    (VariableExpr STR ''x'' default_stamp))))"
+    (VariableExprPattern STR ''x''))))"
 
 
 text \<open>Identity\<close>
 value "Predicate.the (generateC 
-  (BinaryExpr BinMul (VariableExpr STR ''x'' default_stamp) (ConstantExpr (IntVal 32 1)))
+  (BinaryExprPattern BinMul (VariableExprPattern STR ''x'') (ConstantExprPattern (IntVal 32 1)))
   None
-  (VariableExpr STR ''x'' default_stamp))"
+  (VariableExprPattern STR ''x''))"
 
 text \<open>Eval\<close>
 value "Predicate.the (generateC 
-  (BinaryExpr BinMul (ConstantVar STR ''x'') (ConstantVar STR ''y''))
+  (BinaryExprPattern BinMul (ConstantVarPattern STR ''x'') (ConstantVarPattern STR ''y''))
   None
-  (ConstantExpr (IntVal 32 1)))"
+  (ConstantExprPattern (IntVal 32 1)))"
 
-text \<open>Left Shift\<close> \<comment> \<open>TODO: if lhs != const\<close>
+text \<open>Left Shift\<close>
 value "Predicate.the (generateC 
-  (BinaryExpr BinMul (VariableExpr STR ''x'' default_stamp) (ConstantVar STR ''y''))
-  (Some (Unary UnaryLogicNegation (Variable STR ''x'' instanceof ConstantExpr)))
-  (BinaryExpr BinMul (ConstantVar STR ''y'') (VariableExpr STR ''x'' default_stamp)))"
+  (BinaryExprPattern BinMul (VariableExprPattern STR ''x'') (ConstantVarPattern STR ''y''))
+  (Some (Unary UnaryLogicNegation ((Variable STR ''x'') instanceof ConstantExpr)))
+  (BinaryExprPattern BinMul (ConstantVarPattern STR ''y'') (VariableExprPattern STR ''x'')))"
 
-(*
+
 lemma groundof_det:
   assumes "\<sigma> \<turnstile> g \<preceq> p"
   assumes "\<sigma> \<turnstile> g' \<preceq> p"
@@ -2305,37 +2312,41 @@ next
     using groundof_ConditionalExpr
     by (metis evaltree_not_undef)
 next
-  case (4 \<sigma> i s s')
-  then show ?case sorry
+  case (4 \<sigma> c)
+  then show ?case
+    using groundof_ConstantExpr by auto
 next
-  case (5 \<sigma> nid s s')
-  then show ?case sorry
+  case (5 \<sigma> vn c)
+  then show ?case
+    using groundof_ConstantVar by fastforce
 next
-  case (6 \<sigma> c)
-  then show ?case sorry
+  case (6 \<sigma> vn e s)
+  then show ?case
+    by (metis groundof_VariableExpr option.inject)
 next
-  case (7 \<sigma> vn c)
-  then show ?case sorry
-next
-  case (8 \<sigma> vn e s)
-  then show ?case sorry
+  case (7 \<sigma> vn e s)
+  then show ?case
+    by (metis groundof_ConstantLiteralPattern option.inject)
 qed
 
 lemma lift_mul:
   assumes "\<forall>x. x \<le> (BinaryExpr BinMul x (ConstantExpr (IntVal 32 1)))"
-  shows "pattern_refinement (VariableExpr STR ''x'' default_stamp) (BinaryExpr BinMul (VariableExpr STR ''x'' default_stamp) (ConstantExpr (IntVal 32 1)))"
+  shows "pattern_refinement (VariableExprPattern STR ''x'') (BinaryExprPattern BinMul (VariableExprPattern STR ''x'') (ConstantExprPattern (IntVal 32 1)))"
   unfolding pattern_refinement_def
   using assms groundof_BinaryExpr groundof_ConstantExpr groundof_det
   by metis
-*)
 
 context includes match_syntax match_pattern_syntax
 begin
 value "(match STR ''X'' (BinaryPattern BinMul STR ''x'' STR ''Xa'') && match STR ''Xa'' (ConstantPattern (IntVal 32 1)))
-         ? base (VariableExpr STR ''x'' default_stamp)"
+         ? base (VariableExprPattern STR ''x'')"
 
-value "(match STR ''X'' (BinaryPattern BinMul STR ''Xa'' STR ''Xb'') && match STR ''Xa'' (ConstantVarPattern STR ''x'')
-        && match STR ''Xb'' (ConstantVarPattern STR ''y'')) ? base (ConstantVar x)"
+value "(match STR ''X'' (BinaryPattern BinMul STR ''Xa'' STR ''Xb'') && match STR ''Xa'' (ConstantVariablePattern STR ''x'')
+        && match STR ''Xb'' (ConstantVariablePattern STR ''y'')) ? base (ConstantVarPattern x)"
 end
+
+notation Combine (infixl ";" 86)
+syntax "_seq" :: "Statement \<Rightarrow> Statement => Statement" (infixr ";//" 55)
+
 
 end

@@ -180,10 +180,10 @@ lemma combine_cond_rhs:
   using assms using cond_Combine evalCondition_def
   by (smt (z3) Condition.distinct(43) Condition.distinct(55) Condition.inject(8) coerce_to_bool.cases)
 
-abbreviation StampUnder :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> Condition" where
-  "StampUnder u v \<equiv> cond[(((Expr u)..stamp() instanceof IntegerStamp); 
-                          ((Expr v)..stamp() instanceof IntegerStamp)); 
-                          (((Expr u)..stamp()..upperBound()) < ((Expr v)..stamp()..lowerBound()))]"
+abbreviation StampUnder :: "Condition \<Rightarrow> Condition \<Rightarrow> Condition" where
+  "StampUnder u v \<equiv> cond[((u..stamp() instanceof IntegerStamp); 
+                          (v..stamp() instanceof IntegerStamp)); 
+                          ((u..stamp()..upperBound()) < (v..stamp()..lowerBound()))]"
 
 lemma stamp_Method:
   shows "stampConditions ((Expr u)..stamp()) (Stamp (stamp_expr u))"

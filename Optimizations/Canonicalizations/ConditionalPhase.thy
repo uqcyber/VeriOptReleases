@@ -62,7 +62,10 @@ optimization ConditionBoundsX:
   (*when "cond[((Expr u)..stamp()..upper()) < ((Expr v)..stamp()..lower())]"*)
   when "wf_stamp u"
   when "wf_stamp v"
-  "((u < v) ? x : y) \<longmapsto> x when (StampUnder u v)"
+  when "cond[u..stamp() instanceof IntegerStamp]"
+  when "cond[v..stamp() instanceof IntegerStamp]"
+  when "cond[(u..stamp()..upperBound()) < (v..stamp()..lowerBound())]"
+  "((u < v) ? x : y) \<longmapsto> x"
   apply (rule impI)+
   subgoal premises assms apply simp apply (rule allI)+ apply (rule impI)+
     subgoal premises eval
@@ -84,7 +87,8 @@ optimization ConditionBoundsX:
 
 optimization ConditionBoundsY:
   when "wf_stamp u \<and> wf_stamp v"
-  "((u < v) ? x : y) \<longmapsto> y  when (StampUnder v u)"
+  when "StampUnder v u"
+  "((u < v) ? x : y) \<longmapsto> y"
   using stamp_under_defn_inverse
   by (smt (verit, ccfv_threshold) BinaryExprE ConditionalExprE le_expr_def stamp_under_lower)
 

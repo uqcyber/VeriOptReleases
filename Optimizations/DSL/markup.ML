@@ -120,11 +120,21 @@ fun markup_expr taken ctxt [trm] =
     val res = (case trm of
       Const (str, typ) => markup_constant (str, typ)
     | e as ((Const ("\<^const>IRTreeEval.IRExpr.ConstantExpr",_)) $ _) => e (* ignore within a constant *)
+    | e as ((Const ("IRTreeEval.IRExpr.ConstantExpr",_)) $ _) => e (* ignore within a constant *)
+    | e as ((Const ("\<^const>CodeGenAltAlt.PatternExpr.ConstantExprPattern",_)) $ _) => e (* ignore within a constant *)
+    | e as ((Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern",_)) $ _) => e (* ignore within a constant *)
     | (e as (Const ("\<^const>Markup.Rewrite.Conditional",_))) $ lhs $ rhs $ cond => 
       e $ markup_expr taken ctxt [lhs] $ markup_expr taken ctxt [rhs] $ cond
     | (e as (Const ("Markup.Rewrite.Conditional",_))) $ lhs $ rhs $ cond => 
       e $ markup_expr taken ctxt [lhs] $ markup_expr taken ctxt [rhs] $ cond
-    | (x $ y) => (markup_expr taken ctxt [x] $ markup_expr taken ctxt [y])
+    | (e as (Const ("Markup.Rewrite.Transform",_))) $ lhs $ rhs => 
+      e $ markup_expr taken ctxt [lhs] $ markup_expr taken ctxt [rhs]
+    | (x $ y) => ((let val x' = markup_expr taken ctxt [x] in 
+        case x' of 
+          ((Const ("IRTreeEval.IRExpr.ConstantExpr",_))) => (x' $ y)
+          | ((Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern",_))) => (x' $ y)
+          | _ => (x' $ markup_expr taken ctxt [y])
+        end))
     | Free (str, typ) => markup_free taken (str, typ)
     | Abs (str, typ, trm) => Abs (str, typ, markup_expr taken ctxt [trm])
     | _ => trm);

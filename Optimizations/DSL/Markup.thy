@@ -3,7 +3,7 @@ section \<open>Optization DSL\<close> (* first theory in list, not related to fi
 subsection \<open>Markup\<close>
 
 theory Markup
-  imports ConditionDSL Snippets.Snipping
+  imports ConditionDSL CodeGenAltAlt Snippets.Snipping
 begin
 
 datatype ('a, 'b) Rewrite =
@@ -61,6 +61,39 @@ snipend -
 snipbegin \<open>ir expression example\<close>
 value "exp[(e\<^sub>1 < e\<^sub>2) ? e\<^sub>1 : e\<^sub>2]"
 text \<open>@{term \<open>exp[(e\<^sub>1 < e\<^sub>2) ? e\<^sub>1 : e\<^sub>2]\<close>}\<close>
+snipend -
+
+subsubsection \<open>Pattern Markup\<close>
+ML \<open>
+structure PatternExprTranslator : DSL_TRANSLATION =
+struct
+fun markup DSL_Tokens.Add = @{term BinaryExprPattern} $ @{term BinAdd}
+  | markup DSL_Tokens.Sub = @{term BinaryExprPattern} $ @{term BinSub}
+  | markup DSL_Tokens.Mul = @{term BinaryExprPattern} $ @{term BinMul}
+  | markup DSL_Tokens.And = @{term BinaryExprPattern} $ @{term BinAnd}
+  | markup DSL_Tokens.Or = @{term BinaryExprPattern} $ @{term BinOr}
+  | markup DSL_Tokens.Xor = @{term BinaryExprPattern} $ @{term BinXor}
+  | markup DSL_Tokens.ShortCircuitOr = @{term BinaryExprPattern} $ @{term BinShortCircuitOr}
+  | markup DSL_Tokens.Abs = @{term UnaryExprPattern} $ @{term UnaryAbs}
+  | markup DSL_Tokens.Less = @{term BinaryExprPattern} $ @{term BinIntegerLessThan}
+  | markup DSL_Tokens.Equals = @{term BinaryExprPattern} $ @{term BinIntegerEquals}
+  | markup DSL_Tokens.Not = @{term UnaryExprPattern} $ @{term UnaryNot}
+  | markup DSL_Tokens.Negate = @{term UnaryExprPattern} $ @{term UnaryNeg}
+  | markup DSL_Tokens.LogicNegate = @{term UnaryExprPattern} $ @{term UnaryLogicNegation}
+  | markup DSL_Tokens.LeftShift = @{term BinaryExprPattern} $ @{term BinLeftShift}
+  | markup DSL_Tokens.RightShift = @{term BinaryExprPattern} $ @{term BinRightShift}
+  | markup DSL_Tokens.UnsignedRightShift = @{term BinaryExprPattern} $ @{term BinURightShift}
+  | markup DSL_Tokens.Conditional = @{term ConditionalExprPattern}
+  | markup DSL_Tokens.Constant = @{term ConstantExprPattern}
+  | markup DSL_Tokens.TrueConstant = @{term "ConstantExprPattern (IntVal 32 1)"}
+  | markup DSL_Tokens.FalseConstant = @{term "ConstantExprPattern (IntVal 32 0)"}
+end
+structure PatternExprMarkup = DSL_Markup(PatternExprTranslator);
+\<close>
+
+snipbegin \<open>pattern expression translation\<close>
+syntax "_expandPattern" :: "term \<Rightarrow> term" ("pat[_]")
+parse_translation \<open> [( @{syntax_const "_expandPattern"} , PatternExprMarkup.markup_expr [])] \<close>
 snipend -
 
 subsubsection \<open>Value Markup\<close>

@@ -4,7 +4,7 @@ theory Canonicalization
   imports
     Markup
     Phase
-    CodeGenAlt
+    CodeGenAltAlt
     "HOL-Eisbach.Eisbach"
   keywords
     "phase" :: thy_decl and 

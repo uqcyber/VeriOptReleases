@@ -14,14 +14,45 @@ no_notation andthen (infixr "&&" 50)
 no_syntax
   "_seq" :: "Statement \<Rightarrow> Statement => Statement" (infixr ";//" 55)
 
+
+lemma wf_value_intval_add:
+  assumes "intval_add x y \<noteq> UndefVal"
+  assumes "wf_value x" 
+  assumes "wf_value y"
+  shows "wf_value (intval_add x y)"
+proof -
+  obtain b xv where xv: "x = IntVal b xv"
+    by (smt (z3) assms(1) intval_add.elims)
+  then obtain yv where yv: "y = IntVal b yv"
+    using assms(1) apply (cases y; auto)
+    by argo
+  from xv yv have "intval_add x y = IntVal b (take_bit b (xv+yv))" (is "_ = IntVal b ?val")
+    using assms
+    using intval_add.simps(1) by presburger
+  then have "constantAsStamp (intval_add x y) = (IntegerStamp b (int_signed_value b ?val) (int_signed_value b ?val))" (is "_ = ?stamp")
+    using constantAsStamp.simps(1) by presburger
+  then have "valid_stamp ?stamp"
+    by (metis assms(3) constantAsStamp.simps(1) validStampIntConst valid_stamp.simps(1) valid_value.simps(1) wf_value_def yv)
+  then show ?thesis 
+    using valid_value.simps(1)
+    by (simp add: \<open>intval_add x y = IntVal b (take_bit b (xv + yv))\<close> wf_value_def)
+qed
+
+optimization AddFold:
+  "((const x) + (const y)) \<longmapsto> (const (x + y))"
+  apply auto
+  using wf_value_intval_add by blast
+
+thm AddFold_code
+
 lemma binadd_commute:
   assumes "bin_eval BinAdd x y \<noteq> UndefVal"
   shows "bin_eval BinAdd x y = bin_eval BinAdd y x"
   by (simp add: intval_add_sym)
 
 optimization AddShiftConstantRight:
-  when "cond[(Expr x) instanceof ConstantNode]"
-  when "cond[!((Expr y) instanceof ConstantNode)]"
+  when "cond[x instanceof ConstantNode]"
+  when "cond[!(y instanceof ConstantNode)]"
   "(x + y) \<longmapsto> (y + x)"
   subgoal premises assms
   proof -
