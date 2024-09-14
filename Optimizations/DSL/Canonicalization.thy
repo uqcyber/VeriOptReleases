@@ -11,8 +11,8 @@ theory Canonicalization
     "terminating" :: quasi_command and
     "print_phases" :: diag and
     "export_phases" :: thy_decl and
-    "optimization" :: thy_goal_defn (*and
-    "gencode" :: thy_decl*)
+    "optimization" :: thy_goal_defn and
+    "gencode" :: thy_decl
 begin
 
 print_methods
@@ -235,9 +235,9 @@ val _ =
 
 subsection \<open>Code Generation\<close>
 
-(*
+
 definition generate :: "Rules \<Rightarrow> string" where
-  "generate = (generate_statement 0) o export_rules"
+  "generate = (generate_statement 0) o export"
 
 ML \<open>
 fun replaceSubstring (original: string, target: string, replacement: string): string =
@@ -298,6 +298,5 @@ val _ =
     (Parse.path -- Parse.term >>
       (fn (name, term) => Toplevel.theory (fn state => gencode state name term)))
 \<close>
-*)
 
 end

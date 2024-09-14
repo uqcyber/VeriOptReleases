@@ -272,7 +272,6 @@ fun rewrite_constants_proofs ctxt is_lhs trm =
     | _ => trm)
 
 fun rewrite_constants_code ctxt is_lhs trm =
-  let val _ = @{print} trm in
   (case trm of
     Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ (Const ("Num.numeral_class.numeral", _) $ c)
       => Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ (@{term "IntVal b"} $ (Const ("Num.numeral_class.numeral", at) $ c))
@@ -297,7 +296,6 @@ fun rewrite_constants_code ctxt is_lhs trm =
     | (x $ y) => (rewrite_constants_code ctxt is_lhs x $ rewrite_constants_code ctxt is_lhs y)
     | Abs (str, typ, trm) => Abs (str, typ, rewrite_constants_code ctxt is_lhs trm)
     | _ => trm)
-end
 
 fun rewrite_cmd (((bind: binding, options), whens), opt) ctxt = 
   let
@@ -316,13 +314,8 @@ fun rewrite_cmd (((bind: binding, options), whens), opt) ctxt =
     (*val rewrite = of_term bind raw_term conditions raw_term;
     val raw_term = to_term rewrite ctxt;*)
 
-    val _ = @{print} (Syntax.pretty_term ctxt raw_term);
     val term = IRExprMarkup.markup_expr [] ctxt [(Type.strip_constraints raw_term)];
-    val _ = @{print} (Syntax.pretty_term ctxt term);
-    val _ = @{print} term;
     val term = rewrite_constants_proofs ctxt false term;
-    val _ = @{print} (Syntax.pretty_term ctxt term);
-    val _ = @{print} term;
     val rewrite = of_term bind term conditions raw_term;
 
     val intval_preservation = (if intval 

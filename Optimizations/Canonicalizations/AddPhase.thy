@@ -296,6 +296,18 @@ optimization AddLeftNegateToSub: "-e + y \<longmapsto> y - e"
 
 end
 
+print_phases
+gencode "AddPhase" "choice [
+  (snd AddLeftNegateToSub_code),
+  (snd AddRightNegateToSub_code),
+  (snd RedundantAddSub_code),
+  (snd RedundantSubAdd2_code),
+  (snd RedundantSubAdd_code),
+  (snd AddNeutral_code),
+  (snd AddShiftConstantRight_code),
+  (snd AddFold_code)
+]"
+
 (* Isabelle Isar Questions:
  Why doesn't subgoal handle \forall and \<longrightarrow> ?
  Then this pattern might become just a single subgoal?

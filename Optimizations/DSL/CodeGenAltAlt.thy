@@ -2345,8 +2345,176 @@ value "(match STR ''X'' (BinaryPattern BinMul STR ''Xa'' STR ''Xb'') && match ST
         && match STR ''Xb'' (ConstantVariablePattern STR ''y'')) ? base (ConstantVarPattern x)"
 end
 
-notation Combine (infixl ";" 86)
+
+
+
+subsection \<open>Java AST Generation\<close>
+
+(*
+UnaryExprPattern IRUnaryOp PatternExpr
+  | BinaryExprPattern IRBinaryOp PatternExpr PatternExpr
+  | ConditionalExprPattern PatternExpr PatternExpr PatternExpr
+  | ConstantExprPattern Value
+  | ConstantVarPattern String.literal
+  | VariableExprPattern String.literal
+  | ConstantLiteralPattern PatternExpr
+*)
 syntax "_seq" :: "Statement \<Rightarrow> Statement => Statement" (infixr ";//" 55)
+
+(*
+no_syntax
+  "_method" :: "Condition \<Rightarrow> any \<Rightarrow> args => Condition" ("_.._'(_')" 45)
+  "_method_empty" :: "Condition \<Rightarrow> any => Condition" ("_.._'(')" 45)
+
+syntax
+  "_method" :: "Expression \<Rightarrow> ClassName \<Rightarrow> args => Expression" ("_.._'(_')" 45)
+  "_method_empty" :: "Expression \<Rightarrow> ClassName => Expression" ("_.._'(')" 45)
+  "_method_syntax" :: "Expression \<Rightarrow> ClassName \<Rightarrow> args => Expression"
+
+translations
+  "i..m(x, xs)" \<rightharpoonup> "_method_syntax i m (x#[xs])"
+  "i..m(x)" \<rightharpoonup> "_method_syntax i m (x#[])"
+  "i..m()" \<rightharpoonup> "_method_syntax i m ([])"
+*)
+
+context includes java_ast_syntax begin
+
+fun export_value :: "Value \<Rightarrow> Expression" where
+  "export_value (IntVal s v) = JavaConstant (sint v)" |
+  "export_value _ = Unsupported ''unsupported Value''"
+
+(*
+ConditionalExprPattern PatternExpr PatternExpr PatternExpr
+  | ConstantExprPattern Value
+  | ConstantVarPattern String.literal
+  | VariableExprPattern String.literal
+  | ConstantLiteralPattern PatternExpr
+*)
+fun export_pattern_expr :: "PatternExpr \<Rightarrow> Expression" where
+  "export_pattern_expr (UnaryExprPattern op e) = JavaUnary op (export_pattern_expr e)" |
+  "export_pattern_expr (BinaryExprPattern op x y) = JavaBinary op (export_pattern_expr x) (export_pattern_expr y)" |
+  "export_pattern_expr (ConditionalExprPattern c t f) = JavaConditional (export_pattern_expr c) (export_pattern_expr t) (export_pattern_expr f)" |
+  "export_pattern_expr (ConstantExprPattern val) = (export_value val)" |
+  "export_pattern_expr (ConstantVarPattern v) = (ref v)" |
+  "export_pattern_expr (VariableExprPattern v) = (ref v)" |
+  "export_pattern_expr (ConstantLiteralPattern p) = (export_pattern_expr p)"
+
+(*
+datatype MATCH = \<comment> \<open>Note side conditions are temporarily not handled.\<close>
+  match VarName CodePattern |
+  equality VarName VarName |
+  andthen MATCH MATCH |
+  condition Condition |
+  noop VarName
+*)
+
+
+
+fun construct_node :: "PatternExpr \<Rightarrow> Expression" where
+  "construct_node (UnaryExprPattern op e1) =
+    new (unary_op_class op)([construct_node e1])" |
+  "construct_node (BinaryExprPattern op e1 e2) =
+    new (binary_op_class op)([construct_node e1, construct_node e2])" |
+  "construct_node (ConditionalExprPattern e1 e2 e3) =
+    new (STR ''ConditionalNode'')([construct_node e1, construct_node e2, construct_node e3])" |
+  "construct_node (ConstantExprPattern val) =
+    JavaMethodCall (ref STR ''ConstantNode'') STR ''forInt'' [export_value val]" |
+  "construct_node (ConstantVarPattern var) =
+    new (STR ''ConstantNode'')([ref var])" |
+  "construct_node (VariableExprPattern v) = ref v" |
+  "construct_node (ConstantLiteralPattern p) =
+    new (STR ''ConstantNode'')([export_pattern_expr p])"
+
+
+(*fun evaluate_expression :: "IRExpr \<Rightarrow> Expression" where
+  "evaluate_expression (UnaryExpr UnaryAbs e) = JavaMethodCall (JavaVariable STR ''Math'') STR ''abs'' ([evaluate_expression e])" |
+  "evaluate_expression (BinaryExpr BinAnd e1 e2) = BitAnd (evaluate_expression e1) (evaluate_expression e2)" |
+  "evaluate_expression (ConstantExpr c) = generate_value c"
+*)
+
+fun match_body :: "VarName \<Rightarrow> CodePattern \<Rightarrow> Statement \<Rightarrow> Statement" where
+  "match_body v (UnaryPattern op v1) s =
+    v1 := (JavaMethodCall (ref v) STR ''getValue'' []);
+    s" |
+  "match_body v (BinaryPattern op v1 v2) s =
+    v1 := (JavaMethodCall (ref v) STR ''getX'' []);
+    v2 := (JavaMethodCall (ref v) STR ''getY'' []);
+    s" |
+  "match_body v (ConditionalPattern v1 v2 v3) s =
+    v1 := (JavaMethodCall (ref v) STR ''condition'' []);
+    v2 := (JavaMethodCall (ref v) STR ''trueValue'' []);
+    v3 := (JavaMethodCall (ref v) STR ''falseValue'' []);
+    s" |
+  "match_body v (ConstantPattern val) s =
+    if ((JavaMethodCall (ref v) STR ''getValue'' []) instanceof STR ''PrimitiveConstant'' (v + STR ''d'')) {
+      if (JavaBinary BinIntegerEquals (JavaMethodCall (ref (v + STR ''d'')) STR ''asLong'' []) (export_value val)) {
+        s
+      }
+    }" |
+  "match_body v (ConstantVariablePattern var) s =
+    if (JavaBinary BinIntegerEquals (JavaMethodCall (ref v) STR ''getValue'' []) (ref var)) {
+      s
+    }" |
+  "match_body v (VariablePattern var) s =
+    return (Unsupported ''export_assignments for VariablePattern'')" 
+
+fun pattern_class_name :: "CodePattern \<Rightarrow> ClassName" where
+  "pattern_class_name (UnaryPattern op v) = (unary_op_class op)" |
+  "pattern_class_name (BinaryPattern op v1 v2) = (binary_op_class op)" |
+  "pattern_class_name (ConditionalPattern v1 v2 v3) = (STR ''ConditionalNode'')" |
+  "pattern_class_name (ConstantPattern _) = (STR ''ConstantNode'')" |
+  "pattern_class_name (ConstantVariablePattern _) = (STR ''ConstantNode'')"(* |
+  "pattern_class_name _ = ''''"*)
+
+fun export_match :: "MATCH \<Rightarrow> Statement \<Rightarrow> Statement" where
+  "export_match (match v p) r  = 
+    if ((ref v) instanceof (pattern_class_name p) (v + STR ''c'')) {
+      (match_body (v + STR ''c'') p r)
+    }" |
+  "export_match (andthen m1 m2) r = 
+    export_match m1 (export_match m2 r)" |
+  "export_match (equality v1 v2) r = 
+    if (JavaBinary BinIntegerEquals (ref v1) (ref v2)) {
+      r
+    }" |
+  "export_match (condition sc) r = 
+    if (export_condition sc) {
+      r
+    }" |
+  "export_match (noop v) r = r"
+
+fun generate_rules :: "VarName option \<Rightarrow> Rules \<Rightarrow> Statement" where
+  "generate_rules None (base e) = return (construct_node e)" |
+  "generate_rules (Some v) (base e) = v := (construct_node e)" |
+  "generate_rules v (cond m r) = export_match m (generate_rules v r)" |
+  "generate_rules v (either r1 r2) = generate_rules v r1; generate_rules v r2" |
+  "generate_rules v (choice rules) = JavaSequential (map (generate_rules v) rules)" |
+  "generate_rules v (seq r1 r2) = 
+    generate_rules (entry_var r2) r1;
+    generate_rules v r2"
+
+fun export :: "Rules \<Rightarrow> Statement" where
+  "export r = generate_rules None r"
+
+
+end
+
+context includes match_syntax match_pattern_syntax
+begin
+value "generate_statement 0 (export ((match STR ''X'' (BinaryPattern BinMul STR ''x'' STR ''Xa'') && match STR ''Xa'' (ConstantPattern (IntVal 32 1)))
+         ? base (VariableExprPattern STR ''x'')))"
+
+value "(match STR ''X'' (BinaryPattern BinMul STR ''Xa'' STR ''Xb'') && match STR ''Xa'' (ConstantVariablePattern STR ''x'')
+        && match STR ''Xb'' (ConstantVariablePattern STR ''y'')) ? base (ConstantVarPattern x)"
+end
+(*
+  cond MATCH Rules |
+  either Rules Rules |
+  seq Rules Rules |
+  choice "Rules list""
+*)
+
+notation Combine (infixl ";" 86)
 
 
 end

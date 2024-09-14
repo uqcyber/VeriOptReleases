@@ -60,11 +60,13 @@ optimization ConditionalEqualBranches: "(e ? x : x) \<longmapsto> x" .
 
 optimization ConditionBoundsX: 
   (*when "cond[((Expr u)..stamp()..upper()) < ((Expr v)..stamp()..lower())]"*)
-  when "wf_stamp u"
-  when "wf_stamp v"
-  when "cond[u..stamp() instanceof IntegerStamp]"
+  when "valid_stamp (stamp_expr u)"
+  when "valid_stamp (stamp_expr v)"
+  when "StampUnder u v"
+  when "wf_stamp u \<and> wf_stamp v"
+  (*when "cond[u..stamp() instanceof IntegerStamp]"
   when "cond[v..stamp() instanceof IntegerStamp]"
-  when "cond[(u..stamp()..upperBound()) < (v..stamp()..lowerBound())]"
+  when "cond[(u..stamp()..upperBound()) < (v..stamp()..lowerBound())]"*)
   "((u < v) ? x : y) \<longmapsto> x"
   apply (rule impI)+
   subgoal premises assms apply simp apply (rule allI)+ apply (rule impI)+
@@ -73,12 +75,12 @@ optimization ConditionBoundsX:
     have under: "stpi_upper (stamp_expr u) < stpi_lower (stamp_expr v)"
       using stamp_under assms by blast
     have u: "is_IntegerStamp (stamp_expr u)" using assms(1,2) eval
-      by (smt (verit) BinaryExprE ConditionalExprE Stamp.disc(2) Stamp.exhaust_sel bin_eval_implies_valid_value never_void stamp_binary.simps(6) stamp_expr.simps(2) valid_value.simps(14) valid_value.simps(15) valid_value.simps(16) valid_value.simps(21) valid_value.simps(22) wf_stamp_def)
-    have v: "is_IntegerStamp (stamp_expr v)" using assms(1,2) eval 
-      by (smt (verit) BinaryExprE ConditionalExprE Stamp.disc(2) Stamp.exhaust_sel bin_eval_implies_valid_value stamp_binary.simps(13) stamp_binary.simps(9) stamp_expr.simps(2) valid_value.simps(14) valid_value.simps(15) valid_value.simps(16) valid_value.simps(21) valid_value.simps(22) wf_stamp_def)
+      using assms(3) combine_cond_lhs stamp_instanceof_IntegerStamp by blast
+    have v: "is_IntegerStamp (stamp_expr v)" using assms(1,2) eval
+      using assms(3) combine_cond_lhs combine_cond_rhs stamp_instanceof_IntegerStamp by blast
     have "stamp_under (stamp_expr u) (stamp_expr v)"
       using u v under
-      by (smt (verit) BinaryExprE ConditionalExprE Stamp.disc(1) Stamp.disc(3) Stamp.disc(4) Stamp.disc(5) Stamp.disc(6) Stamp.exhaust_sel assms(1,2) eval stamp_under.simps(1) valid_value.simps(21) valid_value.simps(22) wf_stamp_def)
+      using assms(1) assms(2) assms(3) stamp_under_lower by blast
     then show ?thesis
       using assms(1,2) eval stamp_under_defn by fastforce
   qed
@@ -87,6 +89,7 @@ optimization ConditionBoundsX:
 
 optimization ConditionBoundsY:
   when "wf_stamp u \<and> wf_stamp v"
+  when "valid_stamp (stamp_expr u) \<and> valid_stamp (stamp_expr v)"
   when "StampUnder v u"
   "((u < v) ? x : y) \<longmapsto> y"
   using stamp_under_defn_inverse
@@ -106,7 +109,9 @@ lemma val_optimise_integer_test:
 
 optimization ConditionalEliminateKnownLess: 
   when "wf_stamp x \<and> wf_stamp y"
-  "((x < y) ? x : y) \<longmapsto> x when (StampUnder x y)"
+  when "valid_stamp (stamp_expr x) \<and> valid_stamp (stamp_expr y)"
+  when "StampUnder x y"
+  "((x < y) ? x : y) \<longmapsto> x"
   using stamp_under_defn stamp_under_lower
   by (meson ConditionBoundsX(1) rewrite_preservation.simps(2))
 

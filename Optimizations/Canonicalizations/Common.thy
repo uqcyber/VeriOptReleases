@@ -212,20 +212,62 @@ proof -
 qed
 
 no_notation ExclusiveOr ("_ ^ _")
-(*
+
+value "- (2 ^ (1::nat) div 2)::int"
+
+lemma lower_bound:
+  "((- (2 ^ b div 2))::int) \<le> hi \<Longrightarrow> 0 < b \<and> b \<le> 64 \<Longrightarrow> (2 ^ 64 div 2 * - 1) \<le> hi"
+  by (smt (verit, best) power_increasing zdiv_mono1)
+
+lemma upper_bound:
+  "hi \<le> ((2 ^ b div 2 - 1)::int) \<Longrightarrow> 0 < b \<and> b \<sqsubseteq> 64 \<Longrightarrow> hi \<le> (2 ^ 64 div 2 - 1)"
+  by (smt (verit, best) power_increasing zdiv_mono1)
+
+(*\<open>signed_take_bit n k = k \<longleftrightarrow> - (2 ^ n) \<le> k \<and> k < 2 ^ n\<close>*)
+
 lemma stamp_upper_in_bounds:
   assumes "valid_stamp u"
   assumes "is_IntegerStamp u"
   shows "(stpi_upper u) = (int_signed_value 64 (word_of_int (stpi_upper u)))"
 proof -
-  have "0 < stp_bits u \<and> stp_bits u \<le> 64"
-    by (metis Stamp.collapse(1) assms(1) assms(2) valid_stamp.simps(1))
-  then have "stpi_upper u \<ge> 2 ^ 64 div 2 * - 1"
-    using assms apply (induction "stp_bits u") 
-    apply simp using valid_stamp.simps bit_bounds.simps
-    using assms using valid_stamp.simps apply auto sorry
-    then show ?thesis
-      sorry
+  obtain lo hi b where sdef: "u = IntegerStamp b lo hi"
+    using assms(2) is_IntegerStamp_def by auto
+  have bbound: "0 < b \<and> b \<le> 64"
+    using assms(1) sdef valid_stamp.simps(1) by blast  
+  have "fst (bit_bounds b) \<le> hi"
+    using assms unfolding valid_stamp.simps
+    using sdef valid_stamp.simps(1) by blast
+  then have "(2 ^ 64 div 2 * - 1) \<le> hi"
+    using bbound unfolding bit_bounds.simps using lower_bound by auto 
+  then have lb: "- (2 ^ 63) \<le> hi"
+    by fastforce
+  have "hi \<le> snd (bit_bounds b)"
+    using assms unfolding valid_stamp.simps
+    using sdef valid_stamp.simps(1) by blast
+  then have "hi \<le> (2 ^ 64 div 2 - 1)"
+    using bbound unfolding bit_bounds.simps using upper_bound by auto
+  then have hb: "hi < 2 ^ 63"
+    by auto
+  from lb hb have tbid: "signed_take_bit 63 hi = hi"
+    using signed_take_bit_int_eq_self by blast
+  have "sint ((word_of_int hi)::64 word) = signed_take_bit (64 - 1) hi"
+    using Word.sint_sbintrunc'
+    by (metis JavaWords.size64 wsst_TYs(3))
+  then have "sint ((word_of_int hi)::64 word) = hi"
+    using tbid
+    by simp
+  (*have lb':"- (2 ^ 63) \<le> ((word_of_int hi)::64 word)"
+    using lb hb word_of_int_less_eq_iff sorry
+  have hb':"((word_of_int hi)::64 word) < 2 ^ 63"
+    using lb hb word_of_int_less_eq_iff sorry
+  have "signed_take_bit 63 ((word_of_int hi)::64 word) = ((word_of_int hi)::64 word)"
+    using signed_take_bit_int_eq_self_iff sledgehammer
+    apply (rule signed_take_bit_int_eq_self)
+    using lb' hb' *)
+  then have "hi = sint (signed_take_bit (63) ((word_of_int hi)::64 word))"
+    using tbid sorry
+  then show ?thesis
+    using sdef by auto
   qed
 
 lemma stamp_lower_in_bounds:
@@ -236,16 +278,16 @@ lemma stamp_lower_in_bounds:
 
 lemma stamp_under:
   assumes "valid_stamp (stamp_expr u) \<and> valid_stamp (stamp_expr v)"
-  assumes "evalCondition cond[StampUnder u v]"
+  assumes "evalCondition cond[StampUnder (Expr u) (Expr v)]"
   shows "stpi_upper (stamp_expr u) < stpi_lower (stamp_expr v)"
 proof -
   have ec: "evalCondition cond[Value (IntVal 64 (word_of_int (stpi_upper (stamp_expr u)))) < Value (IntVal 64 (word_of_int (stpi_lower (stamp_expr v))))]" (is "evalCondition ?lowCond")
     using assms combine_cond_lhs combine_cond_rhs
-    by (smt (z3) cond_Binary cond_Const cond_Method_lowerBound cond_Method_upperBound evalCondition_def lowerBound_of.simps lowerBound_semantics stampConditions.intros(2) stampConditions.intros(5) stampConditions_det stamp_Method upperBound_of.simps upperBound_semantics)
+    by (smt (z3) BinaryCool cond_Method_lowerBound cond_Method_upperBound cond_Stamp evalCondition_def stampConditions.intros(2) stampConditions.intros(4) stampConditions_det stamp_Method stamp_lower_Method stamp_upper_Method)
   obtain val where val1: "stampConditions ?lowCond val \<and> coerce_to_bool val True"
     using ec evalCondition_def by blast
   have val2: "val = Value (bin_eval BinIntegerLessThan (IntVal 64 (word_of_int (stpi_upper (stamp_expr u)))) (IntVal 64 (word_of_int (stpi_lower (stamp_expr v)))))"
-    by (metis (no_types, lifting) BinaryCool Condition.inject(5) cond_Value val1)
+    by (smt (verit, best) Condition.inject(4) cond_Binary stampConditions.intros(4) stampConditions_det val1)
   have "... = Value (if (int_signed_value 64 (word_of_int (stpi_upper (stamp_expr u)))) < (int_signed_value 64 (word_of_int (stpi_lower (stamp_expr v)))) then IntVal 32 1 else IntVal 32 0)"
     unfolding bin_eval.simps intval_less_than.simps bool_to_val_bin.simps using bool_to_val.simps by auto
   also have "val = Value (IntVal 32 1)"
@@ -266,10 +308,9 @@ qed
 
 lemma stamp_under_lower:
   assumes "valid_stamp (stamp_expr u) \<and> valid_stamp (stamp_expr v)"
-  assumes "evalCondition (StampUnder u v)"
+  assumes "evalCondition (StampUnder (Expr u) (Expr v))"
   shows "stamp_under (stamp_expr u) (stamp_expr v)"
   using assms
   by (smt (verit, best) Stamp.collapse(1) combine_cond_lhs combine_cond_rhs stamp_instanceof_IntegerStamp stamp_under stamp_under.simps(1))
-*)
 
 end

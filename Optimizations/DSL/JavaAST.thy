@@ -13,6 +13,8 @@ type_synonym MethodName = String.literal
 datatype Expression =
   JavaUnary IRUnaryOp Expression |
   JavaBinary IRBinaryOp Expression Expression |
+  JavaConditional Expression Expression Expression |
+  JavaLogicAnd Expression Expression |
   JavaVariable VariableName |
   JavaConstant int |
   JavaTrue |
@@ -108,6 +110,8 @@ fun binary_op_expr :: "IRBinaryOp \<Rightarrow> string \<Rightarrow> string \<Ri
 fun generate_expression :: "Expression \<Rightarrow> string" where
   "generate_expression (JavaUnary op e) = unary_op_expr op (generate_expression e)" |
   "generate_expression (JavaBinary op x y) = binary_op_expr op (generate_expression x) (generate_expression y)" |
+  "generate_expression (JavaConditional c t f) = (generate_expression c) @ '' ? '' @ (generate_expression t) @ '' : '' @ (generate_expression f)" |
+  "generate_expression (JavaLogicAnd x y) = (generate_expression x) @ '' && '' @ (generate_expression y)" |
   "generate_expression (JavaVariable v) = String.explode v" |
   "generate_expression (JavaConstant n) = string_of_int n" |
   "generate_expression (JavaTrue) = ''true''" |

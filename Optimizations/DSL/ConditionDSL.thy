@@ -393,16 +393,16 @@ context includes java_ast_syntax begin
   InstanceOf Condition String.literal |
   Method Condition String.literal "Condition list"*)
 
-fun export :: "Condition \<Rightarrow> Expression" where
-  "export (Unary op e) = (JavaUnary op (export e))" |
-  "export (Binary op x y) = (JavaBinary op (export x) (export y))" |
+fun export_condition :: "Condition \<Rightarrow> Expression" where
+  "export_condition (Unary op e) = (JavaUnary op (export_condition e))" |
+  "export_condition (Binary op x y) = (JavaBinary op (export_condition x) (export_condition y))" |
   (* Conditional - needed? *)
-  "export (Constant v) = (JavaConstant v)" |
-  "export (Value (IntVal _ v)) = (JavaConstant (Word.the_int v))" |
-  "export (Variable v) = (JavaVariable v)" |
-  "export (InstanceOf c cn) = (JavaInstanceOf (export c) cn STR ''_'')" |
-  "export (Method obj mn ps) = (JavaMethodCall (export obj) mn (map export ps))" |
-  "export (Combine lhs rhs) = (JavaBinary BinAnd (export lhs) (export rhs))"
+  "export_condition (Constant v) = (JavaConstant v)" |
+  "export_condition (Value (IntVal _ v)) = (JavaConstant (Word.the_int v))" |
+  "export_condition (Variable v) = (JavaVariable v)" |
+  "export_condition (InstanceOf c cn) = (JavaInstanceOf (export_condition c) cn STR ''_'')" |
+  "export_condition (Method obj mn ps) = (JavaMethodCall (export_condition obj) mn (map export_condition ps))" |
+  "export_condition (Combine lhs rhs) = (JavaLogicAnd (export_condition lhs) (export_condition rhs))"
 
 (*
 value "generate_expression (export cond[(Variable STR ''x'') instanceof ConstantNode; !(Variable STR ''y'' instanceof ConstantNode)])"
