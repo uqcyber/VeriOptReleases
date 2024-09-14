@@ -228,14 +228,14 @@ fun ground_Condition_proof ctxt trm =
     | Free (str, typ) => Free (str, typ)
     | _ => trm)
 
-fun partition ctxt whens =
+fun partition ctxt warn whens =
   let
     val checked = map (Syntax.check_term ctxt) whens;
     val props = (filter (fn when => case (select_type (Term.type_of when)) of SOME Prop => true | _ => false) checked);
     val conds = (filter (fn when => case (select_type (Term.type_of when)) of SOME Condition => true | _ => false) checked);
     val unrek = (filter (fn when => case (select_type (Term.type_of when)) of NONE => true | _ => false) checked);
-    val _ = (map (fn when => error ((Pretty.string_of (Syntax.pretty_term ctxt when)) ^ " is not of type bool or Condition")) unrek);
-    val _ = (map (fn when => warning ((Pretty.string_of (Syntax.pretty_term ctxt when)) ^ " is a bool condition and therefore not represented in the generated code. This may introduce inconsistencies.")) props);
+    val _ = if warn then (map (fn when => error ((Pretty.string_of (Syntax.pretty_term ctxt when)) ^ " is not of type bool or Condition")) unrek) else [()];
+    val _ = if warn then (map (fn when => warning ((Pretty.string_of (Syntax.pretty_term ctxt when)) ^ " is a bool condition and therefore not represented in the generated code. This may introduce inconsistencies.")) props) else [()];
   in
     (props, conds)
   end
@@ -255,7 +255,7 @@ fun generate_assumps assumps =
 fun generate_whens ctxt do_ground (whens: ((string * string) list)) =
   let
     val interpretted = (map (interpret_when ctxt o snd) whens);
-    val (props, conds) = partition ctxt interpretted;
+    val (props, conds) = partition ctxt (not do_ground) interpretted;
     val conds = if do_ground then (map (ground_Condition_proof ctxt) conds) else conds;
   in
     (generate_assumps props, generate_condition conds)
