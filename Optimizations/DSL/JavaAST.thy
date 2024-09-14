@@ -30,7 +30,8 @@ datatype Statement =
   JavaAssignment VariableName Expression |
   JavaBranch Expression Statement |
   JavaReturn Expression |
-  JavaSequential "Statement list"
+  JavaSequential "Statement list" |
+  JavaComment String.literal
 
 bundle java_ast_syntax
 begin
@@ -139,7 +140,9 @@ fun generate_statement :: "nat \<Rightarrow> Statement \<Rightarrow> string" whe
   "generate_statement i (JavaReturn e) = indent i @
     ''return '' @ generate_expression e @ '';\<newline>''" |
   "generate_statement i (JavaSequential ss) = 
-    foldr (@) (map (generate_statement i) ss) ''''"
+    foldr (@) (map (generate_statement i) ss) ''''" |
+  "generate_statement i (JavaComment l) = indent i @
+    ''// '' @ String.explode l @ ''\<newline>''"
 
 
 context includes java_ast_syntax begin
@@ -147,6 +150,7 @@ value "generate_statement 0 (
   if (JavaBinary BinIntegerEquals (ref STR ''x'') (const 12)) {
     if (((ref STR ''e'') instanceof STR ''IntegerLessThanNode'' STR ''ex'')) {
       STR ''res'' := (const 12);
+      JavaComment STR ''hello world!'';
       return (ref STR ''res'')
     }
   }

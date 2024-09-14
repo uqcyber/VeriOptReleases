@@ -164,22 +164,32 @@ fun rewrite_to_term_param ctxt rewrite =
           (Const ("Option.option.Some", @{typ "Condition => Condition option"}) $ cond'))
   end
 
-fun generate ctxt term =
+fun generate ctxt name term =
   let
     val (lhs, rhs, cond) = rewrite_to_term_param ctxt term;
     val generate_term = 
-      ((((Const ("CodeGenAltAlt.generateRule", @{typ "PatternExpr \<Rightarrow> Condition option \<Rightarrow> PatternExpr \<Rightarrow> (VarName \<times> Rules)"}))
-      $ lhs) $ cond) $ rhs)
+      (((((Const ("CodeGenAltAlt.generateRule", @{typ "RuleLabel \<Rightarrow> PatternExpr \<Rightarrow> Condition option \<Rightarrow> PatternExpr \<Rightarrow> (VarName \<times> Rules)"}))
+      $ name) $ lhs) $ cond) $ rhs)
     val value = Code_Evaluation.dynamic_value_strict ctxt generate_term;
   in              
     value
+  end
+
+fun comment ctxt rewrite =
+  let
+    val name = (Binding.name_of (#name rewrite));
+    val termString = (Pretty.string_of (Syntax.pretty_term ctxt (#source rewrite)));
+    val cleaned = YXML.content_of (replaceSubstring (termString, "\<longmapsto>", "|->"));
+    val content = name ^ ": " ^ cleaned;
+  in
+    (mkstr ctxt content)
   end
 
 fun code_of ctxt rewrite =
   @{const Trueprop} 
   $ ((Const ("HOL.eq", @{typ "(VarName \<times> Rules) \<Rightarrow> (VarName \<times> Rules) \<Rightarrow> bool"})
   $ (Free ((Binding.name_of (#name rewrite)) ^ "_code", @{typ "VarName \<times> Rules"}))
-  $ generate ctxt rewrite))
+  $ generate ctxt (comment ctxt rewrite) rewrite))
 
 
 fun add_proofs (rewrite: rewrite) proofs =

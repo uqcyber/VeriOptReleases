@@ -296,6 +296,9 @@ optimization AddLeftNegateToSub: "-e + y \<longmapsto> y - e"
 
 end
 
+fun build_choice :: "VarName \<Rightarrow> (VarName \<times> Rules) list \<Rightarrow> Rules" where
+  "build_choice v rl = choice (fold (\<lambda>r rl. (snd r \<Zhide> [fst r \<mapsto> v] # rl)) rl [])"
+
 print_phases
 gencode "AddPhase" "choice [
   (snd AddLeftNegateToSub_code),
@@ -306,6 +309,17 @@ gencode "AddPhase" "choice [
   (snd AddNeutral_code),
   (snd AddShiftConstantRight_code),
   (snd AddFold_code)
+]"
+
+gencode "AddPhaseR" "build_choice STR ''e'' [
+  (AddLeftNegateToSub_code),
+  (AddRightNegateToSub_code),
+  (RedundantAddSub_code),
+  (RedundantSubAdd2_code),
+  (RedundantSubAdd_code),
+  (AddNeutral_code),
+  (AddShiftConstantRight_code),
+  (AddFold_code)
 ]"
 
 (* Isabelle Isar Questions:
