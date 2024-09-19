@@ -189,7 +189,7 @@ lemma SubtractZero_Exp:
   done
 
 lemma ZeroSubtractValue_Exp:
-  assumes "CodeGen.wf_stamp x"
+  assumes "wf_stamp x"
   assumes "is_IntegerStamp (stamp_expr x)"
   shows "exp[(const IntVal (stp_bits (stamp_expr x)) 0) - x] \<ge> exp[-x]"
   using assms apply auto[1]
@@ -204,6 +204,22 @@ lemma ZeroSubtractValue_Exp:
     then show ?thesis
       by (metis UnaryExpr intval_negate.simps(1) p(3,4) unary_eval.simps(2) verit_minus_simplify(3)
           evalDet xv xvv)
+  qed
+  done
+
+lemma ZeroSubtractValue_Exp1:
+  shows "exp[(const IntVal b 0) - x] \<ge> exp[-x]"
+  apply auto[1]
+  subgoal premises p for m p xa
+  proof-
+    obtain xv where xv: "[m,p] \<turnstile> x \<mapsto> xv"
+      using p(1) by blast
+    obtain xb xvv where xvv: "xv = IntVal xb xvv"
+      by (metis constantAsStamp.cases evalDet evaltree_not_undef intval_sub.simps(7,8,9) p(1,2) xv)
+    then have unfoldSub: "val[(IntVal b 0) - xv] = (new_int xb (0-xvv))"
+      by (metis evalDet intval_sub.simps(1) new_int_bin.elims p(1,2) xv)
+    then show ?thesis
+      by (metis diff_0 evalDet intval_negate.simps(1) p(1) p(2) unary_eval.simps(2) unfold_unary xv xvv)
   qed
   done
 
@@ -236,7 +252,7 @@ optimization SubThenSubLeft: "(x - (x - y)) \<longmapsto> y"
 
 value "(export_rules SubThenSubLeft_code)"
  
-optimization SubtractZero: "(x - y) \<longmapsto> x when IsConstantValue y x 0"
+optimization SubtractZero[nogen]: "(x - const 0) \<longmapsto> x"
   using SubtractZero_Exp by metis
 
 thm_oracles SubtractZero
@@ -335,11 +351,12 @@ optimization SubNegativeConstant: "x - (const (val[-y])) \<longmapsto> x + (cons
 *)
 
 (*Additional check for not constant for termination *)
-optimization ZeroSubtractValue: "(x - y) \<longmapsto> (-y) 
-                                  when (IsConstantValue x y 0 && Not (IsConstantExpr y) && WellFormed y && IsIntegerStamp y)"
-  using size_flip_binary 
-  apply (metis Canonicalization.const_size One_nat_def add_Suc_shift less_add_same_cancel1 numerals(2) plus_1_eq_Suc size_non_add zero_less_one)
-  using ZeroSubtractValue_Exp by simp
+optimization ZeroSubtractValue[nogen]: 
+  when "cond[!(y instanceof ConstantNode)]"
+  "((const 0) - y) \<longmapsto> (-y)"
+  using instance_of_not_const size_flip_binary apply force
+  using ZeroSubtractValue_Exp1
+  by presburger
 
 value "export_rules ZeroSubtractValue_code"
 
@@ -401,11 +418,11 @@ qed
 
 
 lemma valid_bits:
-  assumes "CodeGen.wf_stamp x"
+  assumes "wf_stamp x"
   assumes "is_IntegerStamp (stamp_expr x)"
   shows "\<forall>m p v. ([m, p] \<turnstile> x \<mapsto> v) \<longrightarrow> (\<exists>w. v = (IntVal (stp_bits (stamp_expr x)) w))"
   using assms
-  by (metis Stamp.collapse(1) valid_int)
+  by (metis Stamp.collapse(1) valid_int wf_stamp_def)
 
 optimization SubSelfIsZero: "(x - x) \<longmapsto> (forZero x) when 
                       (WellFormed x && IsIntegerStamp x)"

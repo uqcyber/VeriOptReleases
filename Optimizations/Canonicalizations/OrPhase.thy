@@ -169,12 +169,15 @@ lemma exp_elim_redundant_false:
 
 text \<open>Optimisations\<close>
 
-optimization OrEqual: "x | x \<longmapsto> x"
+optimization OrEqual[nogen]: "exp[x | x] \<longmapsto> x"
   by (meson exp_or_equal)
 
-optimization OrShiftConstantRight: "(x | y) \<longmapsto> y | x
-                                    when IsConstantExpr x && Not (IsConstantExpr y)"
-  using is_ConstantExpr_def size_flip_binary apply fastforce
+optimization OrShiftConstantRight[nogen]: 
+  when "cond[x instanceof ConstantNode]"
+  when "cond[!(y instanceof ConstantNode)]"
+  "exp[(x | y)] \<longmapsto> exp[y | x]"
+  using is_ConstantExpr_def size_flip_binary
+  apply (metis combine_cond_lhs combine_cond_rhs instance_of_const instance_of_not_const)
   using size_flip_binary by (auto simp: BinaryExpr unfold_const val_shift_const_right_helper)
 
 optimization EliminateRedundantFalse: "x | false \<longmapsto> x"
