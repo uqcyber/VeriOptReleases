@@ -103,7 +103,9 @@ datatype (discs_sels) IRNode =
   | ShortCircuitOrNode (ir_x: "INPUT_COND") (ir_y: "INPUT_COND") 
   | SignExtendNode (ir_inputBits: nat) (ir_resultBits: nat) (ir_value: "INPUT") 
   | SignedDivNode (ir_nid: ID) (ir_x: "INPUT") (ir_y: "INPUT") (ir_zeroCheck_opt: "INPUT_GUARD option") (ir_stateBefore_opt: "INPUT_STATE option") (ir_next: "SUCC") 
-  | SignedRemNode (ir_nid: ID) (ir_x: "INPUT") (ir_y: "INPUT") (ir_zeroCheck_opt: "INPUT_GUARD option") (ir_stateBefore_opt: "INPUT_STATE option") (ir_next: "SUCC") 
+  | SignedFloatingIntegerDivNode (ir_x: "INPUT") (ir_y: "INPUT")
+  | SignedFloatingIntegerRemNode (ir_x: "INPUT") (ir_y: "INPUT")
+  | SignedRemNode (ir_nid: ID) (ir_x: "INPUT") (ir_y: "INPUT") (ir_zeroCheck_opt: "INPUT_GUARD option") (ir_stateBefore_opt: "INPUT_STATE option") (ir_next: "SUCC")
   | StartNode (ir_stateAfter_opt: "INPUT_STATE option") (ir_next: "SUCC") 
   | StoreFieldNode (ir_nid: ID) (ir_field: string) (ir_value: "INPUT") (ir_stateAfter_opt: "INPUT_STATE option") (ir_object_opt: "INPUT option") (ir_next: "SUCC") 
   | StoreIndexedNode (ir_storeCheck: "INPUT_GUARD option") (ir_value: ID) (ir_stateAfter_opt: "INPUT_STATE option") (ir_index: "INPUT") (ir_guard_opt: "INPUT_GUARD option") (ir_array: "INPUT") (ir_next: "SUCC")
@@ -237,6 +239,10 @@ fun inputs_of :: "IRNode \<Rightarrow> ID list" where
   "inputs_of (SignExtendNode inputBits resultBits value) = [value]" |
   inputs_of_SignedDivNode:
   "inputs_of (SignedDivNode nid0 x y zeroCheck stateBefore next) = [x, y] @ (opt_to_list zeroCheck) @ (opt_to_list stateBefore)" |
+  inputs_of_SignedFloatingIntegerDivNode:
+  "inputs_of (SignedFloatingIntegerDivNode x y) = [x, y]" |
+  inputs_of_SignedFloatingIntegerRemNode:
+  "inputs_of (SignedFloatingIntegerRemNode x y) = [x, y]" |
   inputs_of_SignedRemNode:
   "inputs_of (SignedRemNode nid0 x y zeroCheck stateBefore next) = [x, y] @ (opt_to_list zeroCheck) @ (opt_to_list stateBefore)" |
   inputs_of_StartNode:
@@ -366,6 +372,10 @@ fun successors_of :: "IRNode \<Rightarrow> ID list" where
   "successors_of (SignExtendNode inputBits resultBits value) = []" |
   successors_of_SignedDivNode:
   "successors_of (SignedDivNode nid0 x y zeroCheck stateBefore next) = [next]" |
+  successors_of_SignedFloatingIntegerDivNode:
+  "successors_of (SignedFloatingIntegerDivNode x y) = []" |
+  successors_of_SignedFloatingIntegerRemNode:
+  "successors_of (SignedFloatingIntegerRemNode x y) = []" |
   successors_of_SignedRemNode:
   "successors_of (SignedRemNode nid0 x y zeroCheck stateBefore next) = [next]" |
   successors_of_StartNode:

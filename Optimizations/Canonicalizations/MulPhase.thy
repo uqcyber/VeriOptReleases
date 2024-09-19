@@ -356,7 +356,7 @@ lemma exp_distribute_multiplication:
     have "val[xv * (qv + yv)] = val[(xv * qv) + (xv * yv)]"
       using val_distribute_multiplication by (simp add: yvv qvv xvv) 
     then show ?thesis
-      by (metis bin_eval.simps(1,2) BinaryExpr p(1,2,3,5,6) qv xv evalDet yv qvv Value.distinct(1)
+      by (metis bin_eval.simps(1,3) BinaryExpr p(1,2,3,5,6) qv xv evalDet yv qvv Value.distinct(1)
           yvv intval_add.simps(1))
    qed
   done
@@ -365,7 +365,7 @@ text \<open>Optimisations\<close>
 
 optimization EliminateRedundantNegative: "-x * -y \<longmapsto> x * y"
   apply auto[1]
-  by (metis BinaryExpr val_eliminate_redundant_negative bin_eval.simps(2))
+  by (metis BinaryExpr val_eliminate_redundant_negative bin_eval.simps(3))
 
 optimization MulNeutral: "x * y \<longmapsto> x when IsConstantValue y x 1"
   using exp_multiply_neutral by blast
@@ -431,12 +431,12 @@ proof -
   obtain yv where yv: "[m, p] \<turnstile> y \<mapsto> yv"
     using eval(1,2) by blast
   then have lhs: "[m, p] \<turnstile> exp[x * y] \<mapsto> val[xv * yv]"
-    by (metis bin_eval.simps(2) eval(1,2) evalDet unfold_binary xv)
+    by (metis bin_eval.simps(3) eval(1,2) evalDet unfold_binary xv)
   have "[m, p] \<turnstile> exp[const (IntVal 64 i)] \<mapsto> val[(IntVal 64 i)]"
     by (smt (verit, ccfv_SIG) ConstantExpr constantAsStamp.simps(1) eval_bits_1_64 take_bit64 xv xvv
         validStampIntConst wf_value_def valid_value.simps(1) w64)
   then have rhs: "[m, p] \<turnstile> exp[x << const (IntVal 64 i)] \<mapsto> val[xv << (IntVal 64 i)]"
-    by (metis Value.simps(5) bin_eval.simps(8) intval_left_shift.simps(1) new_int.simps xv xvv 
+    by (metis Value.simps(5) bin_eval.simps(10) intval_left_shift.simps(1) new_int.simps xv xvv 
         evaltree.BinaryExpr)
   have "val[xv * yv] = val[xv << (IntVal 64 i)]"
     by (metis ConstantExprE eval(1) evaltree_not_undef lhs yv val_MulPower2)
@@ -465,12 +465,12 @@ optimization MulPower2Add1: "x * y \<longmapsto> (x << const (IntVal 64 i)) + x
                   y = ConstantExpr (IntVal 64 ((2 ^ unat(i)) + 1))"
       using p by blast
     then have lhs: "[m, p] \<turnstile> exp[x * y] \<mapsto> val[xv * yv]"
-      by (metis bin_eval.simps(2) evalDet p(2) xv yv unfold_binary)
+      by (metis bin_eval.simps(3) evalDet p(2) xv yv unfold_binary)
     then have "[m, p] \<turnstile> exp[const (IntVal 64 i)] \<mapsto> val[(IntVal 64 i)]"
       by (metis wf_value_def verit_comp_simplify1(2) zero_less_numeral ConstantExpr take_bit64
           constantAsStamp.simps(1) validStampIntConst valid_value.simps(1))
     then have rhs2: "[m, p] \<turnstile> exp[x << const (IntVal 64 i)] \<mapsto> val[xv << (IntVal 64 i)]"
-      by (metis Value.simps(5) bin_eval.simps(8) intval_left_shift.simps(1) new_int.simps xv xvv 
+      by (metis Value.simps(5) bin_eval.simps(10) intval_left_shift.simps(1) new_int.simps xv xvv 
           evaltree.BinaryExpr)
     then have rhs: "[m, p] \<turnstile> exp[(x << const (IntVal 64 i)) + x] \<mapsto> val[(xv << (IntVal 64 i)) + xv]" 
        by (metis (no_types, lifting) intval_add.simps(1) bin_eval.simps(1) Value.simps(5) xv xvv
@@ -504,12 +504,12 @@ optimization MulPower2Sub1: "x * y \<longmapsto> (x << const (IntVal 64 i)) - x
                   y = ConstantExpr (IntVal 64 ((2 ^ unat(i)) - 1))"
       using p by blast
     then have lhs: "[m, p] \<turnstile> exp[x * y] \<mapsto> val[xv * yv]"
-      by (metis bin_eval.simps(2) evalDet p(2) xv yv unfold_binary)
+      by (metis bin_eval.simps(3) evalDet p(2) xv yv unfold_binary)
     then have "[m, p] \<turnstile> exp[const (IntVal 64 i)] \<mapsto> val[(IntVal 64 i)]"
       by (metis wf_value_def verit_comp_simplify1(2) zero_less_numeral ConstantExpr take_bit64
           constantAsStamp.simps(1) validStampIntConst valid_value.simps(1))
     then have rhs2: "[m, p] \<turnstile> exp[x << const (IntVal 64 i)] \<mapsto> val[xv << (IntVal 64 i)]"
-      by (metis Value.simps(5) bin_eval.simps(8) intval_left_shift.simps(1) new_int.simps xv xvv 
+      by (metis Value.simps(5) bin_eval.simps(10) intval_left_shift.simps(1) new_int.simps xv xvv 
           evaltree.BinaryExpr)
     then have rhs: "[m, p] \<turnstile> exp[(x << const (IntVal 64 i)) - x] \<mapsto> val[(xv << (IntVal 64 i)) - xv]" 
       using "1" equiv_exprs_def ygezero yv by fastforce

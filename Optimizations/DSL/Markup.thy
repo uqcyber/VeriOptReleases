@@ -18,11 +18,13 @@ datatype 'a ExtraNotation =
   FalseNotation ("false") |
   ExclusiveOr 'a 'a ("_ ^ _") |
   LogicNegationNotation 'a ("!_") |
-  ShortCircuitOr 'a 'a ("_ || _")
+  ShortCircuitOr 'a 'a ("_ || _") |
+  Remainder 'a 'a ("_ % _")
 
 definition word :: "('a::len) word \<Rightarrow> 'a word" where
   "word x = x"
 
+ML_val "@{term \<open>x % x\<close>}"
 ML_file \<open>markup.ML\<close>
 
 subsubsection \<open>Expression Markup\<close>
@@ -32,6 +34,8 @@ struct
 fun markup DSL_Tokens.Add = @{term BinaryExpr} $ @{term BinAdd}
   | markup DSL_Tokens.Sub = @{term BinaryExpr} $ @{term BinSub}
   | markup DSL_Tokens.Mul = @{term BinaryExpr} $ @{term BinMul}
+  | markup DSL_Tokens.Div = @{term BinaryExpr} $ @{term BinDiv}
+  | markup DSL_Tokens.Rem = @{term BinaryExpr} $ @{term BinMod}
   | markup DSL_Tokens.And = @{term BinaryExpr} $ @{term BinAnd}
   | markup DSL_Tokens.Or = @{term BinaryExpr} $ @{term BinOr}
   | markup DSL_Tokens.Xor = @{term BinaryExpr} $ @{term BinXor}
@@ -103,6 +107,8 @@ struct
 fun markup DSL_Tokens.Add = @{term intval_add}
   | markup DSL_Tokens.Sub = @{term intval_sub}
   | markup DSL_Tokens.Mul = @{term intval_mul}
+  | markup DSL_Tokens.Div = @{term intval_div}
+  | markup DSL_Tokens.Rem = @{term intval_mod}
   | markup DSL_Tokens.And = @{term intval_and}
   | markup DSL_Tokens.Or = @{term intval_or}
   | markup DSL_Tokens.ShortCircuitOr = @{term intval_short_circuit_or}
@@ -141,6 +147,8 @@ struct
 fun markup DSL_Tokens.Add = @{term plus}
   | markup DSL_Tokens.Sub = @{term minus}
   | markup DSL_Tokens.Mul = @{term times}
+  | markup DSL_Tokens.Div = @{term signed_divide}
+  | markup DSL_Tokens.Rem = @{term signed_modulo}
   | markup DSL_Tokens.And = @{term Bit_Operations.semiring_bit_operations_class.and}
   | markup DSL_Tokens.Or = @{term or}
   | markup DSL_Tokens.Xor = @{term xor}

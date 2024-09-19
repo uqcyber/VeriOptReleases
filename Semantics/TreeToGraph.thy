@@ -94,6 +94,18 @@ inductive
     g \<turnstile> y \<simeq> ye\<rbrakk>
     \<Longrightarrow> g \<turnstile> n \<simeq> (BinaryExpr BinMul xe ye)" |
 
+  DivNode:
+  "\<lbrakk>kind g n = SignedFloatingIntegerDivNode x y;
+    g \<turnstile> x \<simeq> xe;
+    g \<turnstile> y \<simeq> ye\<rbrakk>
+    \<Longrightarrow> g \<turnstile> n \<simeq> (BinaryExpr BinDiv xe ye)" |
+
+  ModNode:
+  "\<lbrakk>kind g n = SignedFloatingIntegerRemNode x y;
+    g \<turnstile> x \<simeq> xe;
+    g \<turnstile> y \<simeq> ye\<rbrakk>
+    \<Longrightarrow> g \<turnstile> n \<simeq> (BinaryExpr BinMod xe ye)" |
+
   SubNode:
   "\<lbrakk>kind g n = SubNode x y;
     g \<turnstile> x \<simeq> xe;
@@ -263,6 +275,10 @@ inductive_cases AddNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
   "g \<turnstile> n \<simeq> (BinaryExpr BinAdd xe ye)"
 inductive_cases MulNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
   "g \<turnstile> n \<simeq> (BinaryExpr BinMul xe ye)"
+inductive_cases DivNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
+  "g \<turnstile> n \<simeq> (BinaryExpr BinDiv xe ye)"
+inductive_cases ModNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
+  "g \<turnstile> n \<simeq> (BinaryExpr BinMod xe ye)"
 inductive_cases SubNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
   "g \<turnstile> n \<simeq> (BinaryExpr BinSub xe ye)"
 inductive_cases AndNodeE[elim!]:\<^marker>\<open>tag invisible\<close>
@@ -315,6 +331,8 @@ lemmas RepE\<^marker>\<open>tag invisible\<close> =
   LogicNegationNodeE
   AddNodeE
   MulNodeE
+  DivNodeE
+  ModNodeE
   SubNodeE
   AndNodeE
   OrNodeE
@@ -353,6 +371,8 @@ fun unary_node :: "IRUnaryOp \<Rightarrow> ID \<Rightarrow> IRNode" where
 fun bin_node :: "IRBinaryOp \<Rightarrow> ID \<Rightarrow> ID \<Rightarrow> IRNode" where
   "bin_node BinAdd x y = AddNode x y" |
   "bin_node BinMul x y = MulNode x y" |
+  "bin_node BinDiv x y = SignedFloatingIntegerDivNode x y" |
+  "bin_node BinMod x y = SignedFloatingIntegerRemNode x y" |
   "bin_node BinSub x y = SubNode x y" |
   "bin_node BinAnd x y = AndNode x y" |
   "bin_node BinOr  x y = OrNode x y" |

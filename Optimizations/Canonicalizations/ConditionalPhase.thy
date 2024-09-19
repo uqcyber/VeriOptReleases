@@ -260,12 +260,12 @@ optimization ConditionalIntegerEquals2[notactic]: "exp[BinaryExpr BinIntegerEqua
     then have trueEvalCond: "(cond = IntVal 32 0) \<Longrightarrow>
                          [m,p] \<turnstile> exp[BinaryExpr BinIntegerEquals (c ? x : y) (y)]
                                \<mapsto> intval_equals yv yv"
-      by (smt (verit) cNotRange trueCond ConditionalExprE cond bin_eval.simps(11) evalDet p
+      by (smt (verit) cNotRange trueCond ConditionalExprE cond bin_eval.simps(13) evalDet p
           falseCond unfold_binary val_to_bool.simps(1))
     then have falseEval: "(notCond = IntVal 32 0) \<Longrightarrow>
                          [m,p] \<turnstile> exp[BinaryExpr BinIntegerEquals (c ? x : y) (y)]
                                \<mapsto> intval_equals xv yv"
-      using p by (metis ConditionalExprE bin_eval.simps(11) evalDet falseCond unfold_binary)
+      using p by (metis ConditionalExprE bin_eval.simps(13) evalDet falseCond unfold_binary)
     have eqEvalFalse: "intval_equals yv xv = (IntVal 32 0)"
       unfolding xvv yvv apply auto[1] by (metis (mono_tags) bool_to_val.simps(2) yxDiff yvv xvv)
     have trueEvalEquiv: "[m,p] \<turnstile> exp[BinaryExpr BinIntegerEquals (c ? x : y) (y)] \<mapsto> notCond"
@@ -432,7 +432,7 @@ proof -
   obtain rhs where rhs: "[m, p] \<turnstile> exp[x & (const (IntVal 32 1))] \<mapsto> rhs"
     using eval(2) by blast
   then have rhsV: "rhs = val[xv & IntVal 32 1]"
-    by (metis BinaryExprE ConstantExprE bin_eval.simps(4) evalDet xv)
+    by (metis BinaryExprE ConstantExprE bin_eval.simps(6) evalDet xv)
   have "lhs = rhs" 
     using val_optimise_integer_test x32 lhsV rhsV by presburger
   then show ?thesis

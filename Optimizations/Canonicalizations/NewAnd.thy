@@ -13,7 +13,7 @@ lemma intval_distribute_and_over_or:
 lemma exp_distribute_and_over_or:
   "exp[z & (x | y)] \<ge> exp[(z & x) | (z & y)]"
   apply auto[1]
-  by (metis bin_eval.simps(4,5) intval_or.simps(2,6) intval_distribute_and_over_or BinaryExpr)
+  by (metis bin_eval.simps(6,7) intval_or.simps(2,6) intval_distribute_and_over_or BinaryExpr)
 
 lemma intval_and_commute:
   "val[x & y] = val[y & x]"
@@ -293,7 +293,7 @@ lemma exp_eliminate_y:
     obtain zv where zv: "[m,p] \<turnstile> z \<mapsto> zv"
       using e by auto
     have lhs: "v = val[(xv | yv) & zv]" 
-      by (smt (verit, best) BinaryExprE bin_eval.simps(4,5) e evalDet xv yv zv)
+      by (smt (verit, best) BinaryExprE bin_eval.simps(6,7) e evalDet xv yv zv)
     then have "v = val[(xv & zv) | (yv & zv)]"
       by (simp add: intval_and_commute intval_distribute_and_over_or)
     also have "\<exists>b. val[yv & zv] = new_int b 0"
@@ -302,7 +302,7 @@ lemma exp_eliminate_y:
     ultimately have rhs: "v = val[xv & zv]"
       by (auto simp: intval_eliminate_y lhs)
     from lhs rhs show ?thesis
-      by (metis BinaryExpr BinaryExprE bin_eval.simps(4) e xv zv)
+      by (metis BinaryExpr BinaryExprE bin_eval.simps(6) e xv zv)
   qed
   done
   done

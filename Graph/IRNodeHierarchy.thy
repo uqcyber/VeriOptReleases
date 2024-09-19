@@ -297,6 +297,8 @@ fun is_same_ir_node_type :: "IRNode \<Rightarrow> IRNode \<Rightarrow> bool" whe
   ((is_RightShiftNode n1) \<and> (is_RightShiftNode n2)) \<or>
   ((is_ShortCircuitOrNode n1) \<and> (is_ShortCircuitOrNode n2)) \<or>
   ((is_SignedDivNode n1) \<and> (is_SignedDivNode n2)) \<or>
+  ((is_SignedFloatingIntegerDivNode n1) \<and> (is_SignedFloatingIntegerDivNode n2)) \<or>
+  ((is_SignedFloatingIntegerRemNode n1) \<and> (is_SignedFloatingIntegerRemNode n2)) \<or>
   ((is_SignedRemNode n1) \<and> (is_SignedRemNode n2)) \<or>
   ((is_SignExtendNode n1) \<and> (is_SignExtendNode n2)) \<or>
   ((is_StartNode n1) \<and> (is_StartNode n2)) \<or>

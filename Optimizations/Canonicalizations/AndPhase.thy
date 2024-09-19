@@ -31,7 +31,7 @@ lemma AndRightFallthrough: "(((and (not (\<down> x)) (\<up> y)) = 0)) \<longrigh
       obtain yb yvv where yvv: "yv = IntVal yb yvv"
         by (metis bin_eval_inputs_are_ints bin_eval_int evalDet is_IntVal_def p(2) unfold_binary yv)
       have equalAnd: "v = val[xv & yv]"
-        by (metis BinaryExprE bin_eval.simps(4) evalDet p(2) xv yv)
+        by (metis BinaryExprE bin_eval.simps(6) evalDet p(2) xv yv)
       then have andUnfold: "val[xv & yv] = (if xb=yb then new_int xb (and xvv yvv) else UndefVal)"
         by (simp add: xvv yvv)
       have "v = yv"

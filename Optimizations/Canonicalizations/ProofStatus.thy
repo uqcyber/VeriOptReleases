@@ -76,7 +76,7 @@ print_phases
 print_phases!
 
 thm opt_add_left_negate_to_sub
-thm_oracles AbsNegate
+(*thm_oracles AbsNegate*)
 
 export_phases \<open>Full\<close>
 

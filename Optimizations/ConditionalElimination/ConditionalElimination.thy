@@ -315,9 +315,9 @@ next
     then obtain yval where yval: "[m, p] \<turnstile> y \<mapsto> yval"
       using eq_imp_less.prems(2) by blast
     have eqeval: "[m, p] \<turnstile> (BinaryExpr BinIntegerEquals x y) \<mapsto> intval_equals xval yval"
-      by (metis xval yval BinaryExprE bin_eval.simps(11) eq_imp_less.prems(1) evalDet)
+      by (metis xval yval BinaryExprE bin_eval.simps(13) eq_imp_less.prems(1) evalDet)
     have lesseval: "[m, p] \<turnstile> (BinaryExpr BinIntegerLessThan x y) \<mapsto> intval_less_than xval yval"
-      by (metis xval yval BinaryExprE bin_eval.simps(12) eq_imp_less.prems(2) evalDet)
+      by (metis xval yval BinaryExprE bin_eval.simps(14) eq_imp_less.prems(2) evalDet)
     have "val_to_bool (intval_equals xval yval) \<longrightarrow> \<not>(val_to_bool (intval_less_than xval yval))"
       apply (cases xval; cases yval; auto)
       by (smt (verit, best) bool_to_val.simps(2) val_to_bool.simps(1))
@@ -330,9 +330,9 @@ next
     obtain yval where yval: "[m, p] \<turnstile> y \<mapsto> yval"
       using eq_imp_less_rev.prems(2) by blast
     have eqeval: "[m, p] \<turnstile> (BinaryExpr BinIntegerEquals x y) \<mapsto> intval_equals xval yval"
-      by (metis xval yval BinaryExprE bin_eval.simps(11) eq_imp_less_rev.prems(1) evalDet)
+      by (metis xval yval BinaryExprE bin_eval.simps(13) eq_imp_less_rev.prems(1) evalDet)
     have lesseval: "[m, p] \<turnstile> (BinaryExpr BinIntegerLessThan y x) \<mapsto> intval_less_than yval xval"
-      by (metis xval yval BinaryExprE bin_eval.simps(12) eq_imp_less_rev.prems(2) evalDet)
+      by (metis xval yval BinaryExprE bin_eval.simps(14) eq_imp_less_rev.prems(2) evalDet)
     have "val_to_bool (intval_equals xval yval) \<longrightarrow> \<not>(val_to_bool (intval_less_than yval xval))"
       apply (cases xval; cases yval; auto)
       by (metis (full_types) bool_to_val.simps(2) less_irrefl val_to_bool.simps(1))
@@ -345,9 +345,9 @@ next
     obtain yval where yval: "[m, p] \<turnstile> y \<mapsto> yval"
       using less_imp_rev_less.prems(2) by blast
     have lesseval: "[m, p] \<turnstile> (BinaryExpr BinIntegerLessThan x y) \<mapsto> intval_less_than xval yval"
-      by (metis BinaryExprE bin_eval.simps(12) evalDet less_imp_rev_less.prems(1) xval yval)
+      by (metis BinaryExprE bin_eval.simps(14) evalDet less_imp_rev_less.prems(1) xval yval)
     have revlesseval: "[m, p] \<turnstile> (BinaryExpr BinIntegerLessThan y x) \<mapsto> intval_less_than yval xval"
-      by (metis BinaryExprE bin_eval.simps(12) evalDet less_imp_rev_less.prems(2) xval yval)
+      by (metis BinaryExprE bin_eval.simps(14) evalDet less_imp_rev_less.prems(2) xval yval)
     have "val_to_bool (intval_less_than xval yval) \<longrightarrow> \<not>(val_to_bool (intval_less_than yval xval))"
       apply (cases xval; cases yval; auto)
       by (smt (verit) bool_to_val.simps(2) val_to_bool.simps(1))
@@ -360,9 +360,9 @@ next
     obtain yval where yval: "[m, p] \<turnstile> y \<mapsto> yval"
       using less_imp_not_eq.prems(1) by blast
     have eqeval: "[m, p] \<turnstile> (BinaryExpr BinIntegerEquals x y) \<mapsto> intval_equals xval yval"
-      by (metis BinaryExprE bin_eval.simps(11) evalDet less_imp_not_eq.prems(2) xval yval)
+      by (metis BinaryExprE bin_eval.simps(13) evalDet less_imp_not_eq.prems(2) xval yval)
     have lesseval: "[m, p] \<turnstile> (BinaryExpr BinIntegerLessThan x y) \<mapsto> intval_less_than xval yval"
-      by (metis BinaryExprE bin_eval.simps(12) evalDet less_imp_not_eq.prems(1) xval yval)
+      by (metis BinaryExprE bin_eval.simps(14) evalDet less_imp_not_eq.prems(1) xval yval)
     have "val_to_bool (intval_less_than xval yval) \<longrightarrow> \<not>(val_to_bool (intval_equals xval yval))"
       apply (cases xval; cases yval; auto)
       by (smt (verit, best) bool_to_val.simps(2) val_to_bool.simps(1))
@@ -375,9 +375,9 @@ next
     obtain yval where yval: "[m, p] \<turnstile> y \<mapsto> yval"
       using less_imp_not_eq_rev.prems(1) by blast
     have eqeval: "[m, p] \<turnstile> (BinaryExpr BinIntegerEquals y x) \<mapsto> intval_equals yval xval"
-      by (metis xval yval BinaryExprE bin_eval.simps(11) evalDet less_imp_not_eq_rev.prems(2))
+      by (metis xval yval BinaryExprE bin_eval.simps(13) evalDet less_imp_not_eq_rev.prems(2))
     have lesseval: "[m, p] \<turnstile> (BinaryExpr BinIntegerLessThan x y) \<mapsto> intval_less_than xval yval"
-      by (metis xval yval BinaryExprE bin_eval.simps(12) evalDet less_imp_not_eq_rev.prems(1))
+      by (metis xval yval BinaryExprE bin_eval.simps(14) evalDet less_imp_not_eq_rev.prems(1))
     have "val_to_bool (intval_less_than xval yval) \<longrightarrow> \<not>(val_to_bool (intval_equals yval xval))"
       apply (cases xval; cases yval; auto)
       by (smt (verit, best) bool_to_val.simps(2) val_to_bool.simps(1))
@@ -447,7 +447,7 @@ lemma
   shows "val_to_bool (intval_equals xval yval) \<longleftrightarrow> v = IntVal 32 1"
 proof -
   have "v = intval_equals xval yval"
-    by (smt (verit) bin_eval.simps(11) encodeeval_def evalDet repDet IntegerEqualsNode BinaryExprE
+    by (smt (verit) bin_eval.simps(13) encodeeval_def evalDet repDet IntegerEqualsNode BinaryExprE
         assms)
   then show ?thesis
     by (metis bool_to_val.simps(1,2) one_neq_zero val_to_bool.simps(1,2) intval_equals_result)

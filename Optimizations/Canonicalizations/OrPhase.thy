@@ -42,7 +42,7 @@ lemma OrLeftFallthrough:
     from e obtain yv where yv: "[m, p] \<turnstile> y \<mapsto> IntVal b yv"
       apply (subst (asm) unfold_binary_width) by force+
     have vdef: "v = val[(IntVal b xv) | (IntVal b yv)]"
-      by (metis bin_eval.simps(5) eval(2) evalDet unfold_binary xv yv)
+      by (metis bin_eval.simps(7) eval(2) evalDet unfold_binary xv yv)
     have "\<forall> i. (bit xv i) | (bit yv i) = (bit xv i)"
       by (metis assms bit_and_iff not_down_up_mask_and_zero_implies_zero xv yv)
     then have "IntVal b xv = val[(IntVal b xv) | (IntVal b yv)]"
@@ -68,7 +68,7 @@ lemma OrRightFallthrough:
     from e obtain yv where yv: "[m, p] \<turnstile> y \<mapsto> IntVal b yv"
       apply (subst (asm) unfold_binary_width) by force+
     have vdef: "v = val[(IntVal b xv) | (IntVal b yv)]"
-      by (metis bin_eval.simps(5) eval(2) evalDet unfold_binary xv yv)
+      by (metis bin_eval.simps(7) eval(2) evalDet unfold_binary xv yv)
     have "\<forall> i. (bit xv i) | (bit yv i) = (bit yv i)"
       by (metis assms bit_and_iff not_down_up_mask_and_zero_implies_zero xv yv)
     then have "IntVal b yv = val[(IntVal b xv) | (IntVal b yv)]"

@@ -89,6 +89,18 @@ lemma rep_mul [rep]:
    (\<exists>xe ye. e = BinaryExpr BinMul xe ye)"
   by (induction rule: rep.induct; auto)
 
+lemma rep_div [rep]:
+  "g \<turnstile> n \<simeq> e \<Longrightarrow>
+   kind g n = SignedFloatingIntegerDivNode x y \<Longrightarrow>
+   (\<exists>xe ye. e = BinaryExpr BinDiv xe ye)"
+  by (induction rule: rep.induct; auto)
+
+lemma rep_mod [rep]:
+  "g \<turnstile> n \<simeq> e \<Longrightarrow>
+   kind g n = SignedFloatingIntegerRemNode x y \<Longrightarrow>
+   (\<exists>xe ye. e = BinaryExpr BinMod xe ye)"
+  by (induction rule: rep.induct; auto)
+
 lemma rep_and [rep]:
   "g \<turnstile> n \<simeq> e \<Longrightarrow>
    kind g n = AndNode x y \<Longrightarrow>
@@ -280,11 +292,11 @@ proof (induction arbitrary: e\<^sub>2 rule: "rep.induct")
 next
   case (ParameterNode n i s)
   then show ?case
-    by (metis IRNode.distinct(3487,3525) ParameterNodeE rep_parameter)
+    by (metis IRNode.distinct(3655) IRNode.distinct(3697) ParameterNodeE rep_parameter)
 next
   case (ConditionalNode n c t f ce te fe)
   then show ?case
-    by (metis IRNode.distinct(897,935) IRNode.inject(8) ConditionalNodeE rep_conditional)
+    by (metis ConditionalNodeE IRNode.distinct(925) IRNode.distinct(967) IRNode.sel(90) IRNode.sel(93) IRNode.sel(94) rep_conditional)
 next
   case (AbsNode n x xe)
   then show ?case
@@ -317,6 +329,14 @@ next
   case (MulNode n x y xe ye)
   then show ?case
     by (solve_det node: MulNode)
+next
+  case (DivNode n x y xe ye)
+  then show ?case
+    by (solve_det node: DivNode)
+next
+  case (ModNode n x y xe ye)
+  then show ?case
+    by (solve_det node: ModNode)
 next
   case (SubNode n x y xe ye)
   then show ?case
@@ -376,19 +396,23 @@ next
 next
   case (NarrowNode n x xe)
   then show ?case
-    by (metis IRNode.distinct(3217,3255) IRNode.inject(36) NarrowNodeE rep_narrow)
+    using NarrowNodeE rep_narrow
+    by (metis IRNode.distinct(3361) IRNode.distinct(3403) IRNode.inject(36))
 next
   case (SignExtendNode n x xe)
   then show ?case
-    by (metis IRNode.distinct(3535,3723) IRNode.inject(48) SignExtendNodeE rep_sign_extend)
+    using SignExtendNodeE rep_sign_extend
+    by (metis IRNode.distinct(3707) IRNode.distinct(3919) IRNode.inject(48))
 next
   case (ZeroExtendNode n x xe)
   then show ?case
-    by (metis IRNode.distinct(3559,3903) IRNode.inject(60) ZeroExtendNodeE rep_zero_extend)
+    using ZeroExtendNodeE rep_zero_extend
+    by (metis IRNode.distinct(3735) IRNode.distinct(4157) IRNode.inject(62))
 next
   case (LeafNode n s)
   then show ?case
-    by (metis is_preevaluated.simps(48,63) rep_load_field LeafNodeE)
+    using rep_load_field LeafNodeE
+    by (metis is_preevaluated.simps(48) is_preevaluated.simps(65))
 next
   case (RefNode n')
   then show ?case
@@ -400,7 +424,8 @@ next
 next
   case (IsNullNode n v)
   then show ?case
-    by (metis IRNode.distinct(2461,2499) IRNode.inject(24) IsNullNodeE rep_is_null)
+    using IsNullNodeE rep_is_null
+    by (metis IRNode.distinct(2557) IRNode.distinct(2599) IRNode.inject(24))
 qed
 
 lemma repAllDet:
@@ -516,6 +541,24 @@ lemma mono_mul:
   assumes "(g1 \<turnstile> n \<simeq> e1) \<and> (g2 \<turnstile> n \<simeq> e2)"
   shows "e1 \<ge> e2"
   by (metis (no_types, lifting) MulNode assms mono_binary repDet)
+
+lemma mono_div:
+  assumes "kind g1 n = SignedFloatingIntegerDivNode x y \<and> kind g2 n = SignedFloatingIntegerDivNode x y"
+  assumes "(g1 \<turnstile> x \<simeq> xe1) \<and> (g2 \<turnstile> x \<simeq> xe2)"
+  assumes "(g1 \<turnstile> y \<simeq> ye1) \<and> (g2 \<turnstile> y \<simeq> ye2)"
+  assumes "xe1 \<ge> xe2 \<and> ye1 \<ge> ye2"
+  assumes "(g1 \<turnstile> n \<simeq> e1) \<and> (g2 \<turnstile> n \<simeq> e2)"
+  shows "e1 \<ge> e2"
+  by (metis (no_types, lifting) DivNode assms mono_binary repDet)
+
+lemma mono_mod:
+  assumes "kind g1 n = SignedFloatingIntegerRemNode x y \<and> kind g2 n = SignedFloatingIntegerRemNode x y"
+  assumes "(g1 \<turnstile> x \<simeq> xe1) \<and> (g2 \<turnstile> x \<simeq> xe2)"
+  assumes "(g1 \<turnstile> y \<simeq> ye1) \<and> (g2 \<turnstile> y \<simeq> ye2)"
+  assumes "xe1 \<ge> xe2 \<and> ye1 \<ge> ye2"
+  assumes "(g1 \<turnstile> n \<simeq> e1) \<and> (g2 \<turnstile> n \<simeq> e2)"
+  shows "e1 \<ge> e2"
+  by (metis (no_types, lifting) ModNode assms mono_binary repDet)
 
 lemma term_graph_evaluation:
   "(g \<turnstile> n \<unlhd> e) \<Longrightarrow> (\<forall> m p v . ([m,p] \<turnstile> e \<mapsto> v) \<longrightarrow> ([g,m,p] \<turnstile> n \<mapsto> v))"
@@ -873,6 +916,62 @@ proof -
         then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinMul xe2 ye2) \<and> 
             BinaryExpr BinMul xe1 ye1 \<ge> BinaryExpr BinMul xe2 ye2"
           by (metis MulNode.prems l mono_binary rep.MulNode xer)
+        then show ?thesis
+          by meson
+      qed
+    next
+      case (DivNode n x y xe1 ye1)
+      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinDiv xe1 ye1" 
+        using DivNode by (simp add: DivNode.hyps(2) rep.DivNode f)
+      obtain xn yn where l: "kind g1 n = SignedFloatingIntegerDivNode xn yn"
+        by (simp add: DivNode.hyps(1))
+      then have mx: "g1 \<turnstile> xn \<simeq> xe1"
+        using DivNode.hyps(1,2) by simp
+      from l have my: "g1 \<turnstile> yn \<simeq> ye1"
+        using DivNode.hyps(1,3) by simp
+      then show ?case
+      proof -
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: mx)
+        have "g1 \<turnstile> yn \<simeq> ye1" 
+          by (simp add: my)
+        have xer: "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
+          using DivNode  a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          by (metis_node_eq_binary SignedFloatingIntegerDivNode)
+        have "\<exists> ye2. (g2 \<turnstile> yn \<simeq> ye2) \<and> ye1 \<ge> ye2"
+          using DivNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          by (metis_node_eq_binary SignedFloatingIntegerDivNode)
+        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinDiv xe2 ye2) \<and> 
+            BinaryExpr BinDiv xe1 ye1 \<ge> BinaryExpr BinDiv xe2 ye2"
+          by (metis DivNode.prems l mono_binary rep.DivNode xer)
+        then show ?thesis
+          by meson
+      qed
+    next
+      case (ModNode n x y xe1 ye1)
+      have k: "g1 \<turnstile> n \<simeq> BinaryExpr BinMod xe1 ye1" 
+        using ModNode by (simp add: ModNode.hyps(2) rep.ModNode f)
+      obtain xn yn where l: "kind g1 n = SignedFloatingIntegerRemNode xn yn"
+        by (simp add: ModNode.hyps(1))
+      then have mx: "g1 \<turnstile> xn \<simeq> xe1"
+        using ModNode.hyps(1,2) by simp
+      from l have my: "g1 \<turnstile> yn \<simeq> ye1"
+        using ModNode.hyps(1,3) by simp
+      then show ?case
+      proof -
+        have "g1 \<turnstile> xn \<simeq> xe1" 
+          by (simp add: mx)
+        have "g1 \<turnstile> yn \<simeq> ye1" 
+          by (simp add: my)
+        have xer: "\<exists> xe2. (g2 \<turnstile> xn \<simeq> xe2) \<and> xe1 \<ge> xe2"
+          using ModNode  a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          by (metis_node_eq_binary SignedFloatingIntegerRemNode)
+        have "\<exists> ye2. (g2 \<turnstile> yn \<simeq> ye2) \<and> ye1 \<ge> ye2"
+          using ModNode a b c d l no_encoding not_excluded_keep_type repDet singletonD
+          by (metis_node_eq_binary SignedFloatingIntegerRemNode)
+        then have "\<exists> xe2 ye2. (g2 \<turnstile> n \<simeq> BinaryExpr BinMod xe2 ye2) \<and> 
+            BinaryExpr BinMod xe1 ye1 \<ge> BinaryExpr BinMod xe2 ye2"
+          by (metis ModNode.prems l mono_binary rep.ModNode xer)
         then show ?thesis
           by meson
       qed
@@ -1473,7 +1572,9 @@ lemma subset_implies_evals:
                      apply (solve_subset_eval as_set: assms(1) eval: NegateNode)
                     apply (solve_subset_eval as_set: assms(1) eval: LogicNegationNode)
                    apply (solve_subset_eval as_set: assms(1) eval: AddNode)
-                  apply (solve_subset_eval as_set: assms(1) eval: MulNode)
+                   apply (solve_subset_eval as_set: assms(1) eval: MulNode)
+                   apply (solve_subset_eval as_set: assms(1) eval: DivNode)
+                  apply (solve_subset_eval as_set: assms(1) eval: ModNode)
                  apply (solve_subset_eval as_set: assms(1) eval: SubNode)
                 apply (solve_subset_eval as_set: assms(1) eval: AndNode)
                apply (solve_subset_eval as_set: assms(1) eval: OrNode)
@@ -1603,7 +1704,9 @@ lemma graph_unchanged_rep_unchanged:
                      apply (metis no_encoding rep.NegateNode)
                     apply (metis no_encoding rep.LogicNegationNode)
                    apply (metis no_encoding rep.AddNode)
-                  apply (metis no_encoding rep.MulNode)
+                   apply (metis no_encoding rep.MulNode)
+                   apply (metis no_encoding rep.DivNode)
+                  apply (metis no_encoding rep.ModNode)
                  apply (metis no_encoding rep.SubNode)
                 apply (metis no_encoding rep.AndNode)
                apply (metis no_encoding rep.OrNode)
@@ -1725,7 +1828,8 @@ theorem term_graph_reconstruction:
   next
     case (ParameterNodeNew g i s)
     then show ?case
-      by (metis IRNode.distinct(3523) ParameterNode find_new_kind find_new_stamp)
+      using ParameterNode find_new_kind find_new_stamp
+      by (metis IRNode.distinct(3695))
   next
     case (ConditionalNodeSame g4 c t f s' n g ce g2 te g3 fe)
     then have k: "kind g4 n = ConditionalNode c t f"
@@ -1794,11 +1898,11 @@ theorem term_graph_reconstruction:
       by (simp add: local.BinaryNodeSame)
     then show ?case 
       using x k apply (cases op)
-      using bin_node.simps(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16)
-            AddNode MulNode SubNode AndNode OrNode ShortCircuitOrNode LeftShiftNode RightShiftNode 
+      using bin_node.simps(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18)
+            AddNode MulNode DivNode ModNode SubNode AndNode OrNode ShortCircuitOrNode LeftShiftNode RightShiftNode 
             UnsignedRightShiftNode IntegerEqualsNode IntegerLessThanNode IntegerBelowNode XorNode
             IntegerTestNode IntegerNormalizeCompareNode IntegerMulHighNode
-      by presburger+
+      by metis+
   next
     case (BinaryNodeNew g3 op x y s' g xe g2 ye n g')
     moreover have "bin_node op x y \<noteq> NoNode"
@@ -1815,11 +1919,11 @@ theorem term_graph_reconstruction:
       by (meson fresh_node_preserves_other_nodes no_encoding)
     then show ?case 
       using x k apply (cases op)
-      using bin_node.simps(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16)
-            AddNode MulNode SubNode AndNode OrNode ShortCircuitOrNode LeftShiftNode RightShiftNode
+      using bin_node.simps(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18)
+            AddNode MulNode DivNode ModNode SubNode AndNode OrNode ShortCircuitOrNode LeftShiftNode RightShiftNode
             UnsignedRightShiftNode IntegerEqualsNode IntegerLessThanNode XorNode IntegerBelowNode
             IntegerTestNode IntegerNormalizeCompareNode IntegerMulHighNode
-      by presburger+
+      by metis+
   next
     case (AllLeafNodes g n s)
     then show ?case 
@@ -2210,7 +2314,9 @@ lemma same_kind_stamp_encodes_equal:
                       apply (metis NegateNode)
                      apply (metis LogicNegationNode)
                     apply (metis AddNode)
-                   apply (metis MulNode)
+                    apply (metis MulNode)
+                   apply (metis DivNode)
+                  apply (metis ModNode)
                   apply (metis SubNode)
                  apply (metis AndNode)
                 apply (metis OrNode)
@@ -2483,6 +2589,34 @@ next
       using unchanged by (simp add: new_def)
     then show ?case 
       by (simp add: MulNode rep.MulNode)
+  next
+    case (DivNode n x y xe ye)
+    then have kind: "kind g n = SignedFloatingIntegerDivNode x y"
+      by simp
+    then have isin: "n \<in> ids g"
+      by simp
+    have inputs: "{x, y} = inputs g n"
+      by (simp add: kind)
+    have "x \<in> ids g \<and> y \<in> ids g"
+      using closed wf_closed_def isin inputs by blast
+    then have "x \<notin> new \<and> y \<notin> new"
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: DivNode rep.DivNode)
+  next
+    case (ModNode n x y xe ye)
+    then have kind: "kind g n = SignedFloatingIntegerRemNode x y"
+      by simp
+    then have isin: "n \<in> ids g"
+      by simp
+    have inputs: "{x, y} = inputs g n"
+      by (simp add: kind)
+    have "x \<in> ids g \<and> y \<in> ids g"
+      using closed wf_closed_def isin inputs by blast
+    then have "x \<notin> new \<and> y \<notin> new"
+      using unchanged by (simp add: new_def)
+    then show ?case 
+      by (simp add: ModNode rep.ModNode)
   next
     case (SubNode n x y xe ye)
     then have kind: "kind g n = SubNode x y"
@@ -2926,7 +3060,8 @@ lemma unrep_preserves_closure:
   next
     case (ConstantNodeNew g c n g')
     then have dom: "ids g' = ids g \<union> {n}"
-      by (meson IRNode.distinct(1041) add_node_ids_subset ids_add_update)
+      using add_node_ids_subset ids_add_update
+      by (meson IRNode.distinct(1077))
     have k: "kind g' n = ConstantNode c"
       by (simp add: add_node_lookup ConstantNodeNew)
     then have inp: "{} = inputs g' n"
@@ -2946,7 +3081,8 @@ lemma unrep_preserves_closure:
   next
     case (ParameterNodeNew g i s n g')
     then have dom: "ids g' = ids g \<union> {n}"
-      by (meson IRNode.distinct(3523) add_node_ids_subset ids_add_update)
+      using add_node_ids_subset ids_add_update
+      by (meson IRNode.distinct(3695))
     have k: "kind g' n = ParameterNode i"
       by (simp add: add_node_lookup ParameterNodeNew)
     then have inp: "{} = inputs g' n"
@@ -2966,7 +3102,8 @@ lemma unrep_preserves_closure:
   next
     case (ConditionalNodeNew g4 c t f s' g ce g2 te g3 fe n g')
     then have dom: "ids g' = ids g4 \<union> {n}"
-      by (meson IRNode.distinct(933) add_node_ids_subset ids_add_update)
+      using add_node_ids_subset ids_add_update
+      by (meson IRNode.distinct(965))
     have k: "kind g' n = ConditionalNode c t f"
       by (auto simp add: find_new_kind ConditionalNodeNew.hyps(10))
     then have inp: "{c, t, f} = inputs g' n"
@@ -2974,9 +3111,10 @@ lemma unrep_preserves_closure:
     from k have suc: "{} = succ g' n"
       by simp
     have "inputs g' n \<subseteq> ids g' \<and> succ g' n \<subseteq> ids g' \<and> kind g' n \<noteq> NoNode"
-      by (metis (mono_tags, lifting) ConditionalNodeNew.hyps(2,4,6) IRNode.distinct(933) insertCI k
+      using ConditionalNodeNew.hyps(2,4,6) insertCI k
           Un_empty_right Un_insert_right dom empty_subsetI in_mono insert_subsetI unrep_contains
-          unrep_ids_subset inp suc)
+          unrep_ids_subset inp suc
+      by (metis (mono_tags, lifting) IRNode.distinct(965))
     then show ?case 
       by (smt (z3) dom ConditionalNodeNew.hyps ConditionalNodeNew.prems Diff_eq_empty_iff Diff_iff 
           Un_insert_right Un_upper1 add_node_def inputs.simps insertE replace_node_def succ.simps

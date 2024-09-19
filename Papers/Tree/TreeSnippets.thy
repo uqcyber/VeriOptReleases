@@ -113,7 +113,7 @@ lemma diff_diff_cancel_expr:
       using eval by blast
     then have e: "[m, p] \<turnstile> exp[x - (x - y)] \<mapsto> val[vx - (vx - vy)]"
       using vx vy eval
-      by (smt (verit, ccfv_SIG) bin_eval.simps(3) evalDet unfold_binary)
+      by (smt (verit, ccfv_SIG) bin_eval.simps(2) evalDet unfold_binary)
     then have notUn: "val[vx - (vx - vy)] \<noteq> UndefVal"
       using evaltree_not_undef by auto
     then have "val[vx - (vx - vy)] = vy"
@@ -172,7 +172,7 @@ proof -
     by (metis stamp_expr.simps(2))
   then show "\<forall>m p v. ([m,p] \<turnstile> BinaryExpr BinSub x x \<mapsto> v) \<longrightarrow> ([m,p] \<turnstile> ConstantExpr (IntVal b 0) \<mapsto> v)"
     using wf_value_def
-    by (smt (verit, best) BinaryExprE TreeSnippets.wf_stamp_def assms bin_eval.simps(3) constantAsStamp.simps(1) evalDet stamp_expr.simps(2) sub_same_val unfold_const valid_stamp.simps(1) valid_value.simps(1))
+    by (smt (verit, best) BinaryExprE TreeSnippets.wf_stamp_def assms bin_eval.simps(2) constantAsStamp.simps(1) evalDet stamp_expr.simps(2) sub_same_val unfold_const valid_stamp.simps(1) valid_value.simps(1))
 qed
 thm_oracles SubIdentity
 
@@ -371,13 +371,13 @@ snipbegin \<open>phase-example-5\<close>optimization LessCond: "((u < v) ? t : f
                             \<and> wf_stamp u \<and> wf_stamp v)"snipend -
   apply (auto simp: trm_def)
   using ConditionalPhase.condition_bounds_x(1)
-  by (metis(full_types) StampEvalThms.wf_stamp_def TreeSnippets.wf_stamp_def bin_eval.simps(12) stamp_under_defn)
+  by (metis(full_types) StampEvalThms.wf_stamp_def TreeSnippets.wf_stamp_def bin_eval.simps(14) stamp_under_defn)
 
 snipbegin \<open>phase-example-6\<close>optimization condition_bounds_y: "((x < y) ? x : y) \<longmapsto> y
                    when (stamp_under (stamp_expr y) (stamp_expr x) \<and> wf_stamp x \<and> wf_stamp y)"snipend -
   apply (auto simp: trm_def)
   using ConditionalPhase.condition_bounds_y(1)
-  by (metis(full_types) StampEvalThms.wf_stamp_def TreeSnippets.wf_stamp_def bin_eval.simps(12) stamp_under_defn_inverse)
+  by (metis(full_types) StampEvalThms.wf_stamp_def TreeSnippets.wf_stamp_def bin_eval.simps(14) stamp_under_defn_inverse)
 
 
 snipbegin \<open>phase-example-7\<close>end snipend -

@@ -127,6 +127,7 @@ lemma exp_sub_after_right_add2:
   using exp_sub_after_right_add apply auto[1]
   by (metis bin_eval.simps(1,3) intval_add_sym unfold_binary)
 
+
 lemma exp_sub_negative_value:
  "exp[x - (-y)] \<ge> exp[x + y]"
   apply auto[1]
@@ -233,7 +234,7 @@ optimization SubAfterAddLeft: "((x + y) - x) \<longmapsto>  y"
 
 optimization SubAfterSubLeft: "((x - y) - x) \<longmapsto>  -y"
   by (smt (verit) Suc_lessI add_2_eq_Suc' add_less_cancel_right less_trans_Suc not_add_less1 evalDet
-      size_binary_const size_binary_lhs size_binary_rhs size_non_add BinaryExprE bin_eval.simps(3)
+      size_binary_const size_binary_lhs size_binary_rhs size_non_add BinaryExprE bin_eval.simps(2)
       le_expr_def unary_eval.simps(2) unfold_unary val_sub_after_left_sub)+
 
 optimization SubThenAddLeft: "(x - (x + y)) \<longmapsto> -y"

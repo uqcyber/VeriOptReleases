@@ -11,6 +11,8 @@ datatype Tokens =
     Add
   | Sub
   | Mul
+  | Div
+  | Rem
   | And
   | Or
   | Xor
@@ -81,6 +83,12 @@ fun markup_constant (str, typ) =
     | ("Groups.minus_class.minus", _) => Translator.markup DSL_Tokens.Sub
     | ("\<^const>Groups.times_class.times", _) => Translator.markup DSL_Tokens.Mul
     | ("Groups.times_class.times", _) => Translator.markup DSL_Tokens.Mul
+    | ("\<^const>Rings.divide_class.divide", _) => Translator.markup DSL_Tokens.Div
+    | ("Rings.divide_class.divide", _) => Translator.markup DSL_Tokens.Div
+    | ("\<^const>Fields.inverse_class.inverse_divide", _) => Translator.markup DSL_Tokens.Div
+    | ("Fields.inverse_class.inverse_divide", _) => Translator.markup DSL_Tokens.Div
+    | ("\<^const>Markup.ExtraNotation.Remainder", _) => Translator.markup DSL_Tokens.Div
+    | ("Markup.ExtraNotation.Remainder", _) => Translator.markup DSL_Tokens.Div
     | ("\<^const>HOL.conj", _) => Translator.markup DSL_Tokens.And
     | ("HOL.conj", _) => Translator.markup DSL_Tokens.And
     | ("\<^const>HOL.disj", _) => Translator.markup DSL_Tokens.Or

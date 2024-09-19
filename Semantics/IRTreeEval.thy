@@ -50,8 +50,10 @@ datatype IRUnaryOp =
 
 datatype IRBinaryOp =
     BinAdd
-  | BinMul
   | BinSub
+  | BinMul
+  | BinDiv
+  | BinMod
   | BinAnd
   | BinOr
   | BinXor
@@ -116,7 +118,7 @@ text \<open>Note: in Java all integer calculations are done as 32 or 64 bit calc
 \<close>
 
 abbreviation binary_normal :: "IRBinaryOp set" where
-  "binary_normal \<equiv> {BinAdd, BinMul, BinSub, BinAnd, BinOr, BinXor}"
+  "binary_normal \<equiv> {BinAdd, BinMul, BinDiv, BinMod, BinSub, BinAnd, BinOr, BinXor}"
 
 abbreviation binary_fixed_32_ops :: "IRBinaryOp set" where
   "binary_fixed_32_ops \<equiv> {BinShortCircuitOr, BinIntegerEquals, BinIntegerLessThan, BinIntegerBelow, BinIntegerTest, BinIntegerNormalizeCompare}"
@@ -227,8 +229,10 @@ fun unary_eval :: "IRUnaryOp \<Rightarrow> Value \<Rightarrow> Value" where
 
 fun bin_eval :: "IRBinaryOp \<Rightarrow> Value \<Rightarrow> Value \<Rightarrow> Value" where
   "bin_eval BinAdd v1 v2 = intval_add v1 v2" |
-  "bin_eval BinMul v1 v2 = intval_mul v1 v2" |
   "bin_eval BinSub v1 v2 = intval_sub v1 v2" |
+  "bin_eval BinMul v1 v2 = intval_mul v1 v2" |
+  "bin_eval BinDiv v1 v2 = intval_div v1 v2" |
+  "bin_eval BinMod v1 v2 = intval_mod v1 v2" |
   "bin_eval BinAnd v1 v2 = intval_and v1 v2" |
   "bin_eval BinOr  v1 v2 = intval_or v1 v2" |
   "bin_eval BinXor v1 v2 = intval_xor v1 v2" |

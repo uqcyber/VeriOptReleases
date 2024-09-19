@@ -35,7 +35,9 @@ fun binary_op_class :: "IRBinaryOp \<Rightarrow> ClassName" where
   "binary_op_class BinIntegerBelow = STR ''IntegerBelowNode''" |
   "binary_op_class BinIntegerTest = STR ''IntegerTestNode''" |
   "binary_op_class BinIntegerNormalizeCompare = STR ''IntegerNormalizeCompareNode''" |
-  "binary_op_class BinIntegerMulHigh = STR ''IntegerMulHighNode''"
+  "binary_op_class BinIntegerMulHigh = STR ''IntegerMulHighNode''" |
+  "binary_op_class BinDiv = STR ''SignedFloatingIntegerDivNode''" |
+  "binary_op_class BinMod = STR ''SignedFloatingIntegerRemNode''"
 
 fun class_name :: "IRExpr \<Rightarrow> ClassName option" where
   "class_name (UnaryExpr op v) = Some (unary_op_class op)" |

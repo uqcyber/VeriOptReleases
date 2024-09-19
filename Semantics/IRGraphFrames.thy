@@ -297,6 +297,26 @@ next
     by (metis \<open>kind g2 n = MulNode x y\<close> child_unchanged inputs.simps list.set_intros(1) rep.MulNode 
         set_subset_Cons subset_iff unchanged.elims(2) inputs_of_MulNode MulNode(1,4,5,6,7))
 next
+  case (DivNode n x y xe ye)
+  then have "kind g2 n = SignedFloatingIntegerDivNode x y"
+    by (metis kind_unchanged)
+  then have "x \<in> eval_usages g1 n \<and> y \<in> eval_usages g1 n"
+    by (metis DivNode.hyps(1,2,3) IRNodes.inputs_of_SignedFloatingIntegerDivNode encode_in_ids in_mono inputs.simps 
+        inputs_are_usages list.set_intros(1) set_subset_Cons)
+  then show ?case 
+    by (metis \<open>kind g2 n = SignedFloatingIntegerDivNode x y\<close> child_unchanged inputs.simps list.set_intros(1) rep.DivNode 
+        set_subset_Cons subset_iff unchanged.elims(2) inputs_of_SignedFloatingIntegerDivNode DivNode(1,4,5,6,7))
+next
+  case (ModNode n x y xe ye)
+  then have "kind g2 n = SignedFloatingIntegerRemNode x y"
+    by (metis kind_unchanged)
+  then have "x \<in> eval_usages g1 n \<and> y \<in> eval_usages g1 n"
+    by (metis ModNode.hyps(1,2,3) IRNodes.inputs_of_SignedFloatingIntegerRemNode encode_in_ids in_mono inputs.simps 
+        inputs_are_usages list.set_intros(1) set_subset_Cons)
+  then show ?case 
+    by (metis \<open>kind g2 n = SignedFloatingIntegerRemNode x y\<close> child_unchanged inputs.simps list.set_intros(1) rep.ModNode 
+        set_subset_Cons subset_iff unchanged.elims(2) inputs_of_SignedFloatingIntegerRemNode ModNode(1,4,5,6,7))
+next
   case (SubNode n x y xe ye)
   then have "kind g2 n = SubNode x y"
     by (metis kind_unchanged)

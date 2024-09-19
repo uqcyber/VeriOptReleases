@@ -131,15 +131,19 @@ fun intval_mul :: "Value \<Rightarrow> Value \<Rightarrow> Value" where
 (* TODO: find a signed division operator in the Word library? *)
 fun intval_div :: "Value \<Rightarrow> Value \<Rightarrow> Value" where
   "intval_div (IntVal b1 v1) (IntVal b2 v2) = 
+    (if v2 = 0 then UndefVal else
         new_int_bin b1 b2 (word_of_int
-           ((int_signed_value b1 v1) sdiv (int_signed_value b2 v2)))" |
+           ((int_signed_value b1 v1) sdiv (int_signed_value b2 v2))))" |
   "intval_div _ _ = UndefVal"
+
+value "intval_div (IntVal 32 5) (IntVal 32 0)"
 
 (* Java % is a modulo operator that can give negative results, since div rounds towards 0. *)
 fun intval_mod :: "Value \<Rightarrow> Value \<Rightarrow> Value" where
   "intval_mod (IntVal b1 v1) (IntVal b2 v2) = 
+    (if v2 = 0 then UndefVal else
         new_int_bin b1 b2 (word_of_int
-           ((int_signed_value b1 v1) smod (int_signed_value b2 v2)))" |
+           ((int_signed_value b1 v1) smod (int_signed_value b2 v2))))" |
   "intval_mod _ _ = UndefVal"
 
 (* Corresponds to Math.multiplyHigh(L,L) and ExactMath.multiplyHigh(I,I) *)

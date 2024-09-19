@@ -74,7 +74,11 @@ lemma bin_eval_int:
   apply presburger+ (* prove 6 more easy cases *)
   prefer 3 prefer 4
      apply (smt (verit, del_insts) new_int.simps)
-     apply (smt (verit, del_insts) new_int.simps)
+                      apply (smt (verit, del_insts) new_int.simps)
+                      apply (meson new_int_bin.simps)+
+                      apply (meson bool_to_val.elims)
+                      apply (meson bool_to_val.elims)
+                     apply (smt (verit, del_insts) new_int.simps)+
   by (metis bool_to_val.elims)+
 
 lemma IntVal0:
@@ -99,6 +103,16 @@ next
   case BinMul
   then show ?thesis
     using assms apply (cases x; cases y; auto) by presburger
+next
+  case BinDiv
+  then show ?thesis
+    using assms apply (cases x; cases y; auto)
+    by (meson new_int_bin.simps)
+next
+  case BinMod
+  then show ?thesis
+    using assms apply (cases x; cases y; auto)
+    by (meson new_int_bin.simps)
 next
   case BinSub
   then show ?thesis
@@ -814,6 +828,7 @@ next
     by auto
 qed
 
+
 lemma bin_eval_normal_bits:
   assumes "op \<in> binary_normal"
   assumes "bin_eval op x y = xy"
@@ -832,14 +847,18 @@ lemma bin_eval_normal_bits:
         by (metis assms(3) bin_eval_inputs_are_ints bin_eval_int is_IntVal_def operator)
       then have notUndefMeansWidthSame: "bin_eval op x y \<noteq> UndefVal \<Longrightarrow> (xb = yb)"
         using assms apply (cases op; auto)
-        by (metis intval_xor.simps(1) intval_or.simps(1) intval_and.simps(1) intval_sub.simps(1)
+        by (metis intval_xor.simps(1) intval_or.simps(1) intval_div.simps(1) intval_mod.simps(1) intval_and.simps(1) intval_sub.simps(1)
             intval_mul.simps(1) intval_add.simps(1) new_int_bin.elims xv)+
       then have inWidthsSame: "xb = yb"
         using assms(3) operator by auto
       obtain ob xyv where out: "xy = IntVal ob xyv"
         by (metis Value.collapse(1) assms(3) bin_eval_int operator)
       then have "yb = ob"
-        using assms apply (cases op; auto) by (simp add: inWidthsSame xv yv)+
+        using assms apply (cases op; auto)
+           apply (simp add: inWidthsSame xv yv)+
+           apply (metis assms(3) intval_bits.simps new_int.simps new_int_bin.elims)
+           apply (metis xv yv Value.distinct(1) intval_mod.simps(1) new_int.simps new_int_bin.elims)
+          by (simp add: inWidthsSame xv yv)+
       then show ?thesis
       using xv yv inWidthsSame assms out by blast
   qed
@@ -877,7 +896,7 @@ lemma unfold_binary_width_bin_normal:
       by (metis evalDet p(2,3) eval)
     then have notUndefMeansSameWidth: "bin_eval op xv yv \<noteq> UndefVal \<Longrightarrow> (bb = yb)"
       using assms apply (cases op; auto)
-      by (metis intval_add.simps(1) intval_mul.simps(1) intval_sub.simps(1) intval_and.simps(1)
+      by (metis intval_add.simps(1) intval_mul.simps(1) intval_div.simps(1) intval_mod.simps(1) intval_sub.simps(1) intval_and.simps(1)
           intval_or.simps(1) intval_xor.simps(1) new_int_bin.simps xa ya)+
     have unfoldVal: "bin_eval op x y = bin_eval op (IntVal bb xa) (IntVal yb ya)"
       unfolding sameVals xa ya by simp

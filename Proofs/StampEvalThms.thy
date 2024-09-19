@@ -394,6 +394,8 @@ lemma bin_eval_bits_normal_ops:
   assumes "op \<notin> binary_fixed_32_ops"
   shows "\<exists>v. result = new_int b1 v"
   using assms apply (cases op; simp)
+  apply metis+
+  apply (metis new_int_bin.simps)+
   by (metis take_bit_xor take_bit_and take_bit_or)+
 
 lemma bin_eval_input_bits_equal:
@@ -401,7 +403,7 @@ lemma bin_eval_input_bits_equal:
   assumes "result \<noteq> UndefVal"
   assumes "op \<notin> binary_shift_ops"
   shows "b1 = b2"
-  using assms apply (cases op; simp) by presburger+
+  using assms apply (cases op; simp) by (meson new_int_bin.simps)+
 
 lemma bin_eval_implies_valid_value:
   assumes "[m,p] \<turnstile> expr1 \<mapsto> val1"
