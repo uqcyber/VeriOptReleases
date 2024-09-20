@@ -109,15 +109,15 @@ fun mkstr ctxt name =
   Syntax.read_term ctxt ("STR ''" ^ name ^ "''")
 
 fun create_var ctxt name = 
-  (@{term "VariableExprPattern"} $ mkstr ctxt name)
+  (@{term "VariablePattern"} $ mkstr ctxt name)
 
 fun create_const ctxt name = 
   (@{term "ConstantVarPattern"} $ mkstr ctxt name)
 
 fun ground_IRExpr ctxt trm =
   (case trm of
-    Const ("\<^const>CodeGenAltAlt.PatternExpr.ConstantExprPattern", _) $ (Free (str, _)) => create_const ctxt str
-    | Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern", _) $ (Free (str, _)) => create_const ctxt str
+    Const ("\<^const>CodeGenAltAlt.PatternExpr.ConstantPattern", _) $ (Free (str, _)) => create_const ctxt str
+    | Const ("CodeGenAltAlt.PatternExpr.ConstantPattern", _) $ (Free (str, _)) => create_const ctxt str
     | (x $ y) => (ground_IRExpr ctxt x $ ground_IRExpr ctxt y)
     | Abs (str, typ, trm) => Abs (str, typ, ground_IRExpr ctxt trm)
     | Free (str, @{typ PatternExpr}) => create_var ctxt str
@@ -283,19 +283,19 @@ fun rewrite_constants_proofs ctxt is_lhs trm =
 
 fun rewrite_constants_code ctxt is_lhs trm =
   (case trm of
-    Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ (Const ("Num.numeral_class.numeral", _) $ c)
-      => Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ (@{term "IntVal b"} $ (Const ("Num.numeral_class.numeral", at) $ c))
-    | Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ (Const ("Groups.zero_class.zero", _))
-      => Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ (@{term "IntVal b 0"})
-    | Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ (Const ("Groups.one_class.one", _))
-      => Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ (@{term "IntVal b 0"})
-    | Const ("\<^const>CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ (Free (str, _)) => create_const ctxt str
-    | Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ (Free (str, _)) => create_const ctxt str
-    | Const ("\<^const>CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ e => 
+    Const ("CodeGenAltAlt.PatternExpr.ConstantPattern", typ) $ (Const ("Num.numeral_class.numeral", _) $ c)
+      => Const ("CodeGenAltAlt.PatternExpr.ConstantPattern", typ) $ (@{term "IntVal b"} $ (Const ("Num.numeral_class.numeral", at) $ c))
+    | Const ("CodeGenAltAlt.PatternExpr.ConstantPattern", typ) $ (Const ("Groups.zero_class.zero", _))
+      => Const ("CodeGenAltAlt.PatternExpr.ConstantPattern", typ) $ (@{term "IntVal b 0"})
+    | Const ("CodeGenAltAlt.PatternExpr.ConstantPattern", typ) $ (Const ("Groups.one_class.one", _))
+      => Const ("CodeGenAltAlt.PatternExpr.ConstantPattern", typ) $ (@{term "IntVal b 0"})
+    | Const ("\<^const>CodeGenAltAlt.PatternExpr.ConstantPattern", typ) $ (Free (str, _)) => create_const ctxt str
+    | Const ("CodeGenAltAlt.PatternExpr.ConstantPattern", typ) $ (Free (str, _)) => create_const ctxt str
+    | Const ("\<^const>CodeGenAltAlt.PatternExpr.ConstantPattern", typ) $ e => 
       (if is_lhs then trm else
        (Const ("\<^const>CodeGenAltAlt.PatternExpr.ConstantLiteralPattern", @{typ "PatternExpr \<Rightarrow> PatternExpr"})
         $ (ground_IRExpr ctxt (Syntax.check_term ctxt (PatternExprMarkup.markup_expr [] ctxt [e])))))
-    | Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern", typ) $ e => 
+    | Const ("CodeGenAltAlt.PatternExpr.ConstantPattern", typ) $ e => 
       (if is_lhs then trm else
        (Const ("CodeGenAltAlt.PatternExpr.ConstantLiteralPattern", @{typ "PatternExpr \<Rightarrow> PatternExpr"})
          $ (ground_IRExpr ctxt (Syntax.check_term ctxt (PatternExprMarkup.markup_expr [] ctxt [e])))))

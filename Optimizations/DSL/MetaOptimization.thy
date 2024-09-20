@@ -389,9 +389,9 @@ theorem reduce_sound:
   by (metis comp_eq_dest_lhs join_conditions.apply_meta_sound lift_cond.apply_meta_sound reduce_def)
 
 value "reduce (snd (Predicate.the (generateC STR ''myrule''
-    (BinaryExprPattern BinSub (BinaryExprPattern BinAdd (VariableExprPattern STR ''x'') (VariableExprPattern STR ''y'')) (VariableExprPattern STR ''x''))
+    (BinaryPattern BinSub (BinaryPattern BinAdd (VariablePattern STR ''x'') (VariablePattern STR ''y'')) (VariablePattern STR ''x''))
     None
-    (VariableExprPattern STR ''x''))))"
+    (VariablePattern STR ''x''))))"
 
 
 

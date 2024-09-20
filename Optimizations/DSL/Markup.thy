@@ -71,26 +71,28 @@ subsubsection \<open>Pattern Markup\<close>
 ML \<open>
 structure PatternExprTranslator : DSL_TRANSLATION =
 struct
-fun markup DSL_Tokens.Add = @{term BinaryExprPattern} $ @{term BinAdd}
-  | markup DSL_Tokens.Sub = @{term BinaryExprPattern} $ @{term BinSub}
-  | markup DSL_Tokens.Mul = @{term BinaryExprPattern} $ @{term BinMul}
-  | markup DSL_Tokens.And = @{term BinaryExprPattern} $ @{term BinAnd}
-  | markup DSL_Tokens.Or = @{term BinaryExprPattern} $ @{term BinOr}
-  | markup DSL_Tokens.Xor = @{term BinaryExprPattern} $ @{term BinXor}
-  | markup DSL_Tokens.ShortCircuitOr = @{term BinaryExprPattern} $ @{term BinShortCircuitOr}
-  | markup DSL_Tokens.Abs = @{term UnaryExprPattern} $ @{term UnaryAbs}
-  | markup DSL_Tokens.Less = @{term BinaryExprPattern} $ @{term BinIntegerLessThan}
-  | markup DSL_Tokens.Equals = @{term BinaryExprPattern} $ @{term BinIntegerEquals}
-  | markup DSL_Tokens.Not = @{term UnaryExprPattern} $ @{term UnaryNot}
-  | markup DSL_Tokens.Negate = @{term UnaryExprPattern} $ @{term UnaryNeg}
-  | markup DSL_Tokens.LogicNegate = @{term UnaryExprPattern} $ @{term UnaryLogicNegation}
-  | markup DSL_Tokens.LeftShift = @{term BinaryExprPattern} $ @{term BinLeftShift}
-  | markup DSL_Tokens.RightShift = @{term BinaryExprPattern} $ @{term BinRightShift}
-  | markup DSL_Tokens.UnsignedRightShift = @{term BinaryExprPattern} $ @{term BinURightShift}
-  | markup DSL_Tokens.Conditional = @{term ConditionalExprPattern}
-  | markup DSL_Tokens.Constant = @{term ConstantExprPattern}
-  | markup DSL_Tokens.TrueConstant = @{term "ConstantExprPattern (IntVal 32 1)"}
-  | markup DSL_Tokens.FalseConstant = @{term "ConstantExprPattern (IntVal 32 0)"}
+fun markup DSL_Tokens.Add = @{term BinaryPattern} $ @{term BinAdd}
+  | markup DSL_Tokens.Sub = @{term BinaryPattern} $ @{term BinSub}
+  | markup DSL_Tokens.Mul = @{term BinaryPattern} $ @{term BinMul}
+  | markup DSL_Tokens.Div = @{term BinaryPattern} $ @{term BinDiv}
+  | markup DSL_Tokens.Rem = @{term BinaryPattern} $ @{term BinMod}
+  | markup DSL_Tokens.And = @{term BinaryPattern} $ @{term BinAnd}
+  | markup DSL_Tokens.Or = @{term BinaryPattern} $ @{term BinOr}
+  | markup DSL_Tokens.Xor = @{term BinaryPattern} $ @{term BinXor}
+  | markup DSL_Tokens.ShortCircuitOr = @{term BinaryPattern} $ @{term BinShortCircuitOr}
+  | markup DSL_Tokens.Abs = @{term UnaryPattern} $ @{term UnaryAbs}
+  | markup DSL_Tokens.Less = @{term BinaryPattern} $ @{term BinIntegerLessThan}
+  | markup DSL_Tokens.Equals = @{term BinaryPattern} $ @{term BinIntegerEquals}
+  | markup DSL_Tokens.Not = @{term UnaryPattern} $ @{term UnaryNot}
+  | markup DSL_Tokens.Negate = @{term UnaryPattern} $ @{term UnaryNeg}
+  | markup DSL_Tokens.LogicNegate = @{term UnaryPattern} $ @{term UnaryLogicNegation}
+  | markup DSL_Tokens.LeftShift = @{term BinaryPattern} $ @{term BinLeftShift}
+  | markup DSL_Tokens.RightShift = @{term BinaryPattern} $ @{term BinRightShift}
+  | markup DSL_Tokens.UnsignedRightShift = @{term BinaryPattern} $ @{term BinURightShift}
+  | markup DSL_Tokens.Conditional = @{term ConditionalPattern}
+  | markup DSL_Tokens.Constant = @{term ConstantPattern}
+  | markup DSL_Tokens.TrueConstant = @{term "ConstantPattern (IntVal 32 1)"}
+  | markup DSL_Tokens.FalseConstant = @{term "ConstantPattern (IntVal 32 0)"}
 end
 structure PatternExprMarkup = DSL_Markup(PatternExprTranslator);
 \<close>
@@ -159,7 +161,7 @@ fun markup DSL_Tokens.Add = @{term plus}
   | markup DSL_Tokens.Negate = @{term uminus}
   | markup DSL_Tokens.LogicNegate = @{term logic_negate}
   | markup DSL_Tokens.LeftShift = @{term shiftl}
-  | markup DSL_Tokens.RightShift = @{term signed_shiftr}
+  | markup DSL_Tokens.RightShift = @{term sshiftr}
   | markup DSL_Tokens.UnsignedRightShift = @{term shiftr}
   | markup DSL_Tokens.Constant = @{term word}
   | markup DSL_Tokens.TrueConstant = @{term 1}
@@ -203,6 +205,8 @@ struct
 fun markup DSL_Tokens.Add = @{term Binary} $ @{term BinAdd}
   | markup DSL_Tokens.Sub = @{term Binary} $ @{term BinSub}
   | markup DSL_Tokens.Mul = @{term Binary} $ @{term BinMul}
+  | markup DSL_Tokens.Div = @{term Binary} $ @{term BinDiv}
+  | markup DSL_Tokens.Rem = @{term Binary} $ @{term BinMod}
   | markup DSL_Tokens.And = @{term Binary} $ @{term BinAnd}
   | markup DSL_Tokens.Or = @{term Binary} $ @{term BinOr}
   | markup DSL_Tokens.Xor = @{term Binary} $ @{term BinXor}

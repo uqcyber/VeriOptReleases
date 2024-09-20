@@ -105,6 +105,8 @@ fun markup_constant (str, typ) =
     | ("Orderings.ord_class.less", _) => Translator.markup DSL_Tokens.Less
     | ("\<^const>Groups.abs_class.abs", _) => Translator.markup DSL_Tokens.Abs
     | ("Groups.abs_class.abs", _) => Translator.markup DSL_Tokens.Abs
+    | ("\<^const>AbsPhase.abs", _) => Translator.markup DSL_Tokens.Abs
+    | ("AbsPhase.abs", _) => Translator.markup DSL_Tokens.Abs
     | ("\<^const>JavaWords.shiftl", _) => Translator.markup DSL_Tokens.LeftShift
     | ("JavaWords.shiftl", _) => Translator.markup DSL_Tokens.LeftShift
     | ("\<^const>JavaWords.sshiftr", _) => Translator.markup DSL_Tokens.RightShift
@@ -129,8 +131,8 @@ fun markup_expr taken ctxt [trm] =
       Const (str, typ) => markup_constant (str, typ)
     | e as ((Const ("\<^const>IRTreeEval.IRExpr.ConstantExpr",_)) $ _) => e (* ignore within a constant *)
     | e as ((Const ("IRTreeEval.IRExpr.ConstantExpr",_)) $ _) => e (* ignore within a constant *)
-    | e as ((Const ("\<^const>CodeGenAltAlt.PatternExpr.ConstantExprPattern",_)) $ _) => e (* ignore within a constant *)
-    | e as ((Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern",_)) $ _) => e (* ignore within a constant *)
+    | e as ((Const ("\<^const>CodeGenAltAlt.PatternExpr.ConstantPattern",_)) $ _) => e (* ignore within a constant *)
+    | e as ((Const ("CodeGenAltAlt.PatternExpr.ConstantPattern",_)) $ _) => e (* ignore within a constant *)
     | (e as (Const ("\<^const>Markup.Rewrite.Conditional",_))) $ lhs $ rhs $ cond => 
       e $ markup_expr taken ctxt [lhs] $ markup_expr taken ctxt [rhs] $ cond
     | (e as (Const ("Markup.Rewrite.Conditional",_))) $ lhs $ rhs $ cond => 
@@ -140,7 +142,7 @@ fun markup_expr taken ctxt [trm] =
     | (x $ y) => ((let val x' = markup_expr taken ctxt [x] in 
         case x' of 
           ((Const ("IRTreeEval.IRExpr.ConstantExpr",_))) => (x' $ y)
-          | ((Const ("CodeGenAltAlt.PatternExpr.ConstantExprPattern",_))) => (x' $ y)
+          | ((Const ("CodeGenAltAlt.PatternExpr.ConstantPattern",_))) => (x' $ y)
           | _ => (x' $ markup_expr taken ctxt [y])
         end))
     | Free (str, typ) => markup_free taken (str, typ)

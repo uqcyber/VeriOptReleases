@@ -324,21 +324,24 @@ lemma val_abs_negate:
 
 paragraph \<open>Optimisations\<close>
 
-(*
+
 optimization AbsIdempotence:
-  "abs(abs(x)) \<longmapsto> abs(x) when wf_stamp x \<and> stamp_expr x = IntegerStamp b l h"
+  when "wf_stamp x"
+  when "x..stamp() instanceof IntegerStamp"
+  "abs(abs(x)) \<longmapsto> abs(x)"
   using val_abs_idem
-  using wf_stamp_def by fastforce
-*)
+  using wf_stamp_def
+  by (smt (verit, best) EvalTreeE(4) is_IntegerStamp_def le_expr_def stamp_instanceof_IntegerStamp unary_eval.simps(1)) 
 
 value AbsIdempotence_code
 
-(*
-optimization AbsNegate[nogen]: "exp[(abs(-x))] \<longmapsto>  exp[abs(x)]"
-  using val_abs_negate by auto
+
+optimization AbsNegate[nogen]: "(abs(-x)) \<longmapsto> abs(x)"
+  sorry
+  (*using val_abs_negate by auto*)
 
 value "(either (snd AbsIdempotence_code) (snd AbsNegate_code))"
-*)
+
 
 end (* End of AbsPhase *)
 
