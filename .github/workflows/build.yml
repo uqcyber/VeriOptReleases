@@ -17,13 +17,13 @@ jobs:
     - name: Cache Isabelle Heaps
       uses: actions/cache@v2
       with:
-        key: ${{ runner.os }}-Isabelle2021-${{ hashFiles('ROOT') }}-${{ github.run_id }}
+        key: ${{ runner.os }}-Isabelle2022-${{ hashFiles('ROOT') }}-${{ github.run_id }}
         path: .heaps
         restore-keys: |
-          ${{ runner.os }}-Isabelle2021-${{ hashFiles('ROOT') }}
+          ${{ runner.os }}-Isabelle2022-${{ hashFiles('ROOT') }}
       
     - name: Build Sessions
-      uses: BraeWebb/isabelle-action@v1.10
+      uses: BraeWebb/isabelle-action@v1.11
       with:
         args: "build -b -P site -D . -v"
         heapCacheDir: .heaps

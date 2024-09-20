@@ -303,4 +303,52 @@ val _ =
       (fn (name, term) => Toplevel.theory (fn state => gencode state name term)))
 \<close>
 
+ML_file "~~/src/Doc/antiquote_setup.ML"
+
+
+snipbegin \<open>PhaseRail\<close>
+text \<open>
+\<^rail>\<open>
+@{syntax_def phase}: @'phase' @{syntax name} \<newline>
+@'terminating' @{syntax measure} \<newline>
+@'begin' (body*)
+@'end'
+;
+
+@{syntax_def optimization}: @'optimization' @{syntax name} options? ':' \<newline>
+rule proof
+;
+
+options: '[' (intval | subgoals) ']'
+;
+
+rule: term '\<mapsto>' term \<newline>
+('when' condition ((condition '&&')*))?
+;
+
+@{syntax_def print_phases}: @'print_phases' '!'?
+;
+
+@{syntax_def export_phases}: @'export_phases' filename
+;
+
+@{syntax_def gencode}: @'gencode' filename term
+;
+\<close>
+
+\<^descr> @{command phase}~\<open>name\<close>~\<open>terminating\<close>~\<open>measure\<close>
+opens a new optimization phase environment.
+A termination measure is provided as the measure argument.
+All optimizations within the phase must satisfy termination for the given measure.
+
+\<^descr> @{command optimization}~\<open>name\<close>
+defines a new optimization rule with a proof of correctness.
+An obligation for semantic preservation and termination are opened.
+An optimization can only be defined within a \<^emph>\<open>phase\<close>.
+                                                 
+\<close>
+snipend -
+
+print_syntax
+
 end

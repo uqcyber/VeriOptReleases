@@ -160,7 +160,7 @@ the asConstant function converts the stamp to a value where one can be inferred.
 \<close>
 (* NOTE: we could also add a 32-bit version of this if needed. *)
 fun asConstant :: "Stamp \<Rightarrow> Value" where
-  "asConstant (IntegerStamp b l h) = (if l = h then IntVal b (word_of_int l) else UndefVal)" |
+  "asConstant (IntegerStamp b l h) = (if l = h then new_int b (word_of_int l) else UndefVal)" |
   "asConstant _ = UndefVal"
 
 \<comment> \<open>Determine if two stamps never have value overlaps i.e. their join is empty\<close>

@@ -168,7 +168,7 @@ lemma encode_in_ids:
 lemma eval_in_ids:
   assumes "[g, m, p] \<turnstile> nid \<mapsto> v"
   shows "nid \<in> ids g"
-  using assms encode_in_ids by (auto simp add: encodeeval_def)
+  using assms encode_in_ids by (auto simp add: encodeeval.simps)
 
 lemma transitive_kind_same:
   assumes "unchanged (eval_usages g1 nid) g1 g2"
@@ -541,11 +541,11 @@ proof -
   then have kind_same: "kind g1 nid = kind g2 nid"
     using nc node_unchanged by blast
   obtain e where e: "(g1 \<turnstile> nid \<simeq> e) \<and> ([m,p] \<turnstile> e \<mapsto> v1)"
-    using g1 by (auto simp add: encodeeval_def)
+    using g1 by (auto simp add: encodeeval.simps)
   then have val: "[m,p] \<turnstile> e \<mapsto> v1"
-    by (simp add: g1 encodeeval_def)
+    by (simp add: g1 encodeeval.simps)
   then show ?thesis 
-    using e nc unfolding encodeeval_def
+    using e nc unfolding encodeeval.simps
   proof (induct e v1 arbitrary: nid rule: "evaltree.induct")
     case (ConstantExpr c)
     then show ?case

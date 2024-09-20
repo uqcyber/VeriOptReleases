@@ -2,7 +2,7 @@ section \<open>Conditional Elimination Tests\<close>
 
 theory ConditionalEliminationTests
 imports
-  ConditionalElimination.MyConditionalElimination
+  ConditionalElimination.ConditionalElimination
   Graph.Comparison
   IRGraphSort
 begin
@@ -123,33 +123,27 @@ definition ConditionalEliminationTest13_testSnippet12_final :: IRGraph where  "C
 
 code_pred (modes: i \<Rightarrow> i \<Rightarrow> i \<Rightarrow> bool) tryFold .
 
+value "(runConditionalElimination
+      ConditionalEliminationTest13_testSnippet12_initial)"
+
 value "
   eqGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet12_initial
-    ))
+  (runConditionalElimination
+      ConditionalEliminationTest13_testSnippet12_initial)
   ConditionalEliminationTest13_testSnippet12_final
 "
 
 value "
   diffNodesGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet12_initial
-    ))
+  (runConditionalElimination
+      ConditionalEliminationTest13_testSnippet12_initial)
   ConditionalEliminationTest13_testSnippet12_final
 "
 
 value "
   diffNodesInfo
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet12_initial
-    ))
+  (runConditionalElimination
+      ConditionalEliminationTest13_testSnippet12_initial)
   ConditionalEliminationTest13_testSnippet12_final
 "
 
@@ -258,38 +252,24 @@ definition ConditionalEliminationTest13_testSnippet13_final :: IRGraph where  "C
   (47, (ReturnNode None None), VoidStamp)
   ]"
 
-values "{g'. (ConditionalEliminationPhase
-        (0, {}, ConditionalEliminationPhaseAnalysisStart)
-        ConditionalEliminationTest13_testSnippet13_initial
-       g')}"
-
 value "
   eqGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet13_initial
-    ))
+  (runConditionalElimination
+      ConditionalEliminationTest13_testSnippet13_initial)
   ConditionalEliminationTest13_testSnippet13_final
 "
 
 value "
   diffNodesGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet13_initial
-    ))
+  (runConditionalElimination
+      ConditionalEliminationTest13_testSnippet13_initial)
   ConditionalEliminationTest13_testSnippet13_final
 "
 
 value "
   diffNodesInfo
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet13_initial
-    ))
+  (runConditionalElimination
+      ConditionalEliminationTest13_testSnippet13_initial)
   ConditionalEliminationTest13_testSnippet13_final
 "
 
@@ -401,31 +381,22 @@ definition ConditionalEliminationTest13_testSnippet14_final :: IRGraph where  "C
 
 value "
   eqGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet14_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest13_testSnippet14_initial)
   ConditionalEliminationTest13_testSnippet14_final
 "
 
 value "
   diffNodesGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet14_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest13_testSnippet14_initial)
   ConditionalEliminationTest13_testSnippet14_final
 "
 
 value "
   diffNodesInfo
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet14_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest13_testSnippet14_initial)
   ConditionalEliminationTest13_testSnippet14_final
 "
 
@@ -501,31 +472,22 @@ definition ConditionalEliminationTest13_testSnippet2_final :: IRGraph where  "Co
 
 value "
   eqGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet2_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest13_testSnippet2_initial)
   ConditionalEliminationTest13_testSnippet2_final
 "
 
 value "
   diffNodesGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet2_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest13_testSnippet2_initial)
   ConditionalEliminationTest13_testSnippet2_final
 "
 
 value "
   diffNodesInfo
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet2_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest13_testSnippet2_initial)
   ConditionalEliminationTest13_testSnippet2_final
 "
 
@@ -600,31 +562,22 @@ definition ConditionalEliminationTest13_testSnippet3_final :: IRGraph where  "Co
 
 value "
   eqGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet3_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest13_testSnippet3_initial)
   ConditionalEliminationTest13_testSnippet3_final
 "
 
 value "
   diffNodesGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet3_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest13_testSnippet3_initial)
   ConditionalEliminationTest13_testSnippet3_final
 "
 
 value "
   diffNodesInfo
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet3_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest13_testSnippet3_initial)
   ConditionalEliminationTest13_testSnippet3_final
 "
 
@@ -697,31 +650,22 @@ definition ConditionalEliminationTest13_testSnippet5_final :: IRGraph where  "Co
 
 value "
   eqGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet5_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest13_testSnippet5_initial)
   ConditionalEliminationTest13_testSnippet5_final
 "
 
 value "
   diffNodesGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet5_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest13_testSnippet5_initial)
   ConditionalEliminationTest13_testSnippet5_final
 "
 
 value "
   diffNodesInfo
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet5_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest13_testSnippet5_initial)
   ConditionalEliminationTest13_testSnippet5_final
 "
 
@@ -795,31 +739,22 @@ definition ConditionalEliminationTest13_testSnippet6_final :: IRGraph where  "Co
 
 value "
   eqGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet6_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest13_testSnippet6_initial)
   ConditionalEliminationTest13_testSnippet6_final
 "
 
 value "
   diffNodesGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet6_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest13_testSnippet6_initial)
   ConditionalEliminationTest13_testSnippet6_final
 "
 
 value "
   diffNodesInfo
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet6_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest13_testSnippet6_initial)
   ConditionalEliminationTest13_testSnippet6_final
 "
 
@@ -895,31 +830,22 @@ definition ConditionalEliminationTest13_testSnippet7_final :: IRGraph where  "Co
 
 value "
   eqGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet7_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest13_testSnippet7_initial)
   ConditionalEliminationTest13_testSnippet7_final
 "
 
 value "
   diffNodesGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet7_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest13_testSnippet7_initial)
   ConditionalEliminationTest13_testSnippet7_final
 "
 
 value "
   diffNodesInfo
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest13_testSnippet7_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest13_testSnippet7_initial)
   ConditionalEliminationTest13_testSnippet7_final
 "
 
@@ -1040,31 +966,22 @@ definition ConditionalEliminationTest1_test1Snippet_final :: IRGraph where  "Con
 
 value "
   eqGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest1_test1Snippet_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest1_test1Snippet_initial)
   ConditionalEliminationTest1_test1Snippet_final
 "
 
 value "
   diffNodesGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest1_test1Snippet_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest1_test1Snippet_initial)
   ConditionalEliminationTest1_test1Snippet_final
 "
 
 value "
   diffNodesInfo
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest1_test1Snippet_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest1_test1Snippet_initial)
   ConditionalEliminationTest1_test1Snippet_final
 "
 
@@ -1163,31 +1080,22 @@ definition ConditionalEliminationTest1_test2Snippet_final :: IRGraph where  "Con
 
 value "
   eqGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest1_test2Snippet_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest1_test2Snippet_initial)
   ConditionalEliminationTest1_test2Snippet_final
 "
 
 value "
   diffNodesGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest1_test2Snippet_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest1_test2Snippet_initial)
   ConditionalEliminationTest1_test2Snippet_final
 "
 
 value "
   diffNodesInfo
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest1_test2Snippet_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest1_test2Snippet_initial)
   ConditionalEliminationTest1_test2Snippet_final
 "
 
@@ -1326,31 +1234,22 @@ definition ConditionalEliminationTest1_test3Snippet_final :: IRGraph where  "Con
 
 value "
   eqGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest1_test3Snippet_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest1_test3Snippet_initial)
   ConditionalEliminationTest1_test3Snippet_final
 "
 
 value "
   diffNodesGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest1_test3Snippet_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest1_test3Snippet_initial)
   ConditionalEliminationTest1_test3Snippet_final
 "
 
 value "
   diffNodesInfo
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest1_test3Snippet_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest1_test3Snippet_initial)
   ConditionalEliminationTest1_test3Snippet_final
 "
 
@@ -1404,31 +1303,22 @@ definition ConditionalEliminationTest4_test1Snippet_final :: IRGraph where  "Con
 
 value "
   eqGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest4_test1Snippet_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest4_test1Snippet_initial)
   ConditionalEliminationTest4_test1Snippet_final
 "
 
 value "
   diffNodesGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest4_test1Snippet_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest4_test1Snippet_initial)
   ConditionalEliminationTest4_test1Snippet_final
 "
 
 value "
   diffNodesInfo
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest4_test1Snippet_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest4_test1Snippet_initial)
   ConditionalEliminationTest4_test1Snippet_final
 "
 
@@ -1482,32 +1372,78 @@ definition ConditionalEliminationTest4_test2Snippet_final :: IRGraph where  "Con
 
 value "
   eqGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest4_test2Snippet_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest4_test2Snippet_initial)
   ConditionalEliminationTest4_test2Snippet_final
 "
 
 value "
   diffNodesGraph
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest4_test2Snippet_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest4_test2Snippet_initial)
   ConditionalEliminationTest4_test2Snippet_final
 "
 
 value "
   diffNodesInfo
-  (Predicate.the
-    (ConditionalEliminationPhase_i_i_o
-      (0, {}, ConditionalEliminationPhaseAnalysisStart)
-      ConditionalEliminationTest4_test2Snippet_initial
-    ))
+  (runConditionalElimination
+    ConditionalEliminationTest4_test2Snippet_initial)
   ConditionalEliminationTest4_test2Snippet_final
 "
+
+values "{
+condset_implies (set conds)
+(BinaryExpr BinIntegerEquals (LeafExpr 0 default_stamp) (ConstantExpr (IntVal 32 0))) False
+ | conds stamps c. 
+analyse ConditionalEliminationTest13_testSnippet3_initial Map.empty 12 (conds, stamps, c)}"
+
+values "{
+tryFold (IntegerEqualsNode 1 4) (hd stamps) 
+ False
+ | conds stamps c. 
+analyse ConditionalEliminationTest13_testSnippet3_initial Map.empty 12 (conds, stamps, c)}"
+
+values "{
+(hd stamps) 4
+ | conds stamps c. 
+analyse ConditionalEliminationTest13_testSnippet3_initial Map.empty 12 (conds, stamps, c)}"
+
+
+values "{
+tryFold (IntegerEqualsNode 1 3) (hd stamps) False
+ | conds stamps c. 
+analyse ConditionalEliminationTest1_test2Snippet_initial Map.empty 19 (conds, stamps, c)}"
+
+
+values "{
+conds_implies (set conds) (hd stamps) 
+(IntegerLessThanNode 1 16)
+(BinaryExpr BinIntegerLessThan (LeafExpr 1 default_stamp) (ConstantExpr (IntVal 32 2)))
+ | conds stamps c. 
+analyse ConditionalEliminationTest1_test3Snippet_initial Map.empty 21 (conds, stamps, c)}"
+
+values "{(hd stamps) 1
+|conds stamps c.
+analyse ConditionalEliminationTest1_test3Snippet_initial Map.empty 21 (conds, stamps, c)}"
+
+
+values "{(conds, stamps, c)|conds stamps c.
+analyse ConditionalEliminationTest1_test3Snippet_initial Map.empty 21 (conds, stamps, c)}"
+
+values "{g'.
+  (ConditionalEliminationPhase
+    ({}, Map.empty)
+    ConditionalEliminationTest1_test3Snippet_initial
+    g'
+  )
+}"
+
+values "{g'.
+  (ConditionalEliminationPhase
+    ({}, Map.empty)
+    ConditionalEliminationTest1_test2Snippet_initial
+    g'
+  )
+}"
 
 end

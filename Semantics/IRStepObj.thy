@@ -44,23 +44,80 @@ fun find_index :: "'a \<Rightarrow> 'a list \<Rightarrow> nat" where
   "find_index _ [] = 0" |
   "find_index v (x # xs) = (if (x=v) then 0 else find_index v xs + 1)"
 
+inductive indexof :: "'a list \<Rightarrow> nat \<Rightarrow> 'a \<Rightarrow> bool" where
+  "find_index x xs = i \<Longrightarrow> indexof xs i x"
+
+lemma indexof_det:
+  "indexof xs i x \<Longrightarrow> indexof xs i' x \<Longrightarrow> i = i'"
+  apply (induction rule: indexof.induct)
+  by (simp add: indexof.simps)
+
+code_pred (modes: i \<Rightarrow> o \<Rightarrow> i \<Rightarrow> bool) indexof .
+
+notation (latex output)
+  indexof ("_!_ = _")
+
 fun phi_list :: "IRGraph \<Rightarrow> ID \<Rightarrow> ID list" where
   "phi_list g n = 
     (filter (\<lambda>x.(is_PhiNode (kind g x)))
       (sorted_list_of_set (usages g n)))"
 
-fun input_index :: "IRGraph \<Rightarrow> ID \<Rightarrow> ID \<Rightarrow> nat" where
-  "input_index g n n' = find_index n' (inputs_of (kind g n))"
-
 (* TODO this produces two parse trees after importing Class *)
-fun phi_inputs :: "IRGraph \<Rightarrow> nat \<Rightarrow> ID list \<Rightarrow> ID list" where
-  "phi_inputs g i nodes = (map (\<lambda>n. (inputs_of (kind g n))!(i + 1)) nodes)"
 
 fun set_phis :: "ID list \<Rightarrow> Value list \<Rightarrow> MapState \<Rightarrow> MapState" where
   "set_phis [] [] m = m" |
-  "set_phis (n # xs) (v # vs) m = (set_phis xs vs (m(n := v)))" |
+  "set_phis (n # ns) (v # vs) m = (set_phis ns vs (m(n := v)))" |
   "set_phis [] (v # vs) m = m" |
-  "set_phis (x # xs) [] m = m"
+  "set_phis (x # ns) [] m = m"
+
+definition
+  fun_add :: "('a \<Rightarrow> 'b) \<Rightarrow> ('a \<rightharpoonup> 'b) \<Rightarrow> ('a \<Rightarrow> 'b)" (infixl "++\<^sub>f" 100) where
+  "f1 ++\<^sub>f f2 = (\<lambda>x. case f2 x of None \<Rightarrow> f1 x | Some y \<Rightarrow> y)"
+
+definition upds :: "('a \<Rightarrow> 'b) \<Rightarrow> 'a list \<Rightarrow> 'b list \<Rightarrow> ('a \<Rightarrow> 'b)" ("_/'(_ [\<rightarrow>] _/')" 900) where
+  "upds m ns vs = m ++\<^sub>f (map_of (rev (zip ns vs)))"
+
+lemma fun_add_empty:
+  "xs ++\<^sub>f (map_of []) = xs"
+  unfolding fun_add_def by simp
+
+lemma upds_inc:
+  "m(a#as [\<rightarrow>] b#bs) = (m(a:=b))(as[\<rightarrow>]bs)"
+  unfolding upds_def fun_add_def apply simp sorry
+
+lemma upds_compose:
+  "a ++\<^sub>f map_of (rev (zip (n # ns) (v # vs))) = a(n := v) ++\<^sub>f map_of (rev (zip ns vs))"
+  using upds_inc
+  by (metis upds_def)
+
+lemma "set_phis ns vs = (\<lambda>m. upds m ns vs)"
+proof (induction rule: set_phis.induct)
+  case (1 m)
+  then show ?case unfolding set_phis.simps upds_def
+    by (metis Nil_eq_zip_iff Nil_is_rev_conv fun_add_empty)
+next
+  case (2 n xs v vs m)
+  then show ?case unfolding set_phis.simps upds_def
+    by (metis upds_compose)
+next
+  case (3 v vs m)
+  then show ?case
+    by (metis fun_add_empty rev.simps(1) upds_def set_phis.simps(3) zip_Nil)
+next
+  case (4 x xs m)
+  then show ?case
+    by (metis Nil_eq_zip_iff fun_add_empty rev.simps(1) upds_def set_phis.simps(4))
+qed
+
+fun is_PhiKind :: "IRGraph \<Rightarrow> ID \<Rightarrow> bool" where
+  "is_PhiKind g nid = is_PhiNode (kind g nid)"
+
+definition filter_phis :: "IRGraph \<Rightarrow> ID \<Rightarrow> ID list" where
+  "filter_phis g merge = (filter (is_PhiKind g) (sorted_list_of_set (usages g merge)))"
+
+definition phi_inputs :: "IRGraph \<Rightarrow> ID list \<Rightarrow> nat \<Rightarrow> ID list" where
+  "phi_inputs g phis i = (map (\<lambda>n. (inputs_of (kind g n))!(i + 1)) phis)"
+
 
 text \<open>
 Intraprocedural semantics are given as a small-step semantics.
@@ -83,13 +140,10 @@ inductive step :: "IRGraph \<Rightarrow> Params \<Rightarrow> (ID \<times> MapSt
         implementation won't work *)
   FixedGuardNode:
    "\<lbrakk>(kind g nid) = (FixedGuardNode cond before next);
-     g \<turnstile> cond \<simeq> condE; 
-     [m, p] \<turnstile> condE \<mapsto> val;
+     [g, m, p] \<turnstile> cond \<mapsto> val;
 
-     \<not>(val_to_bool val);
-
-     nid' = next\<rbrakk> 
-     \<Longrightarrow> g, p \<turnstile> (nid, m, h) \<rightarrow> (nid', m, h)" |
+     \<not>(val_to_bool val)\<rbrakk> 
+     \<Longrightarrow> g, p \<turnstile> (nid, m, h) \<rightarrow> (next, m, h)" |
 
    BytecodeExceptionNode:
   "\<lbrakk>(kind g nid) = (BytecodeExceptionNode args st nid');
@@ -100,8 +154,7 @@ inductive step :: "IRGraph \<Rightarrow> Params \<Rightarrow> (ID \<times> MapSt
 
   IfNode:
   "\<lbrakk>kind g nid = (IfNode cond tb fb);
-    g \<turnstile> cond \<simeq> condE; 
-    [m, p] \<turnstile> condE \<mapsto> val;
+    [g, m, p] \<turnstile> cond \<mapsto> val;
     nid' = (if val_to_bool val then tb else fb)\<rbrakk>
     \<Longrightarrow> g, p \<turnstile> (nid, m, h) \<rightarrow> (nid', m, h)" |  
 
@@ -110,19 +163,17 @@ inductive step :: "IRGraph \<Rightarrow> Params \<Rightarrow> (ID \<times> MapSt
     merge = any_usage g nid;
     is_AbstractMergeNode (kind g merge);
 
-    i = find_index nid (inputs_of (kind g merge));
-    phis = (phi_list g merge);
-    inps = (phi_inputs g i phis);
-    g \<turnstile> inps \<simeq>\<^sub>L inpsE;
-    [m, p] \<turnstile> inpsE \<mapsto>\<^sub>L vs;
+    indexof (inputs_of (kind g merge)) i nid;
+    phis = filter_phis g merge;
+    inps = phi_inputs g phis i;
+    [g, m, p] \<turnstile> inps [\<mapsto>] vs;
 
-    m' = set_phis phis vs m\<rbrakk>
+    m' = (m(phis[\<rightarrow>]vs))\<rbrakk>
     \<Longrightarrow> g, p \<turnstile> (nid, m, h) \<rightarrow> (merge, m', h)" |
 
   NewArrayNode:
     "\<lbrakk>kind g nid = (NewArrayNode len st nid');
-      g \<turnstile> len \<simeq> lenE;
-      [m, p] \<turnstile> lenE \<mapsto> length';
+      [g, m, p] \<turnstile> len \<mapsto> length';
 
       arrayType = stp_type (stamp g nid);
       (h', ref) = h_new_inst h arrayType;
@@ -134,8 +185,7 @@ inductive step :: "IRGraph \<Rightarrow> Params \<Rightarrow> (ID \<times> MapSt
 
   ArrayLengthNode:
     "\<lbrakk>kind g nid = (ArrayLengthNode x nid');
-      g \<turnstile> x \<simeq> xE;
-      [m, p] \<turnstile> xE \<mapsto> ObjRef ref;
+      [g, m, p] \<turnstile> x \<mapsto> ObjRef ref;
 
       h_load_field '''' ref h = arrayVal;
       length' = array_length (arrayVal);
@@ -145,11 +195,8 @@ inductive step :: "IRGraph \<Rightarrow> Params \<Rightarrow> (ID \<times> MapSt
 
   LoadIndexedNode:
     "\<lbrakk>kind g nid = (LoadIndexedNode index guard array nid');
-      g \<turnstile> index \<simeq> indexE;
-      [m, p] \<turnstile> indexE \<mapsto> indexVal;
-
-      g \<turnstile> array \<simeq> arrayE;
-      [m, p] \<turnstile> arrayE \<mapsto> ObjRef ref;
+      [g, m, p] \<turnstile> index \<mapsto> indexVal;
+      [g, m, p] \<turnstile> array \<mapsto> ObjRef ref;
 
       h_load_field '''' ref h = arrayVal;
       loaded = intval_load_index arrayVal indexVal;
@@ -159,14 +206,9 @@ inductive step :: "IRGraph \<Rightarrow> Params \<Rightarrow> (ID \<times> MapSt
 
   StoreIndexedNode:
     "\<lbrakk>kind g nid = (StoreIndexedNode check val st index guard array nid');
-      g \<turnstile> index \<simeq> indexE;
-      [m, p] \<turnstile> indexE \<mapsto> indexVal;
-
-      g \<turnstile> array \<simeq> arrayE;
-      [m, p] \<turnstile> arrayE \<mapsto> ObjRef ref;
-
-      g \<turnstile> val \<simeq> valE;
-      [m, p] \<turnstile> valE \<mapsto> value;
+      [g, m, p] \<turnstile> index \<mapsto> indexVal;
+      [g, m, p] \<turnstile> array \<mapsto> ObjRef ref;
+      [g, m, p] \<turnstile> val \<mapsto> value;
 
       h_load_field '''' ref h = arrayVal;
       updated = intval_store_index arrayVal indexVal value;
@@ -182,52 +224,40 @@ inductive step :: "IRGraph \<Rightarrow> Params \<Rightarrow> (ID \<times> MapSt
 
   LoadFieldNode:
     "\<lbrakk>kind g nid = (LoadFieldNode nid f (Some obj) nid');
-      g \<turnstile> obj \<simeq> objE; 
-      [m, p] \<turnstile> objE \<mapsto> ObjRef ref;
-      h_load_field f ref h = v;
-      m' = m(nid := v)\<rbrakk> 
+      [g, m, p] \<turnstile> obj \<mapsto> ObjRef ref;
+      m' = m(nid := h_load_field f ref h)\<rbrakk> 
     \<Longrightarrow> g, p \<turnstile> (nid, m, h) \<rightarrow> (nid', m', h)" |
 
   SignedDivNode:
-    "\<lbrakk>kind g nid = (SignedDivNode nid x y zero sb nxt);
-      g \<turnstile> x \<simeq> xe; 
-      g \<turnstile> y \<simeq> ye; 
-      [m, p] \<turnstile> xe \<mapsto> v1;
-      [m, p] \<turnstile> ye \<mapsto> v2;
-      v = (intval_div v1 v2);
-      m' =  m(nid := v)\<rbrakk> 
-    \<Longrightarrow> g, p \<turnstile> (nid, m, h) \<rightarrow> (nxt, m', h)" |
+    "\<lbrakk>kind g nid = (SignedDivNode nid x y zero sb next);
+      [g, m, p] \<turnstile> x \<mapsto> v1;
+      [g, m, p] \<turnstile> y \<mapsto> v2;
+      m' =  m(nid := intval_div v1 v2)\<rbrakk> 
+    \<Longrightarrow> g, p \<turnstile> (nid, m, h) \<rightarrow> (next, m', h)" |
 
   SignedRemNode:
-    "\<lbrakk>kind g nid = (SignedRemNode nid x y zero sb nxt);
-      g \<turnstile> x \<simeq> xe; 
-      g \<turnstile> y \<simeq> ye; 
-      [m, p] \<turnstile> xe \<mapsto> v1;
-      [m, p] \<turnstile> ye \<mapsto> v2;
-      v = (intval_mod v1 v2);
-      m' =  m(nid := v)\<rbrakk> 
-    \<Longrightarrow> g, p \<turnstile> (nid, m, h) \<rightarrow> (nxt, m', h)" |
+    "\<lbrakk>kind g nid = (SignedRemNode nid x y zero sb next);
+      [g, m, p] \<turnstile> x \<mapsto> v1;
+      [g, m, p] \<turnstile> y \<mapsto> v2;
+      m' =  m(nid := intval_mod v1 v2)\<rbrakk> 
+    \<Longrightarrow> g, p \<turnstile> (nid, m, h) \<rightarrow> (next, m', h)" |
 
   StaticLoadFieldNode:
     "\<lbrakk>kind g nid = (LoadFieldNode nid f None nid');
-      h_load_field f None h = v;
-      m' =  m(nid := v)\<rbrakk> 
+      m' =  m(nid := h_load_field f None h)\<rbrakk> 
     \<Longrightarrow> g, p \<turnstile> (nid, m, h) \<rightarrow> (nid', m', h)" |
 
   StoreFieldNode:
     "\<lbrakk>kind g nid = (StoreFieldNode nid f newval _ (Some obj) nid');
-      g \<turnstile> newval \<simeq> newvalE;
-      g \<turnstile> obj \<simeq> objE; 
-      [m, p] \<turnstile> newvalE \<mapsto> val;
-      [m, p] \<turnstile> objE \<mapsto> ObjRef ref;
+      [g, m, p] \<turnstile> newval \<mapsto> val;
+      [g, m, p] \<turnstile> obj \<mapsto> ObjRef ref;
       h' = h_store_field f ref val h;
       m' =  m(nid := val)\<rbrakk> 
     \<Longrightarrow> g, p \<turnstile> (nid, m, h) \<rightarrow> (nid', m', h')" |
 
   StaticStoreFieldNode:
     "\<lbrakk>kind g nid = (StoreFieldNode nid f newval _ None nid');
-      g \<turnstile> newval \<simeq> newvalE; 
-      [m, p] \<turnstile> newvalE \<mapsto> val;
+      [g, m, p] \<turnstile> newval \<mapsto> val;
       h' = h_store_field f None val h;
       m' =  m(nid := val)\<rbrakk> 
     \<Longrightarrow> g, p \<turnstile> (nid, m, h) \<rightarrow> (nid', m', h')"
@@ -277,56 +307,49 @@ inductive step_top :: "System \<Rightarrow> (IRGraph \<times> ID \<times> MapSta
  InvokeNodeStepStatic:
   "\<lbrakk>is_Invoke (kind g nid);
     callTarget = ir_callTarget (kind g nid);
-    kind g callTarget = (MethodCallTargetNode targetMethod arguments invoke_kind);
+    kind g callTarget = (MethodCallTargetNode targetMethod actuals invoke_kind);
     \<not>(hasReceiver invoke_kind);
     Some targetGraph = (dynamic_lookup S ''None'' targetMethod []);
-    m' = new_map_state;
-    g \<turnstile> arguments \<simeq>\<^sub>L argsE;
-    [m, p] \<turnstile> argsE  \<mapsto>\<^sub>L p'\<rbrakk>
-    \<Longrightarrow> (S) \<turnstile> ((g,nid,m,p)#stk, h) \<longrightarrow> ((targetGraph,0,m',p')#(g,nid,m,p)#stk, h)" |
+    [g, m, p] \<turnstile> actuals [\<mapsto>] p'\<rbrakk>
+    \<Longrightarrow> (S) \<turnstile> ((g,nid,m,p)#stk, h) \<longrightarrow> ((targetGraph,0,new_map_state,p')#(g,nid,m,p)#stk, h)" |
 
   InvokeNodeStep:
   "\<lbrakk>is_Invoke (kind g nid);
     callTarget = ir_callTarget (kind g nid);
     kind g callTarget = (MethodCallTargetNode targetMethod arguments invoke_kind);
     hasReceiver invoke_kind; 
-    m' = new_map_state;
-    g \<turnstile> arguments \<simeq>\<^sub>L argsE;
-    [m, p] \<turnstile> argsE  \<mapsto>\<^sub>L p';
+    [g, m, p] \<turnstile> arguments [\<mapsto>] p';
     ObjRef self = hd p';
     ObjStr cname = (h_load_field ''class'' self h);
     S = (P,cl);
     Some targetGraph = dynamic_lookup S cname targetMethod (class_parents (CLget_JVMClass cname cl))\<rbrakk>
-    \<Longrightarrow> (S) \<turnstile> ((g,nid,m,p)#stk, h) \<longrightarrow> ((targetGraph,0,m',p')#(g,nid,m,p)#stk, h)" |
+    \<Longrightarrow> (S) \<turnstile> ((g,nid,m,p)#stk, h) \<longrightarrow> ((targetGraph,0,new_map_state,p')#(g,nid,m,p)#stk, h)" |
 
 (* TODO this produces two parse trees after importing Class *)
   ReturnNode:
   "\<lbrakk>kind g nid = (ReturnNode (Some expr) _);
-    g \<turnstile> expr \<simeq> e;
-    [m, p] \<turnstile> e \<mapsto> v;
+    [g, m, p] \<turnstile> expr \<mapsto> v;
 
-    cm' = cm(cnid := v);
-    cnid' = (successors_of (kind cg cnid))!0\<rbrakk> 
-    \<Longrightarrow> (S) \<turnstile> ((g,nid,m,p)#(cg,cnid,cm,cp)#stk, h) \<longrightarrow> ((cg,cnid',cm',cp)#stk, h)" |
+    m'\<^sub>c = m\<^sub>c(nid\<^sub>c := v);
+    nid'\<^sub>c = (successors_of (kind g\<^sub>c nid\<^sub>c))!0\<rbrakk> 
+    \<Longrightarrow> (S) \<turnstile> ((g,nid,m,p)#(g\<^sub>c,nid\<^sub>c,m\<^sub>c,p\<^sub>c)#stk, h) \<longrightarrow> ((g\<^sub>c,nid'\<^sub>c,m'\<^sub>c,p\<^sub>c)#stk, h)" |
 
 (* TODO this produces two parse trees after importing Class *)
   ReturnNodeVoid:
   "\<lbrakk>kind g nid = (ReturnNode None _);
-    cm' = cm(cnid := (ObjRef (Some (2048))));
     
-    cnid' = (successors_of (kind cg cnid))!0\<rbrakk> 
-    \<Longrightarrow> (S) \<turnstile> ((g,nid,m,p)#(cg,cnid,cm,cp)#stk, h) \<longrightarrow> ((cg,cnid',cm',cp)#stk, h)" |
+    nid'\<^sub>c = (successors_of (kind g\<^sub>c nid\<^sub>c))!0\<rbrakk> 
+    \<Longrightarrow> (S) \<turnstile> ((g,nid,m,p)#(g\<^sub>c,nid\<^sub>c,m\<^sub>c,p\<^sub>c)#stk, h) \<longrightarrow> ((g\<^sub>c,nid'\<^sub>c,m\<^sub>c,p\<^sub>c)#stk, h)" |
 
   UnwindNode:
   "\<lbrakk>kind g nid = (UnwindNode exception);
 
-    g \<turnstile> exception \<simeq> exceptionE;
-    [m, p] \<turnstile> exceptionE \<mapsto> e;
+    [g, m, p] \<turnstile> exception \<mapsto> e;
      
-    kind cg cnid = (InvokeWithExceptionNode _ _ _ _ _ _ exEdge);
+    kind g\<^sub>c nid\<^sub>c = (InvokeWithExceptionNode _ _ _ _ _ _ exEdge);
 
-    cm' = cm(cnid := e)\<rbrakk>
-  \<Longrightarrow> (S) \<turnstile> ((g,nid,m,p)#(cg,cnid,cm,cp)#stk, h) \<longrightarrow> ((cg,exEdge,cm',cp)#stk, h)"
+    m'\<^sub>c = m\<^sub>c(nid\<^sub>c := e)\<rbrakk>
+  \<Longrightarrow> (S) \<turnstile> ((g,nid,m,p)#(g\<^sub>c,nid\<^sub>c,m\<^sub>c,p\<^sub>c)#stk, h) \<longrightarrow> ((g\<^sub>c,exEdge,m'\<^sub>c,p\<^sub>c)#stk, h)"
 
 code_pred (modes: i \<Rightarrow> i \<Rightarrow> o \<Rightarrow> bool) step_top .
 

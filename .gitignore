@@ -5,3 +5,5 @@ dependencies.dot
 afp
 codegen-artifact.zip
 codegenpaper
+semantics.tex
+tree.tex

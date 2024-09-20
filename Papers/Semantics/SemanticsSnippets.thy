@@ -1,7 +1,9 @@
 theory SemanticsSnippets
   imports
-    Optimizations.CanonicalizationProofs
+    Semantics.IRStepObj Semantics.Form Proofs.Stuttering Snippets.Snipping
 begin
+
+declare [[show_types=false]]
 
 (*notation (latex)
   NoNode ("\<epsilon>")
@@ -9,18 +11,26 @@ begin
 notation (latex)
   kind ("_\<llangle>_\<rrangle>")
 
+notation (latex)
+  stamp_expr ("\<^latex>\<open>\\pitchfork\<close> _")
+
+notation (latex)
+  val_to_bool ("_\<^latex>\<open>\\ensuremath{_{\\mathit{\<close>bool\<^latex>\<open>}}}\<close>")
+
+
 syntax (spaced_type_def output)
   "_constrain" :: "logic => type => logic" ("_ :: _" [4, 0] 3)
 
-text_raw \<open>\Snip{isbinary}
-\begin{center}
+snipbegin \<open>isbinary\<close>
+text \<open>\begin{center}
 @{term_type[mode=spaced_type_def] is_BinaryArithmeticNode}
-\end{center}
-\EndSnip\<close>
+\end{center}\<close>
+snipend -
 
 (* figure out how to export a subset of IRNode!!! *)
 
-text_raw \<open>\Snip{inputs_of}%
+snipbegin \<open>inputsof\<close>
+text_raw \<open>
 @{term_type[mode=spaced_type_def] inputs_of}
 
 @{thm inputs_of_ConstantNode}
@@ -31,12 +41,14 @@ text_raw \<open>\Snip{inputs_of}%
 
 @{thm inputs_of_AddNode}
 
-@{thm inputs_of_IfNode}
-\EndSnip\<close>
+@{thm inputs_of_IfNode}\<close>
+snipend -
 
-text_raw \<open>\Snip{graphdefnostamp}
+snipbegin \<open>graphdefnostamp\<close>
+text_raw \<open>
 @{bold \<open>typedef\<close>} @{term[source] \<open>IRGraph = {g :: ID \<rightharpoonup> IRNode . finite (dom g)}\<close>}
-\EndSnip\<close>
+\<close>
+snipend -
 
 fun ids_fake :: "(ID \<rightharpoonup> IRNode) \<Rightarrow> ID set" where
   "ids_fake g = {nid \<in> dom g . g nid \<noteq> (Some NoNode)}"
@@ -44,7 +56,8 @@ fun ids_fake :: "(ID \<rightharpoonup> IRNode) \<Rightarrow> ID set" where
 fun kind_fake :: "(ID \<rightharpoonup> IRNode) \<Rightarrow> (ID \<Rightarrow> IRNode)" where
   "kind_fake g = (\<lambda>nid. (case g nid of None \<Rightarrow> NoNode | Some v \<Rightarrow> v))"
 
-text_raw \<open>\Snip{helpers_display}%
+snipbegin \<open>helpersdisplay\<close>
+text_raw \<open>
 @{term_type[mode=spaced_type_def] ids_fake}
 
 @{thm ids_fake.simps}\\[0.75em]
@@ -76,33 +89,45 @@ text_raw \<open>\Snip{helpers_display}%
 @{term_type[mode=spaced_type_def] predecessors}
 
 @{thm predecessors.simps}\\[0.75em]
-\EndSnip\<close>
+\<close>
+snipend -
 
-
-text_raw \<open>\Snip{wf_start_def}%
+snipbegin \<open>wf_start_def\<close>
+text_raw \<open>
 @{thm[display,margin=40] wf_start_def}
-\EndSnip\<close>
-text_raw \<open>\Snip{wf_closed_def}%
+\<close>
+snipend -
+snipbegin \<open>wf_closed_def\<close>
+text_raw \<open>
 @{thm[display,margin=40] wf_closed_def}
-\EndSnip\<close> 
-text_raw \<open>\Snip{wf_phis_def}%
+\<close> 
+snipend -
+snipbegin \<open>wf_phis_def\<close>
+text_raw \<open>
 @{thm[display,margin=40] wf_phis_def}
-\EndSnip\<close> 
-text_raw \<open>\Snip{wf_ends_def}%
+\<close>
+snipend -
+snipbegin \<open>wf_ends_def\<close>
+text_raw \<open>
 @{thm[display,margin=40] wf_ends_def}
-\EndSnip\<close>
+\<close>
+snipend -
 
-text_raw \<open>\Snip{wf_graph_def}%
+snipbegin \<open>wf_graph_def\<close>
+text_raw \<open>
 @{term_type[mode=spaced_type_def] wf_graph}
 
 @{thm wf_graph.simps}
-\EndSnip\<close>
+\<close>
+snipend -
 
 text_raw \<open>@{bold \<open>type-synonym\<close>} Signature = @{typ string}\<close>
 
-text_raw \<open>\Snip{programdef}%
+snipbegin \<open>programdef\<close>
+text_raw \<open>
 @{bold \<open>type-synonym\<close>} Program = @{typ "Signature \<rightharpoonup> IRGraph"}
-\EndSnip\<close>
+\<close>
+snipend -
 
 print_antiquotations
 
@@ -124,7 +149,7 @@ type_synonym FieldRefHeap = "(string, objref) DynamicHeap"
 *)
 
 (* TODO: add heap here *)
-text_raw \<open>\Snip{heapdef}%\<close>
+snipbegin \<open>heapdef\<close>
 type_synonym Heap = "string \<Rightarrow> objref \<Rightarrow> Value"
 type_synonym Free = "nat"
 type_synonym DynamicHeap = "Heap \<times> Free"
@@ -144,8 +169,10 @@ text_raw \<open>
 
 @{thm h_new_inst.simps}
 \<close>
-text_raw \<open>\EndSnip\<close>
+snipend -
 
+(* Deprecated expression semantics *)
+(*
 text_raw \<open>\Snip{ExpressionSemantics}%\<close>
 text \<open>
 \begin{center}
@@ -168,9 +195,10 @@ text \<open>
 \end{center}
 \<close>
 text_raw \<open>\EndSnip\<close>
+*)
 
 
-text_raw \<open>\Snip{StepSemantics}%\<close>
+snipbegin \<open>StepSemantics\<close>
 text \<open>
 \begin{center}
 \induct{@{thm[mode=Rule] step.SequentialNode [no_vars]}}{step:seq}
@@ -179,22 +207,26 @@ text \<open>
 \induct{@{thm[mode=Rule] step.NewInstanceNode [no_vars]}}{step:newinst}
 \induct{@{thm[mode=Rule] step.LoadFieldNode [no_vars]}}{step:load}
 \induct{@{thm[mode=Rule] step.StoreFieldNode [no_vars]}}{step:store}
+\induct{@{thm[mode=Rule] step.StaticLoadFieldNode [no_vars]}}{step:load-static}
+\induct{@{thm[mode=Rule] step.StaticStoreFieldNode [no_vars]}}{step:store-static}
 \end{center}
 \<close>
-text_raw \<open>\EndSnip\<close>
+snipend -
 
-
-text_raw \<open>\Snip{TopStepSemantics}%\<close>
+snipbegin \<open>TopStepSemantics\<close>
 text \<open>
 \begin{center}
 \induct{@{thm[mode=Rule] step_top.Lift [no_vars]}}{top:lift}
 \induct{@{thm[mode=Rule] step_top.InvokeNodeStep [no_vars]}}{top:invoke}
 \induct{@{thm[mode=Rule] step_top.ReturnNode [no_vars]}}{top:return}
+\induct{@{thm[mode=Rule] step_top.ReturnNodeVoid [no_vars]}}{top:return-void}
 \induct{@{thm[mode=Rule] step_top.UnwindNode [no_vars]}}{top:unwind}
 \end{center}
 \<close>
-text_raw \<open>\EndSnip\<close>
+snipend -
 
+(* Deprecated canonicalization rules *)
+(*
 text_raw \<open>\Snip{AddNodeRules}%
 \begin{center}
 @{thm[mode=Rule] CanonicalizeAdd.add_both_const [no_vars]}\\[8px]
@@ -206,16 +238,18 @@ text_raw \<open>\Snip{AddNodeRules}%
 text_raw \<open>\Snip{AddNodeProof}%
 @{thm CanonicalizeAddProof}
 \EndSnip\<close>
+*)
 
-text_raw \<open>\Snip{Stutter}%\<close>
+snipbegin \<open>Stutter\<close>
 text \<open>
 \begin{center}
 @{thm[mode=Rule] stutter.StutterStep [no_vars]}\\[8px]
 @{thm[mode=Rule] stutter.Transitive [no_vars]}
 \end{center}
 \<close>
-text_raw \<open>\EndSnip\<close>
+snipend -
 
+(*
 text_raw \<open>\Snip{CanonicalizeIfNodeRules}%
 \begin{center}
 @{thm[mode=Rule] CanonicalizeIf.trueConst}\\[8px]
@@ -239,6 +273,7 @@ text_raw \<open>\Snip{CanonicalizeIfNodeProof}%
 @{thm[display] CanonicalizeIfProof_fake}
 \end{center}
 \EndSnip\<close>
+*)
 
 (* EXPERIMENTAL *)
 notation (latex output)
@@ -248,9 +283,11 @@ notation (latex output)
 notation (latex output)
   filtered_usages ("usages\<^latex>\<open>\\ensuremath{^{\\mathit{\<close>_\<llangle>_\<rrangle>\<^latex>\<open>}}}\<close>\<^latex>\<open>\\ensuremath{_{\\mathit{\<close>_\<^latex>\<open>}}}\<close>")
 
-text_raw \<open>\Snip{example2}%
+snipbegin \<open>example2\<close>
+text_raw \<open>
 @{term[display] \<open>filtered_inputs g nid f\<close>}
-\EndSnip\<close>
+\<close>
+snipend -
 
 notation (latex output)
   Pure.dummy_pattern ("-")

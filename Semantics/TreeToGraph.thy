@@ -4,6 +4,7 @@ theory TreeToGraph
   imports 
     Semantics.IRTreeEval
     Graph.IRGraph
+    Snippets.Snipping
 begin
 
 subsection \<open>Subgraph to Data-flow Tree\<close>
@@ -235,16 +236,16 @@ inductive
 code_pred (modes: i \<Rightarrow> i \<Rightarrow> o \<Rightarrow> bool as exprE) rep .
 
 inductive
-  replist :: "IRGraph \<Rightarrow> ID list \<Rightarrow> IRExpr list \<Rightarrow> bool" ("_ \<turnstile> _ \<simeq>\<^sub>L _" 55)
+  replist :: "IRGraph \<Rightarrow> ID list \<Rightarrow> IRExpr list \<Rightarrow> bool" ("_ \<turnstile> _ [\<simeq>] _" 55)
   for g where
 
   RepNil:
-  "g \<turnstile> [] \<simeq>\<^sub>L []" |
+  "g \<turnstile> [] [\<simeq>] []" |
 
   RepCons:
   "\<lbrakk>g \<turnstile> x \<simeq> xe;
-    g \<turnstile> xs \<simeq>\<^sub>L xse\<rbrakk>
-    \<Longrightarrow> g \<turnstile> x#xs \<simeq>\<^sub>L xe#xse"
+    g \<turnstile> xs [\<simeq>] xse\<rbrakk>
+    \<Longrightarrow> g \<turnstile> x#xs [\<simeq>] xe#xse"
 
 code_pred (modes: i \<Rightarrow> i \<Rightarrow> o \<Rightarrow> bool as exprListE) replist .
 
@@ -408,6 +409,18 @@ export_code get_fresh_id
 value "get_fresh_id eg2_sq"
 value "get_fresh_id (add_node 6 (ParameterNode 2, default_stamp) eg2_sq)"
 
+inductive unique :: "IRGraph \<Rightarrow> (IRNode \<times> Stamp) \<Rightarrow> (IRGraph \<times> ID) \<Rightarrow> bool" where
+  Exists:
+  "\<lbrakk>find_node_and_stamp g node = Some n\<rbrakk>
+   \<Longrightarrow> unique g node (g, n)" |
+  New:
+  "\<lbrakk>find_node_and_stamp g node = None;
+    n = get_fresh_id g;
+    g' = add_node n node g\<rbrakk>
+   \<Longrightarrow> unique g node (g', n)"
+
+code_pred (modes: i \<Rightarrow> i \<Rightarrow> o \<Rightarrow> bool as uniqueE) unique .
+
 (* Second version of tree insertion into graph:
 
       g \<triangleleft> expr \<leadsto> (g',n) re-inserts expr into g and returns the new root n.
@@ -416,75 +429,36 @@ value "get_fresh_id (add_node 6 (ParameterNode 2, default_stamp) eg2_sq)"
 *)
 inductive
   unrep :: "IRGraph \<Rightarrow> IRExpr \<Rightarrow> (IRGraph \<times> ID) \<Rightarrow> bool" ("_ \<oplus> _ \<leadsto> _" 55)
-   where
+  where
 
-  ConstantNodeSame:
-  "\<lbrakk>find_node_and_stamp g (ConstantNode c, constantAsStamp c) = Some n\<rbrakk>
-    \<Longrightarrow> g \<oplus> (ConstantExpr c) \<leadsto> (g, n)" |
+  UnrepConstantNode:
+  "\<lbrakk>unique g (ConstantNode c, constantAsStamp c) (g\<^sub>1, n)\<rbrakk>
+    \<Longrightarrow> g \<oplus> (ConstantExpr c) \<leadsto> (g\<^sub>1, n)" |
 
-  ConstantNodeNew:
-  "\<lbrakk>find_node_and_stamp g (ConstantNode c, constantAsStamp c) = None;
-    n = get_fresh_id g;
-    g' = add_node n (ConstantNode c, constantAsStamp c) g \<rbrakk>
-    \<Longrightarrow> g \<oplus> (ConstantExpr c) \<leadsto> (g', n)" |
+  UnrepParameterNode:
+  "\<lbrakk>unique g (ParameterNode i, s) (g\<^sub>1, n)\<rbrakk>
+    \<Longrightarrow> g \<oplus> (ParameterExpr i s) \<leadsto> (g\<^sub>1, n)" |
 
-  ParameterNodeSame:
-  "\<lbrakk>find_node_and_stamp g (ParameterNode i, s) = Some n\<rbrakk>
-    \<Longrightarrow> g \<oplus> (ParameterExpr i s) \<leadsto> (g, n)" |
+  UnrepConditionalNode:
+  "\<lbrakk>g \<oplus> ce \<leadsto> (g\<^sub>1, c);
+    g\<^sub>1 \<oplus> te \<leadsto> (g\<^sub>2, t);
+    g\<^sub>2 \<oplus> fe \<leadsto> (g\<^sub>3, f);
+    s' = meet (stamp g\<^sub>3 t) (stamp g\<^sub>3 f);
+    unique g\<^sub>3 (ConditionalNode c t f, s') (g\<^sub>4, n)\<rbrakk>
+    \<Longrightarrow> g \<oplus> (ConditionalExpr ce te fe) \<leadsto> (g\<^sub>4, n)" |
 
-  ParameterNodeNew:
-  "\<lbrakk>find_node_and_stamp g (ParameterNode i, s) = None;
-    n = get_fresh_id g;
-    g' = add_node n (ParameterNode i, s) g\<rbrakk>
-    \<Longrightarrow> g \<oplus> (ParameterExpr i s) \<leadsto> (g', n)" |
+  UnrepUnaryNode:
+  "\<lbrakk>g \<oplus> xe \<leadsto> (g\<^sub>1, x);
+    s' = stamp_unary op (stamp g\<^sub>1 x);
+    unique g\<^sub>1 (unary_node op x, s') (g\<^sub>2, n)\<rbrakk>
+    \<Longrightarrow> g \<oplus> (UnaryExpr op xe) \<leadsto> (g\<^sub>2, n)" |
 
-  ConditionalNodeSame:
-  "\<lbrakk>find_node_and_stamp g4 (ConditionalNode c t f, s') = Some n;
-    g \<oplus> ce \<leadsto> (g2, c);
-    g2 \<oplus> te \<leadsto> (g3, t);
-    g3 \<oplus> fe \<leadsto> (g4, f);
-    s' = meet (stamp g4 t) (stamp g4 f)\<rbrakk>
-    \<Longrightarrow> g \<oplus> (ConditionalExpr ce te fe) \<leadsto> (g4, n)" |
-
-  ConditionalNodeNew:
-  "\<lbrakk>find_node_and_stamp g4 (ConditionalNode c t f, s') = None;
-    g \<oplus> ce \<leadsto> (g2, c);
-    g2 \<oplus> te \<leadsto> (g3, t);
-    g3 \<oplus> fe \<leadsto> (g4, f);
-    s' = meet (stamp g4 t) (stamp g4 f);
-    n = get_fresh_id g4;
-    g' = add_node n (ConditionalNode c t f, s') g4\<rbrakk>
-    \<Longrightarrow> g \<oplus> (ConditionalExpr ce te fe) \<leadsto> (g', n)" |
-
-  UnaryNodeSame:
-  "\<lbrakk>find_node_and_stamp g2 (unary_node op x, s') = Some n;
-    g \<oplus> xe \<leadsto> (g2, x);
-    s' = stamp_unary op (stamp g2 x)\<rbrakk>
-    \<Longrightarrow> g \<oplus> (UnaryExpr op xe) \<leadsto> (g2, n)" |
-
-  UnaryNodeNew:
-  "\<lbrakk>find_node_and_stamp g2 (unary_node op x, s') = None;
-    g \<oplus> xe \<leadsto> (g2, x);
-    s' = stamp_unary op (stamp g2 x);
-    n = get_fresh_id g2;
-    g' = add_node n (unary_node op x, s') g2\<rbrakk>
-    \<Longrightarrow> g \<oplus> (UnaryExpr op xe) \<leadsto> (g', n)" |
-
-  BinaryNodeSame:
-  "\<lbrakk>find_node_and_stamp g3 (bin_node op x y, s') = Some n;
-    g \<oplus> xe \<leadsto> (g2, x);
-    g2 \<oplus> ye \<leadsto> (g3, y);
-    s' = stamp_binary op (stamp g3 x) (stamp g3 y)\<rbrakk>
-    \<Longrightarrow> g \<oplus> (BinaryExpr op xe ye) \<leadsto> (g3, n)" |
-
-  BinaryNodeNew:
-  "\<lbrakk>find_node_and_stamp g3 (bin_node op x y, s') = None;
-    g \<oplus> xe \<leadsto> (g2, x);
-    g2 \<oplus> ye \<leadsto> (g3, y);
-    s' = stamp_binary op (stamp g3 x) (stamp g3 y);
-    n = get_fresh_id g3;
-    g' = add_node n (bin_node op x y, s') g3\<rbrakk>
-    \<Longrightarrow> g \<oplus> (BinaryExpr op xe ye) \<leadsto> (g', n)" |
+  UnrepBinaryNode:
+  "\<lbrakk>g \<oplus> xe \<leadsto> (g\<^sub>1, x);
+    g\<^sub>1 \<oplus> ye \<leadsto> (g\<^sub>2, y);
+    s' = stamp_binary op (stamp g\<^sub>2 x) (stamp g\<^sub>2 y);
+    unique g\<^sub>2 (bin_node op x y, s') (g\<^sub>3, n)\<rbrakk>
+    \<Longrightarrow> g \<oplus> (BinaryExpr op xe ye) \<leadsto> (g\<^sub>3, n)" |
 
   AllLeafNodes:
   "\<lbrakk>stamp g n = s;
@@ -507,21 +481,27 @@ code_pred (modes: i \<Rightarrow> i \<Rightarrow> o \<Rightarrow> bool as unrepE
   [show_steps,show_mode_inference,show_intermediate_results] 
 *)  unrep .
 
-text_raw \<open>\Snip{unrepRules}%
+snipbegin \<open>uniqueRules\<close>
+text \<open>
 \begin{center}
-@{thm[mode=Rule] unrep.ConstantNodeSame [no_vars]}\\[8px]
-@{thm[mode=Rule] unrep.ConstantNodeNew [no_vars]}\\[8px]
-@{thm[mode=Rule] unrep.ParameterNodeSame [no_vars]}\\[8px]
-@{thm[mode=Rule] unrep.ParameterNodeNew [no_vars]}\\[8px]
-@{thm[mode=Rule] unrep.ConditionalNodeSame [no_vars]}\\[8px]
-@{thm[mode=Rule] unrep.ConditionalNodeNew [no_vars]}\\[8px]
-@{thm[mode=Rule] unrep.BinaryNodeSame [no_vars]}\\[8px]
-@{thm[mode=Rule] unrep.BinaryNodeNew [no_vars]}\\[8px]
-@{thm[mode=Rule] unrep.UnaryNodeSame [no_vars]}\\[8px]
-@{thm[mode=Rule] unrep.UnaryNodeNew [no_vars]}\\[8px]
+@{thm[mode=Rule] unique.Exists [no_vars]}\\[8px]
+@{thm[mode=Rule] unique.New [no_vars]}\\[8px]
+\end{center}
+\<close>
+snipend -
+
+snipbegin \<open>unrepRules\<close>
+text \<open>
+\begin{center}
+@{thm[mode=Rule] unrep.UnrepConstantNode [no_vars]}\\[8px]
+@{thm[mode=Rule] unrep.UnrepParameterNode [no_vars]}\\[8px]
+@{thm[mode=Rule] unrep.UnrepConditionalNode [no_vars]}\\[8px]
+@{thm[mode=Rule] unrep.UnrepBinaryNode [no_vars]}\\[8px]
+@{thm[mode=Rule] unrep.UnrepUnaryNode [no_vars]}\\[8px]
 @{thm[mode=Rule] unrep.AllLeafNodes [no_vars]}\\[8px]
 \end{center}
-\EndSnip\<close>
+\<close>
+snipend -
 
 (*
 instantiation IRGraph :: equal begin
@@ -538,14 +518,24 @@ qed
 end
 *)
 
-values "{(n, g) . (eg2_sq \<oplus> sq_param0 \<leadsto> (g, n))}"
+(*values "{(n, g) . (eg2_sq \<oplus> sq_param0 \<leadsto> (g, n))}"*)
 
 subsection \<open>Lift Data-flow Tree Semantics\<close>
 
-definition encodeeval :: "IRGraph \<Rightarrow> MapState \<Rightarrow> Params \<Rightarrow> ID \<Rightarrow> Value \<Rightarrow> bool" 
+inductive encodeeval :: "IRGraph \<Rightarrow> MapState \<Rightarrow> Params \<Rightarrow> ID \<Rightarrow> Value \<Rightarrow> bool" 
   ("[_,_,_] \<turnstile> _ \<mapsto> _" 50)
   where
-  "encodeeval g m p n v = (\<exists> e. (g \<turnstile> n \<simeq> e) \<and> ([m,p] \<turnstile> e \<mapsto> v))"
+  "(g \<turnstile> n \<simeq> e) \<and> ([m,p] \<turnstile> e \<mapsto> v) \<Longrightarrow> [g, m, p] \<turnstile> n \<mapsto> v"
+
+code_pred (modes: i \<Rightarrow> i \<Rightarrow> i \<Rightarrow> i \<Rightarrow> o \<Rightarrow> bool) encodeeval .
+
+
+inductive encodeEvalAll :: "IRGraph \<Rightarrow> MapState \<Rightarrow> Params \<Rightarrow> ID list \<Rightarrow> Value list \<Rightarrow> bool"
+  ("[_,_,_] \<turnstile> _ [\<mapsto>] _" 60) where
+  "(g \<turnstile> nids [\<simeq>] es) \<and> ([m, p] \<turnstile> es [\<mapsto>] vs) \<Longrightarrow> ([g, m, p] \<turnstile> nids [\<mapsto>] vs)"
+
+code_pred (modes: i \<Rightarrow> i \<Rightarrow> i \<Rightarrow> i \<Rightarrow> o \<Rightarrow> bool) encodeEvalAll .
+
 
 subsection \<open>Graph Refinement\<close>
 
@@ -562,7 +552,7 @@ definition graph_refinement :: "IRGraph \<Rightarrow> IRGraph \<Rightarrow> bool
 lemma graph_refinement:
   "graph_refinement g1 g2 \<Longrightarrow> 
    (\<forall>n m p v. n \<in> ids g1 \<longrightarrow> ([g1, m, p] \<turnstile> n \<mapsto> v) \<longrightarrow> ([g2, m, p] \<turnstile> n \<mapsto> v))"
-  by (meson encodeeval_def graph_refinement_def graph_represents_expression_def le_expr_def)
+  by (meson encodeeval.simps graph_refinement_def graph_represents_expression_def le_expr_def)
 
 subsection \<open>Maximal Sharing\<close>
 

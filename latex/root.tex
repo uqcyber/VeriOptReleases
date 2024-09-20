@@ -3,6 +3,7 @@
 \usepackage{amssymb,amsmath}
 \usepackage{mathpartir}
 \usepackage{tikz-cd}
+\usepackage{listings}
 
 % force input encoding to utf8 since this is what most machines use.
 % and T1 font encoding so Guillemets are allowed etc.
@@ -51,11 +52,14 @@
 % \newcommand{\Snip}[1]{\isanewline\isanewline}
 % \newcommand{\EndSnip}[1]{\isanewline\isanewline}
 % display snips in colorboxes
-\newcommand{\Snip}[1]{\begin{tcolorbox}[title=#1]}
+\newcommand{\Snip}[1]{\begin{tcolorbox}}
 \newcommand{\EndSnip}[1]{\end{tcolorbox}}
 
 \newcommand{\isamarkupsnipbegin}[1]{\Snip{#1}}
 \newcommand{\isamarkupsnipend}[1]{\EndSnip{#1}}
+
+\usepackage{railsetup}
+\newcommand{\indexdef}[3]{}
 
 
 \begin{document}

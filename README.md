@@ -27,6 +27,21 @@ git clone https://github.com/uqcyber/veriopt-releases
 isabelle jedit -d veriopt-releases ROOT
 ```
 
+These theories are fairly large and require 32GB of RAM to load interactively. 
+If you do not have that luxury, you can pre-compile the most memory-intensive theories
+(e.g. IRStepThms.thy).
+These are included in the Semantics session so we will compile that.
+
+```bash
+cd veriopt-releases  # or veriopt-dev/isabelle
+isabelle build -d . -v Semantics
+isabelle jedit -d . -l Semantics ROOT
+```
+In the Theories sidebar, you'll see Semantics instead of HOL, meaning we
+are using the veriopt/Semantics session.
+As a side-effect of this precompilation, you'll be prevented from editing
+theories within Semantics ("Cannot update finished theory").
+
 ## Building Theories
 Building the theories will check all the theories in the repository are correct and generate HTML and PDF outputs. You can build the theories with the following command. Isabelle2022 will need to be installed and the tool wrapper should be accessible via the `isabelle` command on your machine.
 

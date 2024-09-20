@@ -43,7 +43,7 @@ snipend -
 snipbegin \<open>graph-semantics\<close>
 text \<open>
 \begin{center}
-@{thm encodeeval_def}
+@{thm encodeeval.intros}
 \end{center}
 \<close>
 snipend -

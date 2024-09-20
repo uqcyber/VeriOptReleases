@@ -144,14 +144,16 @@ session Canonicalizations in "Optimizations/Canonicalizations" = OptimizationDSL
     "root.tex"
     "mathpartir.sty"
 
-session ConditionalElimination in "Optimizations/ConditionalElimination" = Proofs +
+session ConditionalElimination in "Optimizations/ConditionalElimination" = OptimizationDSL +
   description
     "(experimental) Conditional elimination phase"
   options [quick_and_dirty,
            document = pdf, document_output = "output",
-           show_question_marks = false]
+           show_question_marks = false,
+           document_variants="document:outline=/proof"]
   theories
     ConditionalElimination
+    CFG
   document_files (in "../../latex")
     "root.tex"
     "mathpartir.sty"
@@ -255,18 +257,18 @@ session Document in "Papers/Main" = Canonicalizations +
 
 \<comment>\<open>Snippets for papers\<close>
 
-(* Currently preserved in atva branch 
-session SemanticsPaper in "Papers/Semantics" = Optimizations +
+session SemanticsPaper in "Papers/Semantics" = Semantics +
   description
     "Content for IR semantics description paper"
   options [document = pdf, document_output = "output",
            show_question_marks = false]
+  sessions
+    Proofs
   theories
     SemanticsSnippets
   document_files (in "../../latex")
     "root.tex"
     "mathpartir.sty"
-*)
 
 
 session StampLattice in "Papers/Stamps" = Graph +

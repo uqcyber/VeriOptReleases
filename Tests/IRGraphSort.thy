@@ -27,12 +27,12 @@ in terms of the ids, kind, and stamp function. However, we are
 yet to find a satisfactory definition as yet.
 \<close>
 definition IRGraph_equal :: "IRGraph \<Rightarrow> IRGraph \<Rightarrow> bool" where
-  "IRGraph_equal g1 g2 = True"
+  "IRGraph_equal g1 g2 = (as_set g1 = as_set g2)"
 
 lemma graph_eq:
   fixes g1 g2 :: IRGraph
   shows "g1 = g2 \<longleftrightarrow> IRGraph_equal g1 g2"
-  sorry
+  unfolding IRGraph_equal_def sorry
 
 instantiation IRGraph :: equal
 begin

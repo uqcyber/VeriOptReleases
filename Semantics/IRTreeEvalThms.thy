@@ -15,8 +15,8 @@ lemma evalDet:
   apply (induction arbitrary: v\<^sub>2 rule: "evaltree.induct") by (elim EvalTreeE; auto)+
 
 lemma evalAllDet:
-  "[m,p] \<turnstile> e \<mapsto>\<^sub>L v1 \<Longrightarrow> 
-   [m,p] \<turnstile> e \<mapsto>\<^sub>L v2 \<Longrightarrow>
+  "[m,p] \<turnstile> e [\<mapsto>] v1 \<Longrightarrow> 
+   [m,p] \<turnstile> e [\<mapsto>] v2 \<Longrightarrow>
    v1 = v2"
   apply (induction arbitrary: v2 rule: "evaltrees.induct")
   apply (elim EvalTreeE; auto)

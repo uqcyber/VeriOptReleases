@@ -317,16 +317,16 @@ code_pred (modes: i \<Rightarrow> i \<Rightarrow> i \<Rightarrow> o \<Rightarrow
   evaltree .
 
 inductive
-  evaltrees :: "MapState \<Rightarrow> Params \<Rightarrow> IRExpr list \<Rightarrow> Value list \<Rightarrow> bool" ("[_,_] \<turnstile> _ \<mapsto>\<^sub>L _" 55)
+  evaltrees :: "MapState \<Rightarrow> Params \<Rightarrow> IRExpr list \<Rightarrow> Value list \<Rightarrow> bool" ("[_,_] \<turnstile> _ [\<mapsto>] _" 55)
   for m p where
 
   EvalNil:
-  "[m,p] \<turnstile> [] \<mapsto>\<^sub>L []" |
+  "[m,p] \<turnstile> [] [\<mapsto>] []" |
 
   EvalCons:
   "\<lbrakk>[m,p] \<turnstile> x \<mapsto> xval;
-    [m,p] \<turnstile> yy \<mapsto>\<^sub>L yyval\<rbrakk>
-    \<Longrightarrow> [m,p] \<turnstile> (x#yy) \<mapsto>\<^sub>L (xval#yyval)"
+    [m,p] \<turnstile> yy [\<mapsto>] yyval\<rbrakk>
+    \<Longrightarrow> [m,p] \<turnstile> (x#yy) [\<mapsto>] (xval#yyval)"
 
 code_pred (modes: i \<Rightarrow> i \<Rightarrow> i \<Rightarrow> o \<Rightarrow> bool as evalTs)
   evaltrees .
@@ -361,9 +361,9 @@ inductive_cases ConstantVarE[elim!]:\<^marker>\<open>tag invisible\<close>
 inductive_cases VariableExprE[elim!]:\<^marker>\<open>tag invisible\<close>
   "[m,p] \<turnstile> (VariableExpr x s) \<mapsto> val"
 inductive_cases EvalNilE[elim!]:\<^marker>\<open>tag invisible\<close>
-  "[m,p] \<turnstile> [] \<mapsto>\<^sub>L vals"
+  "[m,p] \<turnstile> [] [\<mapsto>] vals"
 inductive_cases EvalConsE[elim!]:\<^marker>\<open>tag invisible\<close>
-  "[m,p] \<turnstile> (x#yy) \<mapsto>\<^sub>L vals"
+  "[m,p] \<turnstile> (x#yy) [\<mapsto>] vals"
 
 (* group these forward rules into a named set *)
 lemmas EvalTreeE\<^marker>\<open>tag invisible\<close> = 
