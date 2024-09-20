@@ -211,9 +211,6 @@ proof -
   then show ?thesis by (cases "stamp_expr u"; auto)
 qed
 
-no_notation ExclusiveOr ("_ ^ _")
-
-value "- (2 ^ (1::nat) div 2)::int"
 
 lemma lower_bound:
   "((- (2 ^ b div 2))::int) \<le> hi \<Longrightarrow> 0 < b \<and> b \<le> 64 \<Longrightarrow> (2 ^ 64 div 2 * - 1) \<le> hi"

@@ -16,7 +16,6 @@ datatype 'a ExtraNotation =
   ConstantNotation 'a ("const _" 120) |
   TrueNotation ("true") |
   FalseNotation ("false") |
-  ExclusiveOr 'a 'a ("_ ^ _") |
   LogicNegationNotation 'a ("!_") |
   ShortCircuitOr 'a 'a ("_ || _") |
   Remainder 'a 'a ("_ % _")
@@ -51,6 +50,7 @@ fun markup DSL_Tokens.Add = @{term BinaryExpr} $ @{term BinAdd}
   | markup DSL_Tokens.UnsignedRightShift = @{term BinaryExpr} $ @{term BinURightShift}
   | markup DSL_Tokens.Conditional = @{term ConditionalExpr}
   | markup DSL_Tokens.Constant = @{term ConstantExpr}
+  | markup DSL_Tokens.ConstantEval = @{term ConstantExpr}
   | markup DSL_Tokens.TrueConstant = @{term "ConstantExpr (IntVal 32 1)"}
   | markup DSL_Tokens.FalseConstant = @{term "ConstantExpr (IntVal 32 0)"}
 end
@@ -91,6 +91,7 @@ fun markup DSL_Tokens.Add = @{term BinaryPattern} $ @{term BinAdd}
   | markup DSL_Tokens.UnsignedRightShift = @{term BinaryPattern} $ @{term BinURightShift}
   | markup DSL_Tokens.Conditional = @{term ConditionalPattern}
   | markup DSL_Tokens.Constant = @{term ConstantPattern}
+  | markup DSL_Tokens.ConstantEval = @{term ConstantLiteralPattern}
   | markup DSL_Tokens.TrueConstant = @{term "ConstantPattern (IntVal 32 1)"}
   | markup DSL_Tokens.FalseConstant = @{term "ConstantPattern (IntVal 32 0)"}
 end

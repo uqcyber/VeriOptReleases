@@ -39,7 +39,7 @@ lemma exp_not_cancel:
   
 text \<open>Optimisations\<close>
 
-optimization NotCancel: "exp[~(~a)] \<longmapsto> a"
+optimization NotCancel: "~(~a) \<longmapsto> a"
   by (metis exp_not_cancel)
 
 end (* End of NotPhase *)

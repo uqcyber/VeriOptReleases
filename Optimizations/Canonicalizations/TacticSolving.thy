@@ -96,7 +96,7 @@ optimization DistributeSub: "-(x-y) \<longmapsto> (y-x)"
 
 lemma val_xor_self_is_false:
   assumes "x = IntVal 32 v"
-  shows "val[x \<oplus> x] \<approx> val[false]"
+  shows "val[x ^ x] \<approx> val[false]"
   by (cases x; auto simp: assms)
 
 definition wf_stamp :: "IRExpr \<Rightarrow> bool" where
@@ -105,7 +105,7 @@ definition wf_stamp :: "IRExpr \<Rightarrow> bool" where
 lemma exp_xor_self_is_false: 
   assumes "stamp_expr x = IntegerStamp 32 l h"
   assumes "wf_stamp x"
-  shows "exp[x \<oplus> x] >= exp[false]"
+  shows "exp[x ^ x] >= exp[false]"
   by (smt (z3) wf_value_def bin_eval.simps(8) bin_eval_new_int constantAsStamp.simps(1) evalDet 
       int_signed_value_bounds new_int.simps new_int_take_bits unfold_binary unfold_const valid_int 
       valid_stamp.simps(1) valid_value.simps(1) well_formed_equal_defn val_xor_self_is_false 
@@ -116,7 +116,7 @@ lemma val_or_commute[simp]:
   by (cases x; cases y; auto simp: or.commute)
 
 lemma val_xor_commute[simp]:
-   "val[x \<oplus> y] = val[y \<oplus> x]"
+   "val[x ^ y] = val[y ^ x]"
   by (cases x; cases y; auto simp: word_bw_comms(3))
 
 lemma val_and_commute[simp]:
@@ -128,7 +128,7 @@ lemma exp_or_commutative:
   by auto 
 
 lemma exp_xor_commutative:
-  "exp[x \<oplus> y] \<ge> exp[y \<oplus> x]"
+  "exp[x ^ y] \<ge> exp[y ^ x]"
   by auto 
 
 lemma exp_and_commutative:

@@ -10,9 +10,6 @@ phase XorNode
   terminating size
 begin
 
-notation ExclusiveOr ("_ ^ _")
-no_notation power (infixr "^" 80)
-
 (* Word level proofs *)
 lemma bin_xor_self_is_false:
  "bin[x ^ x] = 0"

@@ -47,7 +47,7 @@ datatype (discs_sels) PatternExpr =
   | ConstantPattern Value
   | ConstantVarPattern String.literal
   | VariablePattern String.literal
-  | ConstantLiteralPattern PatternExpr
+  | ConstantLiteralPattern PatternExpr ("eval _")
 
 \<comment> \<open>Semantics for the evaluation of a constant literal\<close>
 fun evaluate :: "PatternExpr \<Rightarrow> Value option" where

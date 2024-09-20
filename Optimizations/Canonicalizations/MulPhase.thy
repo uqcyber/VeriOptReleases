@@ -190,14 +190,14 @@ lemma val_MulPower2AddPower2:
     then have "(2 :: int) ^ 6 = 64"
       by eval
     then have n: "IntVal 64 ((2 ^ unat(i)) + (2 ^ unat(j))) = 
-             val[(IntVal 64 (2 ^ unat(i))) + (IntVal 64 (2 ^ unat(j)))]"
+             intval_add (IntVal 64 (2 ^ unat(i))) (IntVal 64 (2 ^ unat(j)))"
        (* x * (2^i + 2^j)*)
       by auto
-   then have 1: "val[x * ((IntVal 64 (2 ^ unat(i))) + (IntVal 64 (2 ^ unat(j))))] = 
-                 val[(x * IntVal 64 (2 ^ unat(i))) + (x * IntVal 64 (2 ^ unat(j)))]"
+   then have 1: "intval_mul x (intval_add (IntVal 64 (2 ^ unat(i))) (IntVal 64 (2 ^ unat(j)))) = 
+                 intval_add (intval_mul x (IntVal 64 (2 ^ unat(i)))) (intval_mul x (IntVal 64 (2 ^ unat(j))))"
       (* (x * 2^i) + (x * 2^j)*)
      using assms val_distribute_multiplication64 by simp 
-   then have 2: "val[(x * IntVal 64 (2 ^ unat(i)))] = val[x << IntVal 64 i]"
+   then have 2: "intval_mul x (IntVal 64 (2 ^ unat(i))) = val[x << IntVal 64 i]"
      by (metis (no_types, opaque_lifting) Value.distinct(1) intval_mul.simps(1) new_int.simps
          new_int_bin.simps assms(2,4,6) val_MulPower2)
    then show "?thesis" 
@@ -367,13 +367,13 @@ optimization EliminateRedundantNegative: "-x * -y \<longmapsto> x * y"
   apply auto[1]
   by (metis BinaryExpr val_eliminate_redundant_negative bin_eval.simps(3))
 
-optimization MulNeutral: "x * y \<longmapsto> x when IsConstantValue y x 1"
-  using exp_multiply_neutral by blast
+optimization MulNeutral[nogen]: "x * (const 1) \<longmapsto> x"
+  using exp_multiply_neutral by simp
 
 optimization MulEliminator: "x * y \<longmapsto> forZero x when IsConstantValue y x 0"
   using exp_multiply_zero_64 by fast
 
-optimization MulNegate: "x * -y \<longmapsto> -x when IsConstantValue y x 1"
+optimization MulNegate[nogen]: "x * -(const 1) \<longmapsto> -x"
   using exp_multiply_negative by presburger
 
 fun isNonZero :: "Stamp \<Rightarrow> bool" where

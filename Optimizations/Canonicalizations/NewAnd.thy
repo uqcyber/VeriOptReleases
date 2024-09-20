@@ -24,7 +24,7 @@ lemma intval_or_commute:
   by (cases x; cases y; auto simp: or.commute)
 
 lemma intval_xor_commute:
-  "val[x \<oplus> y] = val[y \<oplus> x]"
+  "val[x ^ y] = val[y ^ x]"
   by (cases x; cases y; auto simp: xor.commute)
 
 lemma exp_and_commute:
@@ -36,7 +36,7 @@ lemma exp_or_commute:
   by (auto simp: intval_or_commute)
 
 lemma exp_xor_commute:
-  "exp[x \<oplus> y] \<ge> exp[y \<oplus> x]"
+  "exp[x ^ y] \<ge> exp[y ^ x]"
   by (auto simp: intval_xor_commute)
 
 lemma intval_eliminate_y:
@@ -53,7 +53,7 @@ lemma intval_or_associative:
   by (cases x; cases y; cases z; auto simp: or.assoc) 
 
 lemma intval_xor_associative:
-  "val[(x \<oplus> y) \<oplus> z] = val[x \<oplus> (y \<oplus> z)]"
+  "val[(x ^ y) ^ z] = val[x ^ (y ^ z)]"
   by (cases x; cases y; cases z; auto simp: xor.assoc)
 
 lemma exp_and_associative:
@@ -65,7 +65,7 @@ lemma exp_or_associative:
   using intval_or_associative by fastforce
 
 lemma exp_xor_associative:
-  "exp[(x \<oplus> y) \<oplus> z] \<ge> exp[x \<oplus> (y \<oplus> z)]"
+  "exp[(x ^ y) ^ z] \<ge> exp[x ^ (y ^ z)]"
   using intval_xor_associative by fastforce
 
 lemma intval_and_absorb_or:

@@ -219,8 +219,8 @@ value AndEqual_code
 
 value "exp[y & (const x)]"
 optimization AndShiftConstantRight: 
-  when "cond[(Expr x) instanceof ConstantNode]"
-  when "cond[!((Expr y) instanceof ConstantNode)]"
+  when "cond[x instanceof ConstantNode]"
+  when "cond[!(y instanceof ConstantNode)]"
   "(x & y) \<longmapsto> y & x"
   using size_flip_binary
   using is_ConstantExpr_def
@@ -241,7 +241,8 @@ optimization AndSignExtend: "BinaryExpr BinAnd (UnaryExpr (UnarySignExtend In Ou
    using exp_sign_extend by simp 
 *)
 
-optimization AndNeutral: "(x & ~y) \<longmapsto> x 
+optimization AndNeutral:
+  "(x & ~y) \<longmapsto> x
    when (WellFormed x && IsIntegerStamp x && IsConstantValue y x 0)"
   using exp_and_neutral
   by (metis Stamp.collapse(1) StampEvalThms.wf_stamp_def)

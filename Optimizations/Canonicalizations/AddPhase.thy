@@ -39,7 +39,7 @@ proof -
 qed
 
 optimization AddFold:
-  "((const x) + (const y)) \<longmapsto> (const (x + y))"
+  "((const x) + (const y)) \<longmapsto> (eval (x + y))"
   apply auto
   using wf_value_intval_add by blast
 

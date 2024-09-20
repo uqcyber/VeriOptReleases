@@ -125,7 +125,7 @@ lemma exp_sub_after_right_add:
 lemma exp_sub_after_right_add2:
   shows "exp[(x + y) - x] \<ge> y"
   using exp_sub_after_right_add apply auto[1]
-  by (metis bin_eval.simps(1,3) intval_add_sym unfold_binary)
+  by (metis bin_eval.simps(1,2) intval_add_sym unfold_binary)
 
 
 lemma exp_sub_negative_value:

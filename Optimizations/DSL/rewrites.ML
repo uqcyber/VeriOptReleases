@@ -156,6 +156,7 @@ fun type_checked_rewrites ctxt rewrite =
 fun rewrite_to_term_param ctxt rewrite =
   let 
     val (lhs, rhs, cond) = type_checked_rewrites ctxt rewrite;
+
   in
     (ground_IRExpr ctxt lhs, ground_IRExpr ctxt rhs,
        case cond of 
@@ -179,7 +180,14 @@ fun comment ctxt rewrite =
   let
     val name = (Binding.name_of (#name rewrite));
     val termString = (Pretty.string_of (Syntax.pretty_term ctxt (#source rewrite)));
-    val cleaned = YXML.content_of (replaceSubstring (termString, "\<longmapsto>", "|->"));
+    val rewriteRules = [
+      ("\<longmapsto>", "|->"),
+      ("\<and>", "&"),
+      ("\<or>", "|"),
+      ("\<not>", "~")
+    ];
+    val cleaned = (fold (fn r => fn t => replaceSubstring (t, fst r, snd r)) rewriteRules termString);
+    val cleaned = YXML.content_of cleaned;
     val content = name ^ ": " ^ cleaned;
   in
     (mkstr ctxt content)
@@ -270,7 +278,7 @@ fun rewrite_constants_proofs ctxt is_lhs trm =
     | Const ("IRTreeEval.IRExpr.ConstantExpr", typ) $ (Const ("Groups.zero_class.zero", _))
       => Const ("IRTreeEval.IRExpr.ConstantExpr", typ) $ (@{term "IntVal b 0"})
     | Const ("IRTreeEval.IRExpr.ConstantExpr", typ) $ (Const ("Groups.one_class.one", _))
-      => Const ("IRTreeEval.IRExpr.ConstantExpr", typ) $ (@{term "IntVal b 0"})
+      => Const ("IRTreeEval.IRExpr.ConstantExpr", typ) $ (@{term "IntVal b 1"})
     | Const ("\<^const>IRTreeEval.IRExpr.ConstantExpr", typ) $ e => Const ("\<^const>IRTreeEval.IRExpr.ConstantExpr", typ) $ (if is_lhs then e else IntValMarkup.markup_expr [] ctxt [e])
     | Const ("IRTreeEval.IRExpr.ConstantExpr", typ) $ e => Const ("IRTreeEval.IRExpr.ConstantExpr", typ) $ (if is_lhs then e else IntValMarkup.markup_expr [] ctxt [e])
     | (e as (Const ("Markup.Rewrite.Conditional",_))) $ lhs $ rhs $ cond => 
@@ -288,17 +296,17 @@ fun rewrite_constants_code ctxt is_lhs trm =
     | Const ("CodeGenAltAlt.PatternExpr.ConstantPattern", typ) $ (Const ("Groups.zero_class.zero", _))
       => Const ("CodeGenAltAlt.PatternExpr.ConstantPattern", typ) $ (@{term "IntVal b 0"})
     | Const ("CodeGenAltAlt.PatternExpr.ConstantPattern", typ) $ (Const ("Groups.one_class.one", _))
-      => Const ("CodeGenAltAlt.PatternExpr.ConstantPattern", typ) $ (@{term "IntVal b 0"})
+      => Const ("CodeGenAltAlt.PatternExpr.ConstantPattern", typ) $ (@{term "IntVal b 1"})
     | Const ("\<^const>CodeGenAltAlt.PatternExpr.ConstantPattern", typ) $ (Free (str, _)) => create_const ctxt str
     | Const ("CodeGenAltAlt.PatternExpr.ConstantPattern", typ) $ (Free (str, _)) => create_const ctxt str
-    | Const ("\<^const>CodeGenAltAlt.PatternExpr.ConstantPattern", typ) $ e => 
+    (*| Const ("\<^const>CodeGenAltAlt.PatternExpr.ConstantPattern", typ) $ e => 
       (if is_lhs then trm else
        (Const ("\<^const>CodeGenAltAlt.PatternExpr.ConstantLiteralPattern", @{typ "PatternExpr \<Rightarrow> PatternExpr"})
         $ (ground_IRExpr ctxt (Syntax.check_term ctxt (PatternExprMarkup.markup_expr [] ctxt [e])))))
     | Const ("CodeGenAltAlt.PatternExpr.ConstantPattern", typ) $ e => 
       (if is_lhs then trm else
        (Const ("CodeGenAltAlt.PatternExpr.ConstantLiteralPattern", @{typ "PatternExpr \<Rightarrow> PatternExpr"})
-         $ (ground_IRExpr ctxt (Syntax.check_term ctxt (PatternExprMarkup.markup_expr [] ctxt [e])))))
+         $ (ground_IRExpr ctxt (Syntax.check_term ctxt (PatternExprMarkup.markup_expr [] ctxt [e])))))*)
     | (e as (Const ("Markup.Rewrite.Conditional",_))) $ lhs $ rhs $ cond => 
       e $ rewrite_constants_code ctxt true lhs $ rewrite_constants_code ctxt false rhs $ cond
     | (e as (Const ("Markup.Rewrite.Transform",_))) $ lhs $ rhs => 
@@ -325,6 +333,7 @@ fun rewrite_cmd (((bind: binding, options), whens), opt) ctxt =
     val raw_term = to_term rewrite ctxt;*)
 
     val term = IRExprMarkup.markup_expr [] ctxt [(Type.strip_constraints raw_term)];
+    val _ = @{print} (Syntax.pretty_term ctxt term);
     val term = rewrite_constants_proofs ctxt false term;
     val rewrite = of_term bind term conditions raw_term;
 
@@ -344,6 +353,7 @@ fun rewrite_cmd (((bind: binding, options), whens), opt) ctxt =
       val pattern_term = PatternExprMarkup.markup_expr [] ctxt [(Type.strip_constraints raw_term)];
       val pattern_term = rewrite_constants_code ctxt false pattern_term;
       val pattern_rewrite = of_term bind pattern_term code_conditions raw_term;
+      val _ = @{print} (Syntax.pretty_term ctxt pattern_term);
       in 
         code_of ctxt pattern_rewrite
       end)

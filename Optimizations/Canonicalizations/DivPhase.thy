@@ -41,8 +41,10 @@ phase DivPhase
   terminating size
 begin
 
-optimization DivItself: "(x / x) \<longmapsto> const IntVal b 1 when 
-                      (wf_stamp x \<and> stamp_expr x = IntegerStamp b lo hi)"
+optimization DivItself: 
+  when "wf_stamp x"
+  when "(stamp_expr x = IntegerStamp b lo hi)"
+  "(x / x) \<longmapsto> (const (IntVal b 1))"
   using size_non_const apply force
   apply simp apply (rule impI; (rule allI)+; rule impI)
   subgoal premises p for m p v

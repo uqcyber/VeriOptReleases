@@ -336,7 +336,7 @@ optimization AbsIdempotence:
 value AbsIdempotence_code
 
 
-optimization AbsNegate[nogen]: "(abs(-x)) \<longmapsto> abs(x)"
+optimization AbsNegate: "(abs(-x)) \<longmapsto> abs(x)"
   sorry
   (*using val_abs_negate by auto*)
 

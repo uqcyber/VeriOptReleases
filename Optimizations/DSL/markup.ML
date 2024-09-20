@@ -28,6 +28,7 @@ datatype Tokens =
   | UnsignedRightShift
   | Conditional
   | Constant
+  | ConstantEval
   | TrueConstant
   | FalseConstant
 end
@@ -64,6 +65,7 @@ fun equals_expr _ [lhs, rhs] =
 
 (* Shorthand expressions *)
 fun markup_constant (str, typ) =
+  let val _ = @{print} str in
   case (str, typ) of
     ("\<^const>Markup.ExtraNotation.ConditionalNotation", _) => Translator.markup DSL_Tokens.Conditional
     | ("Markup.ExtraNotation.ConditionalNotation", _) => Translator.markup DSL_Tokens.Conditional
@@ -71,6 +73,8 @@ fun markup_constant (str, typ) =
     | ("Markup.ExtraNotation.EqualsNotation", _) => Translator.markup DSL_Tokens.Equals
     | ("\<^const>Markup.ExtraNotation.ConstantNotation", _) => Translator.markup DSL_Tokens.Constant
     | ("Markup.ExtraNotation.ConstantNotation", _) => Translator.markup DSL_Tokens.Constant
+    | ("\<^const>CodeGenAltAlt.PatternExpr.ConstantLiteralPattern", _) => Translator.markup DSL_Tokens.ConstantEval
+    | ("CodeGenAltAlt.PatternExpr.ConstantLiteralPattern", _) => Translator.markup DSL_Tokens.ConstantEval
     | ("\<^const>Markup.ExtraNotation.TrueNotation", _) => Translator.markup DSL_Tokens.TrueConstant
     | ("Markup.ExtraNotation.TrueNotation", _) => Translator.markup DSL_Tokens.TrueConstant
     | ("\<^const>Markup.ExtraNotation.FalseNotation", _) => Translator.markup DSL_Tokens.FalseConstant
@@ -95,8 +99,8 @@ fun markup_constant (str, typ) =
     | ("HOL.disj", _) => Translator.markup DSL_Tokens.Or
     | ("\<^const>Markup.ExtraNotation.ShortCircuitOr", _) => Translator.markup DSL_Tokens.ShortCircuitOr
     | ("Markup.ExtraNotation.ShortCircuitOr", _) => Translator.markup DSL_Tokens.ShortCircuitOr
-    | ("\<^const>Markup.ExtraNotation.ExclusiveOr", _) => Translator.markup DSL_Tokens.Xor
-    | ("Markup.ExtraNotation.ExclusiveOr", _) => Translator.markup DSL_Tokens.Xor
+    | ("\<^const>Power.power_class.power", _) => Translator.markup DSL_Tokens.Xor
+    | ("Power.power_class.power", _) => Translator.markup DSL_Tokens.Xor
     | ("\<^const>Groups.uminus_class.uminus", _) => Translator.markup DSL_Tokens.Negate
     | ("Groups.uminus_class.uminus", _) => Translator.markup DSL_Tokens.Negate
     | ("\<^const>HOL.Not", _) => Translator.markup DSL_Tokens.Not
@@ -114,6 +118,7 @@ fun markup_constant (str, typ) =
     | ("\<^const>JavaWords.shiftr", _) => Translator.markup DSL_Tokens.UnsignedRightShift
     | ("JavaWords.shiftr", _) => Translator.markup DSL_Tokens.UnsignedRightShift
     | _ => Const (str, typ)
+end
 
 fun find_free (taken, goal) =
   (singleton
@@ -142,7 +147,7 @@ fun markup_expr taken ctxt [trm] =
     | (x $ y) => ((let val x' = markup_expr taken ctxt [x] in 
         case x' of 
           ((Const ("IRTreeEval.IRExpr.ConstantExpr",_))) => (x' $ y)
-          | ((Const ("CodeGenAltAlt.PatternExpr.ConstantPattern",_))) => (x' $ y)
+          (*| ((Const ("CodeGenAltAlt.PatternExpr.ConstantPattern",_))) => (x' $ y)*)
           | _ => (x' $ markup_expr taken ctxt [y])
         end))
     | Free (str, typ) => markup_free taken (str, typ)
