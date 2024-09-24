@@ -797,14 +797,59 @@ qed
 
 end
 
+lemma
+  shows "stampConditions ((Expr u)..stamp()) ((Stamp (stamp_expr u)))"
+  using stamp_Method by blast
+
+context stamp_mask begin
+lemma stamp_upMask_eq:
+  assumes "evalCondition cond[(((Expr u)..stamp()..upMask()) & ((Expr v)..stamp()..upMask())) eq (const 0)]" (is "evalCondition cond[?lhs eq ?rhs]")
+  shows "and (\<up>x) (\<up>y) = 0"
+proof -
+  obtain res where resdef: "stampConditions cond[?lhs eq ?rhs] (Value res)"
+    using assms evalCondition_def
+    by (metis cond_Binary)
+  obtain xv where xvdef: "stampConditions ?lhs (Value xv)"
+    using assms by (meson BinaryCool evalCondition_def)
+  obtain yv where yvdef: "stampConditions ?rhs (Value yv)"
+    using assms by (meson BinaryCool evalCondition_def)
+  have "res = intval_equals xv yv"
+    using assms
+    by (smt (verit) Condition.inject(4) bin_eval.simps(13) cond_Binary resdef stampConditions_det xvdef yvdef)
+  also have "res = IntVal 32 1"
+    using calculation resdef
+    by (smt (verit, ccfv_threshold) assms coerce_to_bool.intros(1) coerce_to_bool_det evalCondition_def intval_equals_result stampConditions_det val_to_bool.simps(1) val_to_bool.simps(2))
+  ultimately have "xv = yv"
+    using resdef intval_equals.simps
+    by (smt (verit) Value.inject(1) bool_to_val.simps(2) bool_to_val_bin.simps wf_bool.elims(2) wf_bool.elims(3) zero_neq_one)
+  have "yv = IntVal 64 0"
+    by (meson Condition.inject(4) cond_Const yvdef)
+  obtain uv where uvdef: "stampConditions ((Expr u)..stamp()..upMask()) (Value uv)"
+    by (meson cond_Binary xvdef)
+  also have "stampConditions ((Stamp (stamp_expr u))..upMask()) (Value uv)"
+    sorry
+  have "uv = IntVal 64 0"
+    sorry
+  obtain vv where vvdef: "stampConditions ((Expr v)..stamp()..upMask()) (Value vv)"
+    by (meson cond_Binary xvdef)
+  have "xv = intval_and uv vv"
+    using xvdef uvdef vvdef
+    by (smt (verit, ccfv_SIG) Condition.inject(4) bin_eval.simps(6) cond_Binary stampConditions_det)
+  have "evalCondition cond[(((Stamp (stamp_expr u))..upMask()) & ((Stamp (stamp_expr v))..upMask())) eq (const 0)]"
+    using assms stamp_Method sorry
+  then show ?thesis sorry
+qed
+end
 
 phase NewAnd
   terminating size
 begin
 
-optimization RedundantLHSYOr: "((x | y) & z) \<longmapsto> x & z
-                                when UpMaskCancels y z"
-  apply (simp add: IRExpr_up_def)
+optimization RedundantLHSYOr: 
+  when "cond[((y..stamp()..upMask()) & (z..stamp()..upMask())) eq (const 0)]"
+  "((x | y) & z) \<longmapsto> (x & z)"
+  apply (cases z; auto)
+  apply (simp add: size_binary_lhs)+
   using simple_mask.exp_eliminate_y by blast
 
 optimization RedundantLHSXOr: "((x | y) & z) \<longmapsto> y & z

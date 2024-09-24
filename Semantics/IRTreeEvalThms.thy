@@ -189,34 +189,212 @@ lemma int_stamp:
   shows "is_IntegerStamp (constantAsStamp v)"
   using assms is_IntVal_def by auto
 
+lemma min_int_bit_bounds:
+  assumes "0 < b \<and> b \<le> 64"
+  shows "(-(2 ^ (b-1))) = word_of_int (fst (bit_bounds b))"
+  using assms unfolding bit_bounds.simps fst_def apply simp
+  by (simp add: two_exp_div)
+
+(*lemma min_int_bit_bounds:
+  assumes "0 < b \<and> b \<le> 64"
+  shows "int_signed_value b (min_int b) = (fst (bit_bounds b))"
+  using assms unfolding bit_bounds.simps fst_def apply simp using min_int_signed_neg2pow two_exp_div
+  sledgehammer
+  by (simp add: two_exp_div)
+*)
+
+lemma take_bit_mod:
+  fixes w :: "'a::len word"
+  shows "take_bit b w = w mod 2 ^ b"
+  using take_bit_eq_mod by blast
+                  
+(*
+v\<open>set_bit n a = a OR push_bit n 1\<close>
+    and unset_bit_eq_or_xor: \<open>unset_bit n a = (a OR push_bit n 1) XOR push_bit n 1\<close>
+    and flip_bit_eq_xor: \<open>flip_bit n a = a XOR push_bit n 1\<close>
+    and push_bit_eq_mult: \<open>push_bit n a = a * 2 ^ n\<close>
+
+signed_take_bit n a = take_bit n a OR (of_bool (bit a n) * NOT (mask n))
+*)
+context includes bit_operations_syntax begin
+
+value "(-1)::int64"
+value "mask 64::int64"
+
+(*
+proof -
+  have "set_bit (b-1) 0 = (or 0 (push_bit (b-1) 1))"
+    using set_bit_eq_or by blast
+  also have "... = push_bit (b-1) 1"
+    using or.left_neutral by blast
+  also have "... = 2 ^ (b-1)"
+    using push_bit_eq_mult
+    using push_bit_of_1 by blast
+  ultimately have sbdef: "set_bit (b-1) 0 = 2 ^ (b-1)"
+    by simp
+  have "signed_take_bit (b-1) ?b = take_bit (b-1) ?b OR (of_bool (bit ?b (b-1))) * NOT (mask (b-1))"
+    by (simp add: signed_take_bit_def)
+  also have "bit ?b (b-1)"
+    using bit_set_bit_iff
+    using assms by fastforce
+  ultimately have rhse:"signed_take_bit (b-1) ?b = take_bit (b-1) ?b OR (NOT (mask (b-1)))"
+    using signed_take_bit_eq_if_negative by blast
+  have "signed_take_bit b ?a = take_bit b ?a OR (of_bool (bit ?a b)) * NOT (mask b)"
+    by (simp add: signed_take_bit_def)
+  have "?a = push_bit (b-1) (-1)"
+    by (simp add: min_int_def push_bit_minus)
+  have "bit (mask 64::int64) (b-1)"
+    using assms bit_mask_iff ValueThms.size64
+    by fastforce
+  also have "of_bool (bit ?a (b-1)) = 1"
+    using calculation
+    by (simp add: \<open>min_int (b::nat) = push_bit (b - (1::nat)) (- (1::64 word))\<close> bit_mask_iff bit_push_bit_iff minus_1_eq_mask)
+  ultimately have lhse:"signed_take_bit (b-1) ?a = take_bit (b-1) ?a OR (NOT (mask (b-1)))"
+    using signed_take_bit_eq_if_negative by auto
+  show ?thesis using lhse rhse
+    by (metis (no_types, lifting) \<open>min_int (b::nat) = push_bit (b - (1::nat)) (- (1::64 word))\<close> eq_imp_le int_signed_value.elims push_bit_minus_one_eq_not_mask take_bit_minus_one_eq_mask take_bit_not_take_bit take_bit_set_bit_eq word_bitwise_m1_simps(1))
+qed
+*)
+
+lemma max_int_bit_bounds:
+  assumes "0 < b \<and> b \<le> 64"
+  shows "max_int b = word_of_int (snd (bit_bounds b))"
+  using assms unfolding max_int_def bit_bounds.simps fst_def apply simp
+  by (simp add: mask_eq_decr_exp two_exp_div)
+
+lemma min_int_bit_bounds_signed:
+  assumes "0 < b \<and> b \<le> 64"
+  shows "int_signed_value b (min_int b) = int_signed_value b (word_of_int (fst (bit_bounds b)))"
+  using assms unfolding min_int_def bit_bounds.simps fst_def apply simp
+  using min_int_def min_int_signed_neg2pow two_exp_div by force
+
+value "fst (bit_bounds 32)"
+value "min_int 32"
+value "take_bit 32 (min_int 32)"
+value "sint (min_int 32)"
+value "sint (take_bit 32 (min_int 32))"
+value "int_signed_value 32 (set_bit 31 0::int64)"
+value "int_signed_value 32 (min_int 32)"
+
+lemma min_int_take_bit:
+  assumes "0 < b \<and> b \<le> 64"
+  shows "take_bit b (min_int b) = (min_int b)"
+  using assms unfolding min_int_def
+  by (metis diff_less linorder_not_less take_bit_of_0 take_bit_set_bit_eq zero_less_one)
+
+lemma max_int_take_bit:
+  assumes "0 < b \<and> b \<le> 64"
+  shows "take_bit b (max_int b) = (max_int b)"
+  using assms unfolding max_int_def
+  by auto
+
+lemma min_int_signed:
+  assumes "0 < b \<and> b \<le> 64"
+  shows "int_signed_value b (min_int b) = -(2 ^ (b-1))" (is "int_signed_value b ?a = _")
+proof -
+  have "min_int b = push_bit (b-1) 1"
+    by (simp add: min_int_def set_bit_def)
+  also have "... = 2 ^ (b-1)" (is "_ = ?pow")
+    using push_bit_of_1 by blast
+  ultimately have min_int_eq: "min_int b = ..."
+    by simp
+  have "signed_take_bit b ?a = take_bit b ?a OR (of_bool (bit ?a b)) * NOT (mask b)"
+    by (simp add: signed_take_bit_def)
+  have pb: "?a = push_bit (b-1) 1"
+    by (simp add: min_int_def set_bit_def)
+  have "bit (mask 64::int64) (b-1)"
+    using assms bit_mask_iff ValueThms.size64
+    by fastforce
+  also have "of_bool (bit ?a (b-1)) = 1"
+    using calculation
+    by (metis (no_types, lifting) add.right_neutral bit.compl_one bit_0 bit_0_eq bit_0_eq bit_0_eq bit_decr_iff bit_not_iff bit_push_bit_iff diff_is_0_eq' even_bit_succ_iff mask_eq_exp_minus_1 negative_all_set_32 of_bool_eq_1_iff order.refl pb rel_simps(51))
+  ultimately have lhse:"signed_take_bit (b-1) ?a = take_bit (b-1) ?a OR (NOT (mask (b-1)))"
+    using signed_take_bit_eq_if_negative by auto
+  also have "... = (NOT (mask (b-1)))"
+    using take_bit_push_bit
+    by (metis (no_types, lifting) cancel_comm_monoid_add_class.diff_cancel or.commute or.right_neutral pb push_bit_of_0 take_bit_0)
+  ultimately have "(signed_take_bit (b - (1::nat)) (min_int b)) = - ((2) ^ (b - (1::nat)))"
+    by (simp add: minus_exp_eq_not_mask)
+  then show ?thesis unfolding int_signed_value.simps
+    using ValueThms.upper_bounds_equiv bit_bounds.simps bit_minus_1_iff min_int_bit_bounds power_increasing_iff prod.sel(1) sint_sbintrunc'
+    by (smt (verit, del_insts) One_nat_def Suc_leI Suc_pred ValueThms.signed_take_bit_int_greater_eq_minus_exp_word Word.bit_mask_iff \<open>bit (mask (64::nat)) ((b::nat) - (1::nat))\<close> assms min_less_iff_conj not_less signed_take_bit_int_less_eq_self_iff)
+(*
+    using One_nat_def Suc_diff_eq_diff_pred Suc_leI Suc_pred ValueThms.signed_take_bit_int_greater_eq_minus_exp_word Word.bit_mask_iff \<open>bit (mask (64::nat)) ((b::nat) - (1::nat))\<close> add.inverse_inverse assms bit_mask_iff bit_push_bit_iff bit_sint_iff diff_le_mono diff_less len_gt_0 min_less_iff_conj minus_1_eq_mask pb push_bit_minus_one_eq_not_mask signed_take_bit_eq signed_take_bit_int_eq_self_iff signed_take_bit_int_less_self_iff signed_take_bit_minus signed_take_bit_negative_iff sint_word_ariths(4) sint_word_ariths(7) take_bit_int_greater_eq take_bit_not_mask_eq_0 zero_less_one
+    sledgehammer
+    by (smt (verit) ValueThms.upper_bounds_equiv bit_bounds.simps bit_minus_1_iff min_int_bit_bounds power_increasing_iff prod.sel(1) sint_sbintrunc')
+    by (smt (verit) ValueThms.take_bit_smaller_range diff_is_0_eq diff_le_self le_less le_numeral_extra(4) len_of_numeral_defs(2) min_int_take_bit of_bool_eq(1) power.simps(1) push_bit_of_1 signed_push_bit_eq signed_take_bit_eq_take_bit_add signed_take_bit_int_less_eq signed_take_bit_int_less_eq_self_iff signed_take_bit_int_less_exp signed_take_bit_of_0 signed_take_bit_of_minus_1 sint_word_ariths(8) take_bit_int_less_exp take_bit_of_1 take_bit_push_bit)
+*)
+(*
+    by (smt (verit, best) One_nat_def Suc_diff_eq_diff_pred Suc_leI Suc_pred ValueThms.signed_take_bit_int_greater_eq_minus_exp_word Word.bit_mask_iff \<open>bit (mask (64::nat)) ((b::nat) - (1::nat))\<close> add.inverse_inverse assms bit_mask_iff bit_push_bit_iff bit_sint_iff diff_le_mono diff_less len_gt_0 min_less_iff_conj minus_1_eq_mask pb push_bit_minus_one_eq_not_mask signed_take_bit_eq signed_take_bit_int_eq_self_iff signed_take_bit_int_less_self_iff signed_take_bit_minus signed_take_bit_negative_iff sint_word_ariths(4) sint_word_ariths(7) take_bit_int_greater_eq take_bit_not_mask_eq_0 zero_less_one)
+*)
+qed
+
+lemma max_int_signed:
+  assumes "0 < b \<and> b \<le> 64"
+  shows "int_signed_value b (max_int b) = (2 ^ (b-1)) - 1" (is "int_signed_value b ?a = _")
+proof -
+  have "signed_take_bit b ?a = take_bit b ?a OR (of_bool (bit ?a b)) * NOT (mask b)"
+    by (simp add: signed_take_bit_def)
+  have pb: "?a = (push_bit (b-1) (1)) - 1"
+    by (simp add: mask_eq_decr_exp max_int_def)
+  have "bit (mask 64::int64) (b-1)"
+    using assms bit_mask_iff ValueThms.size64
+    by fastforce
+  also have "of_bool (bit ?a (b-1)) = 0"
+    using calculation
+    by (metis bit_take_bit_iff less_irrefl_nat mask_eq_exp_minus_1 max_int_def of_bool_eq_0_iff take_bit_minus_one_eq_mask)
+  ultimately have lhse:"signed_take_bit (b-1) ?a = take_bit (b-1) ?a"
+    by (simp add: signed_take_bit_eq_if_positive)
+  then show ?thesis unfolding int_signed_value.simps
+    by (smt (verit, best) JavaWords.signed_take_bit_int_less_exp_word \<open>bit (mask (64::nat)) ((b::nat) - (1::nat))\<close> bit_mask_iff bit_set_bit_iff mask_eq_exp_minus_1 mask_eq_take_bit_minus_one max_int_def not_less set_bit_eq_idem_iff signed_take_bit_eq sint_n1 take_bit_int_greater_eq_self_iff)
+qed
+
+lemma min_int_min:
+  fixes ival::int64
+  assumes "0 < b \<and> b \<le> 64"
+  shows "b \<turnstile> (min_int b) \<le>j ival"
+  using assms unfolding int_signed_value.simps
+  using size64
+  by (metis ValueThms.int_signed_value_range int_signed_value.simps min_int_signed)
+
+lemma max_int_max:
+  fixes ival::int64
+  assumes "0 < b \<and> b \<le> 64"
+  shows "b \<turnstile> ival \<le>j (max_int b)"
+  using assms unfolding int_signed_value.simps
+  using size64 ValueThms.int_signed_value_range int_signed_value.simps max_int_signed
+  by auto
+end
+
 lemma validStampIntConst:
   assumes "v = IntVal b ival"
   assumes "0 < b \<and> b \<le> 64"
   shows "valid_stamp (constantAsStamp v)"
-proof -
-  have bnds: "fst (bit_bounds b) \<le> int_signed_value b ival \<and> 
-              int_signed_value b ival \<le> snd (bit_bounds b)"
-    using assms(2) int_signed_value_bounds by simp
-  have s: "constantAsStamp v = IntegerStamp b (int_signed_value b ival) (int_signed_value b ival)"
-    using assms(1) by simp
-  then show ?thesis
-    unfolding s valid_stamp.simps using assms(2) bnds by linarith 
-qed
+  using assms
+  using max_int_max min_int_min by auto
+
+lemma down_mask_constant_valid:
+  assumes "d = (and v (mask b))"
+  shows "(and (not v) d) = 0"
+  using assms
+  by (metis and.assoc bit.conj_cancel_left zero_and_eq)
+
+lemma up_mask_constant_valid:
+  assumes "u = (and v (mask b))"
+  assumes "take_bit b v = v"
+  shows "(and v u) = v"
+  using assms
+  by (simp add: take_bit_eq_mask)
+
 
 lemma validDefIntConst:
   assumes v: "v = IntVal b ival"
   assumes "0 < b \<and> b \<le> 64"
   assumes "take_bit b ival = ival"
   shows "valid_value v (constantAsStamp v)"
-proof -
-  have bnds: "fst (bit_bounds b) \<le> int_signed_value b ival \<and> 
-              int_signed_value b ival \<le> snd (bit_bounds b)"
-    using assms(2) int_signed_value_bounds by simp
-  have s: "constantAsStamp v = IntegerStamp b (int_signed_value b ival) (int_signed_value b ival)"
-    using assms(1) by simp
-  then show ?thesis
-    using assms validStampIntConst by simp
-qed
+  using assms min_int_min max_int_max down_mask_constant_valid up_mask_constant_valid
+  by (simp add: take_bit_eq_mask)
+
 
 (* is it useful to have a new_int version of the above? 
 lemma validIntConst:
@@ -252,7 +430,7 @@ lemma valid_ObjStamp[elim]:
   by (metis Value.exhaust valid_value.simps(3,11,12,18))
 
 lemma valid_int[elim]:
-  shows "valid_value val (IntegerStamp b lo hi) \<Longrightarrow> (\<exists>v. val = IntVal b v)"
+  shows "valid_value val (IntegerStamp b lo hi d u) \<Longrightarrow> (\<exists>v. val = IntVal b v)"
   using valid_value.elims(2) by fastforce
 
 lemmas valid_value_elims =
@@ -266,25 +444,29 @@ lemma evaltree_not_undef:
   apply (induction rule: "evaltree.induct") by (auto simp add: wf_value_def)
 
 lemma leafint:
-  assumes "[m,p] \<turnstile> LeafExpr i (IntegerStamp b lo hi) \<mapsto> val"
+  assumes "[m,p] \<turnstile> LeafExpr i (IntegerStamp b lo hi d u) \<mapsto> val"
   shows "\<exists>b v. val = (IntVal b v)"
 (* Note: we could also add: ...\<and> lo \<le> sint v \<and> sint v \<le> hi *)
 proof - 
-  have "valid_value val (IntegerStamp b lo hi)"
+  have "valid_value val (IntegerStamp b lo hi d u)"
     using assms by (rule LeafExprE; simp)
   then show ?thesis
     by auto
 qed
 
-lemma default_stamp [simp]: "default_stamp = IntegerStamp 32 (-2147483648) 2147483647"
+value "default_stamp"
+(*
+value "mask 32::int64"
+lemma default_stamp [simp]: "default_stamp = IntegerStamp 32 (18446744071562067968) 2147483647 0 4294967295"
   by (auto simp add: default_stamp_def)
+*)
 
 lemma valid_value_signed_int_range [simp]:
-  assumes "valid_value val (IntegerStamp b lo hi)"
+  assumes "valid_value val (IntegerStamp b lo hi d u)"
   assumes "lo < 0"
   shows "\<exists>v. (val = IntVal b v \<and> 
-             lo \<le> int_signed_value b v \<and> 
-             int_signed_value b v \<le> hi)"
+             (b \<turnstile> lo \<le>j v) \<and> 
+             (b \<turnstile> v \<le>j hi))"
   by (metis valid_value.simps(1) assms(1) valid_int)
 
 (* If we want to support unsigned values:
@@ -699,15 +881,14 @@ next
   case (ParameterExpr i s)
   then have "valid_value (p!i) s"
     by fastforce
-  then show ?case
-    by (metis (no_types, opaque_lifting) Value.distinct(9) intval_bits.simps valid_value.elims(2)
-        local.ParameterExpr ParameterExprE intval_word.simps)
+  then show ?case using ParameterExprE Value.simps(14) intval_bits.simps intval_word.simps local.ParameterExpr valid_value.elims(2)
+    apply simp
+    by (smt (z3) Value.distinct(9) Value.inject(1))
 next
   case (LeafExpr x1 x2)
-  then show ?case
-    apply auto
-    by (metis (no_types, opaque_lifting) intval_bits.simps intval_word.simps valid_value.elims(2)
-        valid_value.simps(18))
+  then show ?case using LeafExprE intval_bits.simps Value.distinct(9) intval_word.simps valid_value.elims(2)
+    apply simp
+    by (smt (z3) Value.distinct(9) intval_bits.simps intval_word.simps)
 next
   case (ConstantExpr x)
   then show ?case 

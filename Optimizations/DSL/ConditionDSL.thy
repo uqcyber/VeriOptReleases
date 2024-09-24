@@ -47,7 +47,7 @@ fun class_name :: "IRExpr \<Rightarrow> ClassName option" where
   "class_name _ = None"
 
 fun stamp_class_name :: "Stamp \<Rightarrow> ClassName" where
-  "stamp_class_name (IntegerStamp b l h) = STR ''IntegerStamp''" |
+  "stamp_class_name (IntegerStamp b l h d u) = STR ''IntegerStamp''" |
   "stamp_class_name (VoidStamp) = STR ''VoidStamp''" |
   "stamp_class_name (KlassPointerStamp x y) = STR ''KlassPointerStamp''" |
   "stamp_class_name (MethodCountersPointerStamp x y) = STR ''MethodCountersPointerStamp''" |
@@ -59,7 +59,7 @@ fun stamp_class_name :: "Stamp \<Rightarrow> ClassName" where
 datatype Condition =
   Unary IRUnaryOp Condition |
   Binary IRBinaryOp Condition Condition |
-  Constant int |
+  Constant "64 word" |
   Value Value |
   Variable String.literal |
   Expr IRExpr |
@@ -71,7 +71,6 @@ datatype Condition =
   Method Condition String.literal "Condition list"
 
 inductive coerce_to_bool :: "Condition \<Rightarrow> bool \<Rightarrow> bool" where
-  "coerce_to_bool (Constant num) (num > 0)" |
   "coerce_to_bool (Value val) (val_to_bool val)" |
   "coerce_to_bool lhs lhs' \<and> coerce_to_bool rhs rhs' \<Longrightarrow> coerce_to_bool (Combine lhs rhs) (lhs' \<and> rhs')"
 
@@ -79,7 +78,7 @@ inductive base_semantics :: "Condition \<Rightarrow> Condition \<Rightarrow> boo
   "base_semantics e (Value v) \<and> res = (unary_eval op v) \<Longrightarrow> base_semantics (Unary op e) (Value res)" |
   "base_semantics x (Value xv) \<and> base_semantics y (Value yv) \<and> res = (bin_eval op xv yv) 
     \<Longrightarrow> base_semantics (Binary op x y) (Value res)" |
-  "base_semantics (Constant v') (Value (IntVal 64 (word_of_int v')))" |
+  "base_semantics (Constant v') (Value (IntVal 64 v'))" |
   "base_semantics (Value v) (Value v)" |
   "base_semantics (Expr e) (Expr e)" |
   "base_semantics (Stamp s) (Stamp s)" |
@@ -399,7 +398,7 @@ fun export_condition :: "Condition \<Rightarrow> Expression" where
   "export_condition (Unary op e) = (JavaUnary op (export_condition e))" |
   "export_condition (Binary op x y) = (JavaBinary op (export_condition x) (export_condition y))" |
   (* Conditional - needed? *)
-  "export_condition (Constant v) = (JavaConstant v)" |
+  "export_condition (Constant v) = (JavaConstant (Word.the_int v))" |
   "export_condition (Value (IntVal _ v)) = (JavaConstant (Word.the_int v))" |
   "export_condition (Variable v) = (JavaVariable v)" |
   "export_condition (InstanceOf c cn) = (JavaInstanceOf (export_condition c) cn STR ''_'')" |

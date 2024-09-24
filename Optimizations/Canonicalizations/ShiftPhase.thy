@@ -49,11 +49,11 @@ proof (rule impI)
 qed
 qed
 
-(*
-optimization e:
-  "x * (const c) \<longmapsto> x << (const n) when (n = intval_log2 c \<and> in_bounds n 0 32)"
+
+optimization e[nogen]:
+  when "(Value c)..isPowerOf2()"
+  "x * (const c) \<longmapsto> let n = intval_log2 c in x << (const n)"
   using e_intval BinaryExprE ConstantExprE bin_eval.simps(2,7) sorry
-*)
 
 end
 

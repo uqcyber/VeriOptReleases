@@ -17,11 +17,18 @@ lemma unwrap_signed_take_bit:
   shows "signed_take_bit 63 (Word.rep (signed_take_bit (b - Suc 0) v)) = sint v"
   using assms by (simp add: signed_def)
 
+lemma take_bit_eq_word:
+  assumes "0 < n"
+  assumes "(m < 2 ^ n)"
+  shows "(take_bit (n::nat) (m::'a::len word) = m)"
+  using assms
+  by (simp add: less_mask_eq take_bit_eq_mask)
+
 lemma unrestricted_new_int_always_valid [simp]:
   assumes "0 < b \<and> b \<le> 64"
-  shows "valid_value (new_int b v) (unrestricted_stamp (IntegerStamp b lo hi))"
-  by (simp; metis One_nat_def assms int_power_div_base int_signed_value.simps int_signed_value_range
-      linorder_not_le not_exp_less_eq_0_int zero_less_numeral)
+  shows "valid_value (new_int b v) (unrestricted_stamp (IntegerStamp b lo hi d u))"
+  apply simp using min_int_take_bit max_int_take_bit
+  by (metis (no_types, lifting) One_nat_def and.right_idem assms int_signed_value.simps max_int_max min_int_min take_bit_eq_mask)
 
 lemma unary_undef: "val = UndefVal \<Longrightarrow> unary_eval op val = UndefVal"
   by (cases op; auto)
@@ -33,22 +40,27 @@ lemma unary_obj:
   by (cases op; auto)
 
 lemma unrestricted_stamp_valid:
-  assumes "s = unrestricted_stamp (IntegerStamp b lo hi)"
+  assumes "s = unrestricted_stamp (IntegerStamp b lo hi d u)"
   assumes "0 < b \<and> b \<le> 64"
   shows "valid_stamp s"
-  using assms apply auto by (simp add: pos_imp_zdiv_pos_iff self_le_power)
+  using assms apply auto
+  using One_nat_def int_signed_value.simps min_int_min 
+  using min_int_take_bit apply blast 
+  using max_int_max apply fastforce 
+  using max_int_take_bit apply blast
+  using max_int_max by force
 
 lemma unrestricted_stamp_valid_value [simp]:
   assumes 1: "result = IntVal b ival"
   assumes "take_bit b ival = ival"
   assumes "0 < b \<and> b \<le> 64"
-  shows "valid_value result (unrestricted_stamp (IntegerStamp b lo hi))"
+  shows "valid_value result (unrestricted_stamp (IntegerStamp b lo hi d u))"
 proof -
-  have "valid_stamp (unrestricted_stamp (IntegerStamp b lo hi))"
+  have "valid_stamp (unrestricted_stamp (IntegerStamp b lo hi d u))"
     using assms unrestricted_stamp_valid by blast 
   then show ?thesis
     unfolding unrestricted_stamp.simps using assms int_signed_value_bounds valid_value.simps
-    by presburger
+    by (metis (no_types, lifting) and_zero_eq max_int_max min_int_min take_bit_eq_mask)
 qed
 
 
@@ -77,97 +89,100 @@ subsubsection \<open>Support Lemmas for Integer Stamps and Associated IntVal val
 text \<open>Valid int implies some useful facts.\<close>
 lemma valid_int_gives:
   assumes "valid_value (IntVal b val) stamp"
-  obtains lo hi where "stamp = IntegerStamp b lo hi \<and>
-       valid_stamp (IntegerStamp b lo hi) \<and>
+  obtains lo hi d u where "stamp = IntegerStamp b lo hi d u \<and>
+       valid_stamp (IntegerStamp b lo hi d u) \<and>
        take_bit b val = val \<and>
-       lo \<le> int_signed_value b val \<and> int_signed_value b val \<le> hi"
+       (b \<turnstile> lo \<le>j val) \<and> (b \<turnstile> val \<le>j hi)"
   using assms apply (cases stamp; auto) by (metis that)
 
 text \<open>And the corresponding lemma where we know the stamp rather than the value.\<close>
 lemma valid_int_stamp_gives:
-  assumes "valid_value val (IntegerStamp b lo hi)"
+  assumes "valid_value val (IntegerStamp b lo hi d u)"
   obtains ival where "val = IntVal b ival \<and>
-       valid_stamp (IntegerStamp b lo hi) \<and>
+       valid_stamp (IntegerStamp b lo hi d u) \<and>
        take_bit b ival = ival \<and>
-       lo \<le> int_signed_value b ival \<and> int_signed_value b ival \<le> hi"
+       (b \<turnstile> lo \<le>j ival) \<and> (b \<turnstile> ival \<le>j hi)"
   by (metis assms valid_int valid_value.simps(1))
 
 text \<open>A valid int must have the expected number of bits.\<close>
 lemma valid_int_same_bits:
-  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi)"
+  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi d u)"
   shows "b = bits"
   by (meson assms valid_value.simps(1))
 
 text \<open>A valid value means a valid stamp.\<close>
 lemma valid_int_valid_stamp:
-  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi)"
-  shows "valid_stamp (IntegerStamp bits lo hi)"
+  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi d u)"
+  shows "valid_stamp (IntegerStamp bits lo hi d u)"
   by (metis assms valid_value.simps(1))
 
 text \<open>A valid int means a valid non-empty stamp.\<close>
 lemma valid_int_not_empty:
-  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi)"
-  shows "lo \<le> hi"
-  by (metis assms order.trans valid_value.simps(1))
+  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi d u)"
+  shows "b \<turnstile> lo \<le>j hi"
+  using assms
+  by (smt (z3) valid_value.simps(1))
 
 text \<open>A valid int fits into the given number of bits (and other bits are zero).\<close>
 lemma valid_int_fits:
-  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi)"
+  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi d u)"
   shows "take_bit bits val = val"
   by (metis assms valid_value.simps(1))
 
 lemma valid_int_is_zero_masked:
-  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi)"
+  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi d u)"
   shows "and val (not (mask bits)) = 0"
   by (metis (no_types, lifting) assms bit.conj_cancel_right take_bit_eq_mask valid_int_fits 
       word_bw_assocs(1) word_log_esimps(1))
 
 text \<open>Unsigned ints have bounds $0$ up to $2^bits$.\<close>
 lemma valid_int_unsigned_bounds:
-  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi)"
+  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi d u)"
   (* Not actually needed: assumes "0 \<le> lo" *)
   shows "uint val < 2 ^ bits"
   by (metis assms(1) mask_eq_iff take_bit_eq_mask valid_value.simps(1))
 
 text \<open>Signed ints have the usual two-complement bounds.\<close>
 lemma valid_int_signed_upper_bound:
-  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi)"
+  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi d u)"
   shows "int_signed_value bits val < 2 ^ (bits - 1)"
   by (metis (mono_tags, opaque_lifting) diff_le_mono int_signed_value.simps less_imp_diff_less
       linorder_not_le one_le_numeral order_less_le_trans signed_take_bit_int_less_exp_word sint_lt
       power_increasing)
 
 lemma valid_int_signed_lower_bound:
-  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi)"
+  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi d u)"
   shows "-(2 ^ (bits - 1)) \<le> int_signed_value bits val"
   using assms One_nat_def ValueThms.int_signed_value_range by auto
 
 text \<open>and $bit\_bounds$ versions of the above bounds.\<close>
 lemma valid_int_signed_upper_bit_bound:
-  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi)"
+  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi d u)"
   shows "int_signed_value bits val \<le> snd (bit_bounds bits)"
 proof - 
   have "b = bits"
     using assms valid_int_same_bits by blast
   then show ?thesis 
-    using assms by auto
+    using assms
+    by (meson ValueThms.int_signed_value_bounds valid_int_valid_stamp valid_stamp.simps(1))
 qed
 
 lemma valid_int_signed_lower_bit_bound:
-  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi)"
+  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi d u)"
   shows " fst (bit_bounds bits) \<le> int_signed_value bits val"
 proof - 
   have "b = bits"
     using assms valid_int_same_bits by blast
   then show ?thesis
-    using assms by auto
+    using assms
+    by (meson ValueThms.int_signed_value_bounds valid_int_valid_stamp valid_stamp.simps(1))
 qed
 
 text \<open>Valid values satisfy their stamp bounds.\<close>
 
 lemma valid_int_signed_range:
-  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi)"
-  shows "lo \<le> int_signed_value bits val \<and> int_signed_value bits val \<le> hi"
+  assumes "valid_value (IntVal b val) (IntegerStamp bits lo hi d u)"
+  shows "(bits \<turnstile> lo \<le>j val) \<and> (bits \<turnstile> val \<le>j hi)"
   by (metis assms valid_value.simps(1))
 
 subsubsection \<open>Validity of all Unary Operators\<close>
@@ -194,17 +209,17 @@ proof -
     using assms(2) v1 by blast
   then obtain vtmp where vtmp: "result = new_int b2 vtmp"
     using assms(3) by (auto simp add: v2)
-  obtain b' lo' hi' where "stamp_expr expr = IntegerStamp b' lo' hi'"
+  obtain b' lo' hi' d' u' where "stamp_expr expr = IntegerStamp b' lo' hi' d' u'"
     by (metis assms(7) v1 valid_int_gives)
   then have "stamp_unary op (stamp_expr expr) =
     unrestricted_stamp
-     (IntegerStamp (if op \<in> normal_unary then b' else ir_resultBits op) lo' hi')"
+     (IntegerStamp (if op \<in> normal_unary then b' else ir_resultBits op) lo' hi' d' u')"
     using op by force
-  then obtain lo2 hi2 where s: "(stamp_expr (UnaryExpr op expr)) =
-                                 unrestricted_stamp (IntegerStamp b2 lo2 hi2)"
+  then obtain lo2 hi2 d2 u2 where s: "(stamp_expr (UnaryExpr op expr)) =
+                                 unrestricted_stamp (IntegerStamp b2 lo2 hi2 d2 u2)"
     unfolding stamp_expr.simps 
     by (metis (full_types) assms(2,7) unary_normal_bitsize v2 valid_int_same_bits op
-        \<open>stamp_expr expr = IntegerStamp b' lo' hi'\<close>)
+        \<open>stamp_expr expr = IntegerStamp b' lo' hi' d' u'\<close>)
   then have bitRange: "0 < b1 \<and> b1 \<le> 64"
     using assms(1) eval_bits_1_64 v1 by blast
   then have "fst (bit_bounds b2) \<le> int_signed_value b2 v2 \<and>
@@ -262,10 +277,10 @@ proof -
     using assms unary_eval_new_int by presburger
   then obtain v3 where v3: "result = IntVal (ir_resultBits op) v3"
     using assms by (cases op; simp; (meson new_int.simps)+)
-  then obtain b lo2 hi2 where eval: "stamp_expr expr = IntegerStamp b lo2 hi2"
+  then obtain b lo2 hi2 d2 u2 where eval: "stamp_expr expr = IntegerStamp b lo2 hi2 d2 u2"
     by (metis assms(7) v1 valid_int_gives)
   then have s: "(stamp_expr (UnaryExpr op expr)) =
-                 unrestricted_stamp (IntegerStamp (ir_resultBits op) lo2 hi2)"
+                 unrestricted_stamp (IntegerStamp (ir_resultBits op) lo2 hi2 d2 u2)"
     using op notbool notfixed by (cases op; auto)
   then have outBits: "0 < (ir_resultBits op) \<and> (ir_resultBits op) \<le> 64"
     using assms narrow_widen_output_bits by blast
@@ -273,8 +288,27 @@ proof -
              int_signed_value (ir_resultBits op) v3 \<le> snd (bit_bounds (ir_resultBits op))"
     using ValueThms.int_signed_value_bounds outBits by blast
   then show ?thesis
-    using v2 s by (simp add: v3 outBits)
+    using v2 s
+    using outBits unrestricted_new_int_always_valid by presburger
 qed
+
+lemma bool_stamp_false:
+  "valid_value (IntVal 32 0) (IntegerStamp 32 0 1 0 1)"
+proof -
+  have lb: "32::nat \<turnstile> 0::64 word \<le>j 0::64 word"
+    by simp
+  have ub: "32::nat \<turnstile> 0::64 word \<le>j 1::64 word"
+    by simp
+  show ?thesis unfolding valid_value.simps using lb ub
+    and_zero_eq div_le_dividend max_int_max min_int_min numeral_Bit0_div_2 take_bit_of_0 valid_stamp.simps(1) zero_and_eq zero_less_numeral
+    by (metis (no_types, lifting) IntVal1 Value.inject(1) new_int.elims)
+qed
+
+lemma bool_stamp_true:
+  "valid_value (IntVal 32 1) (IntegerStamp 32 0 1 0 1)"
+  using bool_stamp_false by fastforce
+
+thm_oracles bool_stamp_false
 
 lemma eval_boolean_unary_implies_valid_value:
   assumes "[m,p] \<turnstile> expr \<mapsto> val"
@@ -293,10 +327,11 @@ lemma eval_boolean_unary_implies_valid_value:
     by (metis op singleton_iff unary_eval.simps(8) intval_is_null.simps(1) bool_to_val.simps(1,2))
   have vBounds: "result \<in> {bool_to_val True, bool_to_val False}"
     by (metis insertI1 insertI2 intval_is_null.simps(1) op singleton_iff unary_eval.simps(8) eval)
-  then have boolstamp: "(stamp_expr (UnaryExpr op expr)) = (IntegerStamp 32 0 1)"
+  then have boolstamp: "(stamp_expr (UnaryExpr op expr)) = (IntegerStamp 32 0 1 0 1)"
     using op by (cases op; auto)
   then show ?thesis
-    using vBounds by (cases result; auto)
+    using vBounds
+    by (metis bool_stamp_false bool_stamp_true bool_to_val.elims insert_iff singleton_iff)
   qed
 
 lemma eval_fixed_unary_32_implies_valid_value:
@@ -316,16 +351,17 @@ lemma eval_fixed_unary_32_implies_valid_value:
     using assms unary_eval_new_int by presburger
   then obtain v3 where v3: "result = IntVal 32 v3"
     using assms by (cases op; simp; (meson new_int.simps)+)
-  then obtain b lo2 hi2 where eval: "stamp_expr expr = IntegerStamp b lo2 hi2"
+  then obtain b lo2 hi2 d2 u2 where eval: "stamp_expr expr = IntegerStamp b lo2 hi2 d2 u2"
     by (metis assms(7) v1 valid_int_gives)
-  then have s: "(stamp_expr (UnaryExpr op expr)) = unrestricted_stamp (IntegerStamp 32 lo2 hi2)"
+  then have s: "(stamp_expr (UnaryExpr op expr)) = unrestricted_stamp (IntegerStamp 32 lo2 hi2 d2 u2)"
     using op notbool by (cases op; auto)
   then have "fst (bit_bounds 32)    \<le> int_signed_value 32 v3 \<and>
              int_signed_value 32 v3 \<le> snd (bit_bounds 32)"
     by (metis ValueThms.int_signed_value_bounds leI not_numeral_le_zero semiring_norm(68,71)
         numeral_le_iff)
   then show ?thesis
-    using s v2 v3 by force
+    using s v2 v3
+    by (metis bool_stamp_false unrestricted_new_int_always_valid valid_int_valid_stamp valid_stamp.simps(1))
 qed
 
 lemma eval_unary_implies_valid_value:
@@ -418,9 +454,9 @@ proof -
     by (metis Value.collapse(1) assms(3,4) bin_eval_inputs_are_ints bin_eval_int)
   obtain b2 v2 where v2: "val2 = IntVal b2 v2"
     by (metis Value.collapse(1) assms(3,4) bin_eval_inputs_are_ints bin_eval_int)
-  then obtain lo1 hi1 where s1: "stamp_expr expr1 = IntegerStamp b1 lo1 hi1"
+  then obtain lo1 hi1 d1 u1 where s1: "stamp_expr expr1 = IntegerStamp b1 lo1 hi1 d1 u1"
     by (metis assms(5) v1 valid_int_gives)
-  then obtain lo2 hi2 where s2: "stamp_expr expr2 = IntegerStamp b2 lo2 hi2"
+  then obtain lo2 hi2 d2 u2 where s2: "stamp_expr expr2 = IntegerStamp b2 lo2 hi2 d2 u2"
     by (metis assms(6) v2 valid_int_gives)
   then have r: "result = bin_eval op (IntVal b1 v1) (IntVal b2 v2)"
     using assms(3) v1 v2 by presburger
@@ -430,14 +466,14 @@ proof -
     by force
   (* now calculate the result stamp for the three classes of operators. *)
   then have sres: "stamp_expr (BinaryExpr op expr1 expr2) =
-             unrestricted_stamp (IntegerStamp bres lo1 hi1)
+             unrestricted_stamp (IntegerStamp bres lo1 hi1 d2 u2)
            \<and> 0 < bres \<and> bres \<le> 64"
     proof (cases "op \<in> binary_shift_ops")
       case True
       then show ?thesis
         unfolding stamp_expr.simps
-        by (metis Value.inject(1) eval_bits_1_64 new_int.simps r assms(1,4) stamp_binary.simps(1)
-            bin_eval_bits_binary_shift_ops s2 s1 v1 vres)
+        by (metis (full_types) assms(1) assms(4) bin_eval_bits_binary_shift_ops eval_bits_1_64 
+            intval_bits.simps new_int.elims r s1 s2 stamp_binary.simps(1) unrestricted_stamp.simps(2) v1 vres)
     next
       case False
       then have "op \<notin> binary_shift_ops"
@@ -448,9 +484,10 @@ proof -
       proof (cases "op \<in> binary_fixed_32_ops")
         case True
         then show ?thesis
-        unfolding stamp_expr.simps
-        by (metis False Value.inject(1) beq bin_eval_new_int le_add_same_cancel1 new_int.simps s2 s1
-            numeral_Bit0 vres zero_le_numeral zero_less_numeral assms(3,4) stamp_binary.simps(1))
+          unfolding stamp_expr.simps
+          using False Value.inject(1) beq bin_eval_new_int le_add_same_cancel1 new_int.simps s2 s1
+            numeral_Bit0 vres zero_le_numeral zero_less_numeral assms(3,4) stamp_binary.simps(1)
+          by (smt (verit, best) unrestricted_stamp.simps(2))
       next
         case False
         then show ?thesis 
@@ -471,8 +508,8 @@ lemma stamp_meet_integer_is_valid_stamp:
   assumes "is_IntegerStamp stamp1"
   assumes "is_IntegerStamp stamp2"
   shows "valid_stamp (meet stamp1 stamp2)"
-  using assms apply (cases stamp1; cases stamp2; auto)
-  using meet.simps(2) valid_stamp.simps(1,8) is_IntegerStamp_def assms by linarith+
+  using assms apply (cases stamp1; cases stamp2) apply simp+
+  using smax_def smin_def apply auto[1] by simp+
 
 lemma stamp_meet_is_valid_stamp:
   assumes 1: "valid_stamp stamp1"
@@ -480,31 +517,52 @@ lemma stamp_meet_is_valid_stamp:
   shows "valid_stamp (meet stamp1 stamp2)"
   by (cases stamp1; cases stamp2; insert stamp_meet_integer_is_valid_stamp[OF 1 2]; auto)
 
-lemma stamp_meet_commutes: "meet stamp1 stamp2 = meet stamp2 stamp1"
-  by (cases stamp1; cases stamp2; auto)
+
+lemma stamp_meet_commutes: 
+  assumes "valid_stamp stamp1"
+  assumes "valid_stamp stamp2"
+  shows "meet stamp1 stamp2 = meet stamp2 stamp1"
+  apply (cases stamp1; cases stamp2; auto)
+  using smax_commute smin_commute assms valid_stamp.simps(1) apply simp
+  using smax_commute smin_commute assms valid_stamp.simps(1) apply simp
+  by (simp add: and.commute or.commute)+
+
+lemma lower_bound_smin:
+  assumes "(b1 \<turnstile> lo1 \<le>j ival)"
+  shows "(b1 \<turnstile> smin b1 lo1 lo2 \<le>j ival)"
+  using assms apply simp
+  by (simp add: smin_def)
+
+lemma upper_bound_smax:
+  assumes "(b1 \<turnstile> ival \<le>j hi1)"
+  shows "(b1 \<turnstile> ival \<le>j smax b1 hi1 hi2)"
+  using assms apply simp
+  by (simp add: smax_def)
 
 lemma stamp_meet_is_valid_value1:
   assumes "valid_value val stamp1"  (*  \<or> valid_value val stamp2" *)
   assumes "valid_stamp stamp2"
-  assumes "stamp1 = IntegerStamp b1 lo1 hi1"
-  assumes "stamp2 = IntegerStamp b2 lo2 hi2"
+  assumes "stamp1 = IntegerStamp b1 lo1 hi1 d1 u1"
+  assumes "stamp2 = IntegerStamp b2 lo2 hi2 d2 u2"
   assumes "meet stamp1 stamp2 \<noteq> IllegalStamp"
   shows "valid_value val (meet stamp1 stamp2)"
 proof -
-  have m: "meet stamp1 stamp2 = IntegerStamp b1 (min lo1 lo2) (max hi1 hi2)"
+  have m: "meet stamp1 stamp2 = IntegerStamp b1 (smin b1 lo1 lo2) (smax b1 hi1 hi2) (and d1 d2) (or u1 u2)"
     by (metis assms(3,4,5) meet.simps(2))
   obtain ival where val: "val = IntVal b1 ival"
     using assms valid_int by blast 
-  then have v: "valid_stamp (IntegerStamp b1 lo1 hi1) \<and>
+  then have v: "valid_stamp (IntegerStamp b1 lo1 hi1 d1 u1) \<and>
        take_bit b1 ival = ival \<and>
-       lo1 \<le> int_signed_value b1 ival \<and> int_signed_value b1 ival \<le> hi1"
+       (b1 \<turnstile> lo1 \<le>j ival) \<and> (b1 \<turnstile> ival \<le>j hi1)"
     by (metis assms(1,3) valid_value.simps(1))
-  then have mm: "min lo1 lo2 \<le> int_signed_value b1 ival \<and> int_signed_value b1 ival \<le> max hi1 hi2"
-    by linarith
-  then have "valid_stamp (IntegerStamp b1 (min lo1 lo2) (max hi1 hi2))"
+  then have mm: "(b1 \<turnstile> smin b1 lo1 lo2 \<le>j ival) \<and> (b1 \<turnstile> ival \<le>j smax b1 hi1 hi2)"
+    using lower_bound_smin upper_bound_smax
+    by presburger
+  then have "valid_stamp (IntegerStamp b1 (smin b1 lo1 lo2) (smax b1 hi1 hi2) (and d1 d2) (or u1 u2))"
     by (metis meet.simps(2) stamp_meet_is_valid_stamp v assms(2,3,4,5))
   then show ?thesis 
-    using mm v valid_value.simps val m by presburger
+    using mm v valid_value.simps val m
+    by (smt (verit, ccfv_SIG) assms(1) assms(3) word_ao_absorbs(3) word_bw_assocs(1) word_log_esimps(7))
 qed
 
 text \<open>and the symmetric lemma follows by the commutativity of meet.\<close>
@@ -512,11 +570,16 @@ text \<open>and the symmetric lemma follows by the commutativity of meet.\<close
 lemma stamp_meet_is_valid_value:
   assumes "valid_value val stamp2"
   assumes "valid_stamp stamp1"
-  assumes "stamp1 = IntegerStamp b1 lo1 hi1"
-  assumes "stamp2 = IntegerStamp b2 lo2 hi2"
+  assumes "stamp1 = IntegerStamp b1 lo1 hi1 d1 u1"
+  assumes "stamp2 = IntegerStamp b2 lo2 hi2 d1 u1"
   assumes "meet stamp1 stamp2 \<noteq> IllegalStamp"
   shows "valid_value val (meet stamp1 stamp2)"
+  using assms 
+  using smax_def smin_def stamp_meet_integer_is_valid_stamp stamp_meet_is_valid_value1 valid_int valid_value.simps(1)
+  by (smt (z3) Stamp.disc(2) and.idem meet.simps(2) or.idem) 
+(*
   by (metis stamp_meet_is_valid_value1 stamp_meet_commutes assms)
+*)
 
 subsubsection \<open>Validity of conditional expressions\<close>
 
@@ -535,8 +598,7 @@ proof -
     by (smt (verit, ccfv_threshold) Stamp.distinct(13,25) compatible.elims(2) meet.simps(1,2))
   then have "valid_stamp (meet (stamp_expr expr1) (stamp_expr expr2))"
     using assms apply auto
-    by (metis compatible_refl compatible.elims(2) stamp_meet_is_valid_stamp valid_stamp.simps(2)
-        assms(7))
+    by (smt (verit, best) compatible.elims(2) stamp_meet_is_valid_stamp valid_stamp.simps(2))
   then show ?thesis
     using assms apply auto
     by (smt (verit, ccfv_SIG) Stamp.distinct(1) assms(6,7) compatible.elims(2) compatible.simps(1)
@@ -597,26 +659,30 @@ lemma stamp_under_defn:
 proof -
   have yval: "valid_value yv (stamp_expr y)"
     using assms wf_stamp_def by blast
-  obtain b lx hi where xstamp: "stamp_expr x = IntegerStamp b lx hi"
+  obtain b lx hi dx ux where xstamp: "stamp_expr x = IntegerStamp b lx hi dx ux"
     by (metis stamp_under.elims(2) assms(1))
-  then obtain b' lo hy where ystamp: "stamp_expr y = IntegerStamp b' lo hy"
+  then obtain b' lo hy dy uy where ystamp: "stamp_expr y = IntegerStamp b' lo hy dy uy"
     by (meson stamp_under.elims(2) assms(1))
+  have beq: "b = b'"
+    using assms(1) xstamp ystamp by fastforce
   obtain xvv where xvv: "xv = IntVal b xvv"
     by (metis assms(2,3) valid_int wf_stamp_def xstamp)
   then have xval: "valid_value (IntVal b xvv) (stamp_expr x)"
     using assms(2,3) wf_stamp_def by blast
-  obtain yvv where yvv: "yv = IntVal b' yvv"
-    by (metis valid_int ystamp yval)
-  then have xval: "valid_value (IntVal b' yvv) (stamp_expr y)"
+  obtain yvv where yvv: "yv = IntVal b yvv"
+    using beq by (metis valid_int ystamp yval)
+  then have xval: "valid_value (IntVal b yvv) (stamp_expr y)"
     using yval by blast
-  have xunder: "int_signed_value b xvv \<le> hi"
+  have xunder: "b \<turnstile> xvv \<le>j hi"
     by (metis assms(2,3) wf_stamp_def xstamp valid_value.simps(1) xvv)
-  have yunder: "lo \<le> int_signed_value b' yvv"
+  have yunder: "b \<turnstile> lo \<le>j yvv"
+    using beq
     by (metis ystamp valid_value.simps(1) yval yvv)
   have unwrap: "\<forall>cond. bool_to_val_bin b b cond = bool_to_val cond"
     by simp
-  from xunder yunder have "int_signed_value b xvv < int_signed_value b' yvv"
-    using assms(1) xstamp ystamp by force
+  from xunder yunder have "b \<turnstile> xvv <j yvv"
+    using assms(1) xstamp ystamp
+    by fastforce
   then have "(intval_less_than xv yv) = IntVal 32 1 \<or> (intval_less_than xv yv) = UndefVal"
     by (simp add: yvv xvv)
   then show ?thesis
@@ -631,9 +697,9 @@ lemma stamp_under_defn_inverse:
 proof -
   have yval: "valid_value yv (stamp_expr y)"
     using assms wf_stamp_def by blast
-  obtain b lo hx where xstamp: "stamp_expr x = IntegerStamp b lo hx"
+  obtain b lo hx dx ux where xstamp: "stamp_expr x = IntegerStamp b lo hx dx ux"
     by (metis stamp_under.elims(2) assms(1))
-  then obtain b' ly hi where ystamp: "stamp_expr y = IntegerStamp b' ly hi"
+  then obtain b' ly hi dy uy where ystamp: "stamp_expr y = IntegerStamp b' ly hi dy uy"
     by (meson stamp_under.elims(2) assms(1))
   obtain xvv where xvv: "xv = IntVal b xvv"
     by (metis assms(2,3) valid_int wf_stamp_def xstamp)
@@ -643,9 +709,9 @@ proof -
     by (metis valid_int ystamp yval)
   then have xval: "valid_value (IntVal b' yvv) (stamp_expr y)"
     using yval by simp
-  have yunder: "int_signed_value b' yvv \<le> hi"
-    by (metis ystamp valid_value.simps(1) yval yvv)
-  have xover: "lo \<le> int_signed_value b xvv"
+  have yunder: "b \<turnstile> yvv \<le>j hi"
+    by (metis assms(1) stamp_under.simps(1) valid_int_signed_range xstamp xval ystamp)
+  have xover: "b \<turnstile> lo \<le>j xvv"
     by (metis assms(2,3) wf_stamp_def xstamp valid_value.simps(1) xvv)
   have unwrap: "\<forall>cond. bool_to_val_bin b b cond = bool_to_val cond"
     by simp

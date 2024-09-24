@@ -133,7 +133,7 @@ proof -
     using assms evalCondition_def by blast
   then have "c' = (Value (IntVal 32 1))"
     using assms coerce_True
-    by (smt (verit, ccfv_SIG) coerce_to_bool.intros(2) coerce_to_bool_det cond_InstanceOf val_to_bool.simps(1))
+    by (smt (verit, ccfv_SIG) coerce_to_bool.intros(1) coerce_to_bool_det cond_InstanceOf val_to_bool.simps(1))
   then have "class_name x = Some STR ''ConstantNode''"
     using assms c'
     by (meson Condition.inject(4) Value.inject(1) stampConditions.intros(5) stampConditions.intros(9) stampConditions_det zero_neq_one)
@@ -157,7 +157,7 @@ proof -
     by (meson stampConditions.intros(1) stampConditions_det val)
   then have "val_to_bool (unary_eval UnaryLogicNegation val)"
     using assms coerce_True c'
-    by (metis coerce_to_bool.intros(2) coerce_to_bool_det)
+    by (metis coerce_to_bool.intros(1) coerce_to_bool_det)
   then have "\<not>(val_to_bool val)"
     using logic_negation_bool
     by (metis Value.disc(2) val_to_bool.elims(2))
@@ -190,12 +190,12 @@ lemma stamp_Method:
   using stampConditions.intros(12) stampConditions.intros(5) stampConditions.intros(6) stamp_semantics by fastforce
 
 lemma stamp_upper_Method:
-  shows "stampConditions ((Stamp s)..upperBound()) (Value (IntVal 64 (word_of_int (stpi_upper s))))"
+  shows "stampConditions ((Stamp s)..upperBound()) (Value (IntVal 64 (stpi_upper s)))"
   using stampConditions.intros(18) stampConditions.intros(3,6)
   by (metis upperBound_of.simps upperBound_semantics)
 
 lemma stamp_lower_Method:
-  shows "stampConditions ((Stamp s)..lowerBound()) (Value (IntVal 64 (word_of_int (stpi_lower s))))"
+  shows "stampConditions ((Stamp s)..lowerBound()) (Value (IntVal 64 (stpi_lower s)))"
   using stampConditions.intros(17) stampConditions.intros(3,6)
   by (metis lowerBound_of.simps lowerBound_semantics)
 
@@ -207,7 +207,7 @@ proof -
     using assms
     by (smt (z3) evalCondition_def stampConditions.intros(10) stampConditions.intros(11) stampConditions.intros(6) stampConditions_det stamp_Method)
   then have "stamp_class_name (stamp_expr u) = STR ''IntegerStamp''"
-    by (smt (verit, ccfv_threshold) assms coerce_to_bool.intros(2) coerce_to_bool_det evalCondition_def stampConditions.intros(11) stampConditions_det stamp_Method val_to_bool.simps(1))
+    by (smt (verit, ccfv_threshold) assms coerce_to_bool.intros(1) coerce_to_bool_det evalCondition_def stampConditions.intros(11) stampConditions_det stamp_Method val_to_bool.simps(1))
   then show ?thesis by (cases "stamp_expr u"; auto)
 qed
 
@@ -225,7 +225,10 @@ lemma upper_bound:
 lemma stamp_upper_in_bounds:
   assumes "valid_stamp u"
   assumes "is_IntegerStamp u"
-  shows "(stpi_upper u) = (int_signed_value 64 (word_of_int (stpi_upper u)))"
+  shows "(stpi_upper u) = (take_bit 64 (stpi_upper u))"
+  using assms
+  by (metis JavaWords.size64 take_bit_length_eq wsst_TYs(3))
+(*
 proof -
   obtain lo hi b where sdef: "u = IntegerStamp b lo hi"
     using assms(2) is_IntegerStamp_def by auto
@@ -266,48 +269,141 @@ proof -
   then show ?thesis
     using sdef by auto
   qed
+*)
 
 lemma stamp_lower_in_bounds:
   assumes "valid_stamp u"
   assumes "is_IntegerStamp u"
-  shows "(stpi_lower u) = (int_signed_value 64 (word_of_int (stpi_lower u)))"
-  sorry
+  shows "(stpi_lower u) = (take_bit 64 (stpi_lower u))"
+  using assms
+  by (metis JavaWords.size64 take_bit_length_eq wsst_TYs(3))
 
 lemma stamp_under:
   assumes "valid_stamp (stamp_expr u) \<and> valid_stamp (stamp_expr v)"
   assumes "evalCondition cond[StampUnder (Expr u) (Expr v)]"
-  shows "stpi_upper (stamp_expr u) < stpi_lower (stamp_expr v)"
+  shows "64 \<turnstile> stpi_upper (stamp_expr u) <j stpi_lower (stamp_expr v)"
 proof -
-  have ec: "evalCondition cond[Value (IntVal 64 (word_of_int (stpi_upper (stamp_expr u)))) < Value (IntVal 64 (word_of_int (stpi_lower (stamp_expr v))))]" (is "evalCondition ?lowCond")
+  have ec: "evalCondition cond[Value (IntVal 64 (stpi_upper (stamp_expr u))) < Value (IntVal 64 (stpi_lower (stamp_expr v)))]" (is "evalCondition ?lowCond")
     using assms combine_cond_lhs combine_cond_rhs
     by (smt (z3) BinaryCool cond_Method_lowerBound cond_Method_upperBound cond_Stamp evalCondition_def stampConditions.intros(2) stampConditions.intros(4) stampConditions_det stamp_Method stamp_lower_Method stamp_upper_Method)
   obtain val where val1: "stampConditions ?lowCond val \<and> coerce_to_bool val True"
     using ec evalCondition_def by blast
-  have val2: "val = Value (bin_eval BinIntegerLessThan (IntVal 64 (word_of_int (stpi_upper (stamp_expr u)))) (IntVal 64 (word_of_int (stpi_lower (stamp_expr v)))))"
+  have val2: "val = Value (bin_eval BinIntegerLessThan (IntVal 64 (stpi_upper (stamp_expr u))) (IntVal 64 (stpi_lower (stamp_expr v))))"
     by (smt (verit, best) Condition.inject(4) cond_Binary stampConditions.intros(4) stampConditions_det val1)
-  have "... = Value (if (int_signed_value 64 (word_of_int (stpi_upper (stamp_expr u)))) < (int_signed_value 64 (word_of_int (stpi_lower (stamp_expr v)))) then IntVal 32 1 else IntVal 32 0)"
+  have "... = Value (if (int_signed_value 64 (stpi_upper (stamp_expr u))) < (int_signed_value 64 (stpi_lower (stamp_expr v))) then IntVal 32 1 else IntVal 32 0)"
     unfolding bin_eval.simps intval_less_than.simps bool_to_val_bin.simps using bool_to_val.simps by auto
   also have "val = Value (IntVal 32 1)"
     using calculation coerce_True val1 val2 by fastforce
-  ultimately have lt: "(int_signed_value 64 (word_of_int (stpi_upper (stamp_expr u)))) < (int_signed_value 64 (word_of_int (stpi_lower (stamp_expr v))))"
+  ultimately have lt: "(int_signed_value 64 (stpi_upper (stamp_expr u))) < (int_signed_value 64 (stpi_lower (stamp_expr v)))"
     using Value.inject(1) val2 by fastforce
   have isu: "is_IntegerStamp (stamp_expr u)"
     by (meson assms(2) combine_cond_lhs stamp_instanceof_IntegerStamp)
   have isv: "is_IntegerStamp (stamp_expr v)"
     using assms(2) combine_cond_lhs combine_cond_rhs stamp_instanceof_IntegerStamp by blast
-  have ueq: "stpi_upper (stamp_expr u) = int_signed_value 64 (word_of_int (stpi_upper (stamp_expr u)))"
+  (*have ueq: "stpi_upper (stamp_expr u) = int_signed_value 64 (stpi_upper (stamp_expr u))"
     using assms(1) isu stamp_upper_in_bounds by blast
-  have veq: "stpi_lower (stamp_expr v) = int_signed_value 64 (word_of_int (stpi_lower (stamp_expr v)))"
-    using assms(1) isv stamp_lower_in_bounds by blast
+  have veq: "stpi_lower (stamp_expr v) = int_signed_value 64 (stpi_lower (stamp_expr v))"
+    using assms(1) isv stamp_lower_in_bounds by blast*)
   from lt show ?thesis
-    using ueq veq assms by argo
+    by blast
+qed
+
+lemma take_bit_trans:
+  assumes "0 < b \<and> b' \<le> 64"
+  assumes "b < b'"
+  assumes "take_bit b x = x"
+  shows "take_bit b' x = x"
+  using assms
+  by (metis min_def not_less take_bit_take_bit)
+
+context includes bit_operations_syntax begin
+lemma
+  assumes "take_bit b x = x"
+  shows "signed_take_bit b x = x"
+  using assms
+  by (metis (full_types) dual_order.refl signed_take_bit_take_bit)
+
+lemma signed_take_bit_iffpos:
+  assumes "\<not>(bit x (b-1))"
+  shows "signed_take_bit (b-1) x = take_bit b x"
+  using assms
+  by (smt (verit, best) Common.arith(3) One_nat_def Suc_pred bit_take_bit_iff gr_zeroI signed_take_bit_code signed_take_bit_eq_if_positive zero_less_diff)
+
+thm_oracles signed_take_bit_iffpos
+
+value "max_int 1"
+
+value "signed_take_bit 1 0::int64"
+value "signed_take_bit 1 1::int64"
+value "signed_take_bit 1 2::int64"
+value "signed_take_bit 1 3::int64"
+value "signed_take_bit 1 4::int64"
+value "sint (signed_take_bit 1 0::int64)"
+value "sint (signed_take_bit 1 1::int64)"
+value "sint (signed_take_bit 1 2::int64)"
+value "sint (signed_take_bit 1 3::int64)"
+value "sint (signed_take_bit 1 4::int64)"
+
+(*
+lemma signed_take_bit_iffneg:
+  assumes "0 < (b-1)"
+  assumes "bit x (b-1)"
+  shows "(signed_take_bit (b-1) x) = -((max_int (b)) + 1 - take_bit (b-1) x)" (is "?lhs = ?rhs")
+proof -
+  have "?lhs = take_bit (b-1) x OR (of_bool (bit x (b-1)) * NOT (mask (b-1)))"
+    using signed_take_bit_def by blast
+  then have "... = take_bit (b-1) x OR (NOT (mask (b-1)))"
+    using assms by auto
+  then have "... = take_bit (b-1) x 
+  then have "... = -((mask (b-1)) + 1 - take_bit (b-1) x)"
+    using assms(2) sledgehammer
+    using assms sledgehammer
+
+signed_take_bit n a = take_bit n a OR (of_bool (bit a n) * NOT (mask n))
+*)
+
+lemma signed_lt_trans:
+  assumes "0 < b \<and> b' \<le> 64"
+  assumes "b < b'"
+  assumes "take_bit b x = x"
+  assumes "take_bit b y = y"
+  assumes "b' \<turnstile> x <j y"
+  shows "b \<turnstile> x <j y"
+proof -
+  have tbx: "take_bit b' x = x"
+    using assms(1) assms(2) assms(3) take_bit_trans by blast
+  have tby: "take_bit b' y = y"
+    using assms(1) assms(2) assms(4) take_bit_trans by blast
+  have tbxe: "take_bit b x = take_bit b' x"
+    using tbx assms(3) by simp
+  have tbye: "take_bit b y = take_bit b' y"
+    using tby assms(4) by simp
+  from tbxe tbye assms(5) show ?thesis sorry
 qed
 
 lemma stamp_under_lower:
   assumes "valid_stamp (stamp_expr u) \<and> valid_stamp (stamp_expr v)"
   assumes "evalCondition (StampUnder (Expr u) (Expr v))"
   shows "stamp_under (stamp_expr u) (stamp_expr v)"
-  using assms
-  by (smt (verit, best) Stamp.collapse(1) combine_cond_lhs combine_cond_rhs stamp_instanceof_IntegerStamp stamp_under stamp_under.simps(1))
+proof -
+  obtain b lu hu du uu where su: "stamp_expr u = IntegerStamp b lu hu du uu"
+    by (meson assms(2) combine_cond_lhs is_IntegerStamp_def stamp_instanceof_IntegerStamp)
+  then have tbu: "take_bit b hu = hu"
+    using assms(1) by auto
+  obtain b' lv hv dv uv where sv: "stamp_expr v = IntegerStamp b' lv hv dv uv"
+    by (meson assms(2) combine_cond_lhs combine_cond_rhs is_IntegerStamp_def stamp_instanceof_IntegerStamp)
+  then have tbv: "take_bit b' lv = lv"
+    using assms(1) by auto
+  have lt64: "64 \<turnstile> hu <j lv"
+    using su sv assms stamp_under
+    by (metis Stamp.sel(2) Stamp.sel(3))
+  have "b = b'"
+    sorry
+  then have "b \<turnstile> hu <j lv"
+    using tbu tbv lt64
+    by (metis Orderings.order_eq_iff assms(1) le_neq_implies_less signed_lt_trans su valid_stamp.simps(1))
+  then show ?thesis
+    by (simp add: \<open>b = b'\<close> su sv)
+qed
 
 end

@@ -50,7 +50,7 @@ lemma binadd_commute:
   shows "bin_eval BinAdd x y = bin_eval BinAdd y x"
   by (simp add: intval_add_sym)
 
-optimization AddShiftConstantRight:
+optimization AddShiftConstantRight[nogen]:
   when "cond[x instanceof ConstantNode]"
   when "cond[!(y instanceof ConstantNode)]"
   "(x + y) \<longmapsto> (y + x)"

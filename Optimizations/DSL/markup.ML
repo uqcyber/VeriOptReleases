@@ -65,7 +65,6 @@ fun equals_expr _ [lhs, rhs] =
 
 (* Shorthand expressions *)
 fun markup_constant (str, typ) =
-  let val _ = @{print} str in
   case (str, typ) of
     ("\<^const>Markup.ExtraNotation.ConditionalNotation", _) => Translator.markup DSL_Tokens.Conditional
     | ("Markup.ExtraNotation.ConditionalNotation", _) => Translator.markup DSL_Tokens.Conditional
@@ -118,7 +117,6 @@ fun markup_constant (str, typ) =
     | ("\<^const>JavaWords.shiftr", _) => Translator.markup DSL_Tokens.UnsignedRightShift
     | ("JavaWords.shiftr", _) => Translator.markup DSL_Tokens.UnsignedRightShift
     | _ => Const (str, typ)
-end
 
 fun find_free (taken, goal) =
   (singleton

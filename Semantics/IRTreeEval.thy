@@ -173,6 +173,8 @@ lemma unary_ops_distinct:
   and   "op \<in> unary_fixed_32_ops \<Longrightarrow> op \<notin> boolean_unary \<and> op \<notin> normal_unary"
   by auto
 
+value "mask 4::64 word"
+
 fun stamp_unary :: "IRUnaryOp \<Rightarrow> Stamp \<Rightarrow> Stamp" where
 (* WAS:
   "stamp_unary op (IntegerStamp b lo hi) =
@@ -182,23 +184,23 @@ fun stamp_unary :: "IRUnaryOp \<Rightarrow> Stamp \<Rightarrow> Stamp" where
     unrestricted_stamp (IntegerStamp bits lo hi))" |
 *)
 (* TODO update to generalise all boolean_unary operators to return IntegerStamp 32 0 1 *)
-  "stamp_unary UnaryIsNull _ = (IntegerStamp 32 0 1)" |
-  "stamp_unary op (IntegerStamp b lo hi) =
+  "stamp_unary UnaryIsNull _ = (IntegerStamp 32 0 1 0 1)" |
+  "stamp_unary op (IntegerStamp b lo hi d u) =
      unrestricted_stamp (IntegerStamp 
                         (if op \<in> normal_unary       then b  else
                          if op \<in> boolean_unary      then 32 else
                          if op \<in> unary_fixed_32_ops then 32 else
-                          (ir_resultBits op)) lo hi)" |
+                          (ir_resultBits op)) lo hi d u)" |
   (* for now... *)
   "stamp_unary op _ = IllegalStamp"
 
 fun stamp_binary :: "IRBinaryOp \<Rightarrow> Stamp \<Rightarrow> Stamp \<Rightarrow> Stamp" where
-  "stamp_binary op (IntegerStamp b1 lo1 hi1) (IntegerStamp b2 lo2 hi2) =
-    (if op \<in> binary_shift_ops then unrestricted_stamp (IntegerStamp b1 lo1 hi1)
+  "stamp_binary op (IntegerStamp b1 lo1 hi1 d1 u1) (IntegerStamp b2 lo2 hi2 d2 u2) =
+    (if op \<in> binary_shift_ops then unrestricted_stamp (IntegerStamp b1 lo1 hi1 d1 u1)
      else if b1 \<noteq> b2 then IllegalStamp else
       (if op \<in> binary_fixed_32_ops
-       then unrestricted_stamp (IntegerStamp 32 lo1 hi1)
-       else unrestricted_stamp (IntegerStamp b1 lo1 hi1)))" |
+       then unrestricted_stamp (IntegerStamp 32 lo1 hi1 d1 u1)
+       else unrestricted_stamp (IntegerStamp b1 lo1 hi1 d1 u1)))" |
   (* for now... *)
   "stamp_binary op _ _ = IllegalStamp"
 
@@ -331,10 +333,12 @@ inductive
 code_pred (modes: i \<Rightarrow> i \<Rightarrow> i \<Rightarrow> o \<Rightarrow> bool as evalTs)
   evaltrees .
 
+value "default_stamp"
+value "valid_value (IntVal 32 5) default_stamp"
 definition sq_param0 :: IRExpr where
   "sq_param0 = BinaryExpr BinMul 
-    (ParameterExpr 0 (IntegerStamp 32 (- 2147483648) 2147483647))
-    (ParameterExpr 0 (IntegerStamp 32 (- 2147483648) 2147483647))"
+    (ParameterExpr 0 (default_stamp))
+    (ParameterExpr 0 (default_stamp))"
 
 values "{v. evaltree new_map_state [IntVal 32 5] sq_param0 v}"
 
