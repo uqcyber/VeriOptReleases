@@ -25,6 +25,7 @@ The traversal algorithm used by the compiler is specified in \ref{sec:traversal}
 
 theory ConditionalElimination
   imports
+    Proofs.StampEvalThms
     Semantics.IRTreeEvalThms
     Proofs.Rewrites
     Proofs.Bisimulation
@@ -254,11 +255,11 @@ inductive tryFold :: "IRNode \<Rightarrow> (ID \<Rightarrow> Stamp) \<Rightarrow
     \<Longrightarrow> tryFold (IntegerEqualsNode x y) stamps True" |
   "\<lbrakk>is_IntegerStamp (stamps x);
     is_IntegerStamp (stamps y);
-    stpi_upper (stamps x) < stpi_lower (stamps y)\<rbrakk> 
+    stp_bits (stamps x) \<turnstile> stpi_upper (stamps x) <j stpi_lower (stamps y)\<rbrakk> 
     \<Longrightarrow> tryFold (IntegerLessThanNode x y) stamps True" |
   "\<lbrakk>is_IntegerStamp (stamps x);
     is_IntegerStamp (stamps y);
-    stpi_lower (stamps x) \<ge> stpi_upper (stamps y)\<rbrakk> 
+    stp_bits (stamps x) \<turnstile> stpi_upper (stamps y) \<le>j stpi_lower (stamps x)\<rbrakk> 
     \<Longrightarrow> tryFold (IntegerLessThanNode x y) stamps False"
 
 code_pred (modes: i \<Rightarrow> i \<Rightarrow> i \<Rightarrow> bool) tryFold .
@@ -273,27 +274,90 @@ inductive_cases StepE:
   "g, p \<turnstile> (nid,m,h) \<rightarrow> (nid',m',h)"
 
 
+lemma jlt_trans:
+  assumes "(b \<turnstile> h <j l)"
+  shows "\<not>((b \<turnstile> l \<le>j val) \<and> (b \<turnstile> val \<le>j h))"
+  using assms
+  by linarith
+
 lemma is_stamp_empty_valid:
   assumes "is_stamp_empty s"
   shows "\<not>(\<exists> val. valid_value val s)"
   using assms is_stamp_empty.simps apply (cases s; auto)
-  by (metis linorder_not_le not_less_iff_gr_or_eq order.strict_trans valid_value.elims(2) valid_value.simps(1) valid_value.simps(5))
+  by (metis One_nat_def int_signed_value.simps jlt_trans valid_value.simps(1) valid_value_elims(3))
+
+lemma join_valid_stamp:
+  assumes "is_IntegerStamp s1 \<and> is_IntegerStamp s2"
+  assumes "valid_stamp s1 \<and> valid_stamp s2"
+  shows "valid_stamp (join s1 s2)"
+  using assms apply (cases s1; cases s2; simp)
+  by (metis smax_def smin_def)
+
+lemma join_valid_lower:
+  assumes "s1 = IntegerStamp b l1 h1 d1 u1"
+  assumes "s2 = IntegerStamp b l2 h2 d2 u2"
+  assumes "join s1 s2 = IntegerStamp b l h d u"
+  shows "(b \<turnstile> l1 \<le>j val) \<and> (b \<turnstile> l2 \<le>j val) \<equiv> b \<turnstile> l \<le>j val"
+  using assms apply auto
+  by (smt (verit, del_insts) One_nat_def int_signed_value.elims smax_def)
+
+lemma join_valid_upper:
+  assumes "s1 = IntegerStamp b l1 h1 d1 u1"
+  assumes "s2 = IntegerStamp b l2 h2 d2 u2"
+  assumes "join s1 s2 = IntegerStamp b l h d u"
+  shows "(b \<turnstile> val \<le>j h1) \<and> (b \<turnstile> val \<le>j h2) \<equiv> b \<turnstile> val \<le>j h"
+  using assms apply auto
+  by (smt (verit, del_insts) One_nat_def int_signed_value.elims smin_def)
+
+lemma join_valid_down:
+  assumes "s1 = IntegerStamp b l1 h1 d1 u1"
+  assumes "s2 = IntegerStamp b l2 h2 d2 u2"
+  assumes "join s1 s2 = IntegerStamp b l h d u"
+  shows "((and (not val) d1) = 0) \<and> ((and (not val) d2) = 0) \<equiv> (and (not val) d) = 0"
+  using assms apply auto
+  by (smt (verit, del_insts) bit.conj_disj_distrib or_eq_0_iff)
+
+lemma join_valid_up:
+  assumes "s1 = IntegerStamp b l1 h1 d1 u1"
+  assumes "s2 = IntegerStamp b l2 h2 d2 u2"
+  assumes "join s1 s2 = IntegerStamp b l h d u"
+  shows "((and val u1) = val) \<and> ((and val u2) = val) \<equiv> (and val u) = val"
+  using assms apply auto
+  by (smt (verit) word_ao_absorbs(6) word_ao_absorbs(8) word_bw_assocs(1))
 
 lemma join_valid:
   assumes "is_IntegerStamp s1 \<and> is_IntegerStamp s2"
   assumes "valid_stamp s1 \<and> valid_stamp s2"
   shows "(valid_value v s1 \<and> valid_value v s2) = valid_value v (join s1 s2)" (is "?lhs = ?rhs")
 proof
-  assume ?lhs
-  then show ?rhs 
-   using assms(1) apply (cases s1; cases s2; auto)
-   apply (metis Value.inject(1) valid_int)
-  by (smt (z3) valid_int valid_stamp.simps(1) valid_value.simps(1))
-  next
-  assume ?rhs
+  assume lhs: ?lhs
+  obtain b l1 h1 d1 u1 where s1def:"s1 = IntegerStamp b l1 h1 d1 u1"
+    using assms
+    using is_IntegerStamp_def by fastforce
+  then obtain l2 h2 d2 u2 where s2def:"s2 = IntegerStamp b l2 h2 d2 u2"
+    using assms
+    by (metis Stamp.collapse(1) lhs valid_int valid_int_same_bits)
+  also obtain l h d u where joindef:"join s1 s2 = IntegerStamp b l h d u"
+    by (simp add: s1def s2def)
+  then show ?rhs
+    using s1def s2def assms joindef
+    using join_valid_stamp join_valid_lower join_valid_upper join_valid_down join_valid_up
+    by (smt (verit, del_insts) lhs valid_int valid_value.simps(1))
+next
+  assume rhs: ?rhs
+  obtain b l1 h1 d1 u1 where s1def:"s1 = IntegerStamp b l1 h1 d1 u1"
+    using assms
+    using is_IntegerStamp_def by fastforce
+  also obtain l h d u where joindef:"join s1 s2 = IntegerStamp b l h d u"
+    by (metis assms(1) calculation is_IntegerStamp_def join.simps(2) rhs valid_value.simps(22))
+  then obtain l2 h2 d2 u2 where s2def:"s2 = IntegerStamp b l2 h2 d2 u2"
+    apply (cases s2; auto simp: assms(1)) 
+    using calculation apply force
+    using assms(1) by fastforce+
   then show ?lhs
-    using assms apply (cases s1; cases s2; simp)
-  by (smt (verit, best) assms(2) valid_int valid_value.simps(1) valid_value.simps(22))
+    using s1def s2def assms joindef
+    using join_valid_stamp join_valid_lower join_valid_upper join_valid_down join_valid_up
+    by (smt (verit, del_insts) rhs valid_int valid_value.simps(1))
 qed
 
 lemma alwaysDistinct_evaluate:
@@ -378,21 +442,22 @@ lemma asConstant_valid:
   assumes "valid_value v s"
   shows "v = val"
 proof -
-  obtain b l h where s: "s = IntegerStamp b l h"
+  obtain b l h d u where s: "s = IntegerStamp b l h d u"
     using assms(1,2) by (cases s; auto)
   obtain vv where vdef: "v = IntVal b vv"
     using assms(3) s valid_int by blast
-  have "l \<le> int_signed_value b vv \<and> int_signed_value b vv \<le> h"
+  have "(b \<turnstile> l \<le>j vv) \<and> (b \<turnstile> vv \<le>j h)"
     by (metis \<open>(v::Value) = IntVal (b::nat) (vv::64 word)\<close> assms(3) s valid_value.simps(1))
-  then have veq: "int_signed_value b vv = l"
+  then have veq: "int_signed_value b vv = int_signed_value b l"
     by (smt (verit) asConstant.simps(1) assms(1) assms(2) s)
-  have valdef: "val = new_int b (word_of_int l)"
+  have valdef: "val = new_int b l"
     by (metis asConstant.simps(1) assms(1) assms(2) s)
   have "take_bit b vv = vv"
     by (metis \<open>(v::Value) = IntVal (b::nat) (vv::64 word)\<close> assms(3) s valid_value.simps(1))
   then show ?thesis
     using veq vdef valdef
-    using assms(3) s unwrap_valid by force
+    using assms(3) s unwrap_valid
+    by (metis (mono_tags, lifting) ValueThms.signed_take_take_bit int_signed_value.simps new_int.elims new_int_take_bits valid_int_valid_stamp valid_stamp.simps(1)) 
 qed
 
 lemma neverDistinct_valid:
@@ -441,7 +506,7 @@ lemma stampUnder_valid:
   assumes "wf_stamp g stamps"
   assumes "kind g nid = (IntegerLessThanNode x y)"
   assumes "[g, m, p] \<turnstile> nid \<mapsto> v"
-  assumes "stpi_upper (stamps x) < stpi_lower (stamps y)"
+  assumes "stp_bits (stamps x) \<turnstile> stpi_upper (stamps x) <j stpi_lower (stamps y)"
   shows "val_to_bool v"
 proof -
   obtain xe ye where repr: "rep g nid (BinaryExpr BinIntegerLessThan xe ye)"
@@ -458,22 +523,22 @@ proof -
     by (metis bin_eval.simps(14) defined_eval_is_intval evale evaltree_not_undef is_IntVal_def)
   also have xvalid: "valid_value xv (stamps x)"
     by (meson assms(1) encodeeval.simps eval_in_ids evalsub wf_stamp.elims(2))
-  then obtain xl xh where xstamp: "stamps x = IntegerStamp b xl xh"
+  then obtain xl xh xd xu where xstamp: "stamps x = IntegerStamp b xl xh xd xu"
     using calculation valid_value.simps apply (cases "stamps x"; auto)
     by presburger
   from vval obtain yvv where yint: "yv = IntVal b yvv"
     by (metis Value.collapse(1) bin_eval.simps(14) bool_to_val_bin.simps calculation defined_eval_is_intval evale evaltree_not_undef intval_less_than.simps(1))
   then have yvalid: "valid_value yv (stamps y)"
     using assms(1) encodeeval.simps evalsub no_encoding wf_stamp.simps by blast
-  then obtain yl yh where ystamp: "stamps y = IntegerStamp b yl yh"
+  then obtain yl yh yd yu where ystamp: "stamps y = IntegerStamp b yl yh yd yu"
     using calculation yint valid_value.simps apply (cases "stamps y"; auto)
     by presburger
-  have "int_signed_value b xvv \<le> xh"
+  have "b \<turnstile> xvv \<le>j xh"
     using calculation valid_value.simps(1) xstamp xvalid by presburger
-  moreover have "yl \<le> int_signed_value b yvv"
+  moreover have "b \<turnstile> yl \<le>j yvv"
     using valid_value.simps(1) yint ystamp yvalid by presburger
-  moreover have "xh < yl"
-    using assms(4) xstamp ystamp by auto
+  moreover have "b \<turnstile> xh <j yl"
+    using assms(4) xstamp ystamp by force
   ultimately have "int_signed_value b xvv < int_signed_value b yvv"
     by linarith
   then have "val_to_bool (intval_less_than xv yv)"
@@ -486,7 +551,7 @@ lemma stampOver_valid:
   assumes "wf_stamp g stamps"
   assumes "kind g nid = (IntegerLessThanNode x y)"
   assumes "[g, m, p] \<turnstile> nid \<mapsto> v"
-  assumes "stpi_lower (stamps x) \<ge> stpi_upper (stamps y)"
+  assumes "stp_bits (stamps x) \<turnstile> stpi_upper (stamps y) \<le>j stpi_lower (stamps x)"
   shows "\<not>(val_to_bool v)"
 proof -
   obtain xe ye where repr: "rep g nid (BinaryExpr BinIntegerLessThan xe ye)"
@@ -503,23 +568,24 @@ proof -
     by (metis bin_eval.simps(14) defined_eval_is_intval evale evaltree_not_undef is_IntVal_def)
   also have xvalid: "valid_value xv (stamps x)"
     by (meson assms(1) encodeeval.simps eval_in_ids evalsub wf_stamp.elims(2))
-  then obtain xl xh where xstamp: "stamps x = IntegerStamp b xl xh"
+  then obtain xl xh xd xu where xstamp: "stamps x = IntegerStamp b xl xh xd xu"
     using calculation valid_value.simps apply (cases "stamps x"; auto)
     by presburger
   from vval obtain yvv where yint: "yv = IntVal b yvv"
     by (metis Value.collapse(1) bin_eval.simps(14) bool_to_val_bin.simps calculation defined_eval_is_intval evale evaltree_not_undef intval_less_than.simps(1))
   then have yvalid: "valid_value yv (stamps y)"
     using assms(1) encodeeval.simps evalsub no_encoding wf_stamp.simps by blast
-  then obtain yl yh where ystamp: "stamps y = IntegerStamp b yl yh"
+  then obtain yl yh yd yu where ystamp: "stamps y = IntegerStamp b yl yh yd yu"
     using calculation yint valid_value.simps apply (cases "stamps y"; auto)
     by presburger
-  have "xl \<le> int_signed_value b xvv"
+  have "b \<turnstile> xl \<le>j xvv"
     using calculation valid_value.simps(1) xstamp xvalid by presburger
-  moreover have "int_signed_value b yvv \<le> yh"
+  moreover have "b \<turnstile> yvv \<le>j yh"
     using valid_value.simps(1) yint ystamp yvalid by presburger
-  moreover have "xl \<ge> yh"
-    using assms(4) xstamp ystamp by auto
-  ultimately have "int_signed_value b xvv \<ge> int_signed_value b yvv"
+  moreover have "b \<turnstile> yh \<le>j xl"
+    using assms(4) xstamp ystamp
+    by simp
+  ultimately have "b \<turnstile> yvv \<le>j xvv"
     by linarith
   then have "\<not>(val_to_bool (intval_less_than xv yv))"
     by (simp add: \<open>(xv::Value) = IntVal (b::nat) (xvv::64 word)\<close> yint)
@@ -539,8 +605,7 @@ case (1 stamps x y)
 next
   case (2 stamps x y)
   then show ?case
-    by (smt (verit, best) one_neq_zero tryFold.cases neverDistinct_valid assms
-        stampUnder_valid val_to_bool.simps(1))
+    by (smt (verit, del_insts) IRNode.distinct(1905) assms(1) assms(2) assms(3) neverDistinct_valid tryFold.cases)
 next
   case (3 stamps x y)
   then show ?case
@@ -580,6 +645,7 @@ qed
 
 subsection \<open>Lift rules\<close>
 
+hide_const cond
 inductive condset_implies :: "IRExpr set \<Rightarrow> IRExpr \<Rightarrow> bool \<Rightarrow> bool" where
   impliesTrue:
   "(\<exists>ce \<in> conds . (ce \<Rrightarrow> cond)) \<Longrightarrow> condset_implies conds cond True" |
@@ -699,22 +765,22 @@ which roughly corresponds to \texttt{ConditionalEliminationPhase.registerNewCond
 This method updates the flow-sensitive stamp information based on the condition which
 we know must be true. 
 \<close>
-fun clip_upper :: "Stamp \<Rightarrow> int \<Rightarrow> Stamp" where
-  "clip_upper (IntegerStamp b l h) c = 
-          (if c < h then (IntegerStamp b l c) else (IntegerStamp b l h))" |
+fun clip_upper :: "Stamp \<Rightarrow> int64 \<Rightarrow> Stamp" where
+  "clip_upper (IntegerStamp b l h d u) c = 
+          (if b \<turnstile> c <j h then (IntegerStamp b l c d u) else (IntegerStamp b l h d u))" |
   "clip_upper s c = s"
-fun clip_lower :: "Stamp \<Rightarrow> int \<Rightarrow> Stamp" where
-  "clip_lower (IntegerStamp b l h) c = 
-          (if l < c then (IntegerStamp b c h) else (IntegerStamp b l c))" |
+fun clip_lower :: "Stamp \<Rightarrow> int64 \<Rightarrow> Stamp" where
+  "clip_lower (IntegerStamp b l h d u) c = 
+          (if b \<turnstile> l <j c then (IntegerStamp b c h d u) else (IntegerStamp b l c d u))" |
   "clip_lower s c = s"
 
 fun max_lower :: "Stamp \<Rightarrow> Stamp \<Rightarrow> Stamp" where
-  "max_lower (IntegerStamp b1 xl xh) (IntegerStamp b2 yl yh) =
-        (IntegerStamp b1 (max xl yl) xh)" |
+  "max_lower (IntegerStamp b1 xl xh xd xu) (IntegerStamp b2 yl yh yd yu) =
+        (IntegerStamp b1 (smax b1 xl yl) xh xd xu)" |
   "max_lower xs ys = xs"
 fun min_higher :: "Stamp \<Rightarrow> Stamp \<Rightarrow> Stamp" where
-  "min_higher (IntegerStamp b1 xl xh) (IntegerStamp b2 yl yh) =
-        (IntegerStamp b1 yl (min xh yh))" |
+  "min_higher (IntegerStamp b1 xl xh xd xu) (IntegerStamp b2 yl yh yd yu) =
+        (IntegerStamp b1 yl (smin b1 xh yh) xd xu)" |
   "min_higher xs ys = ys"
 
 fun registerNewCondition :: "IRGraph \<Rightarrow> IRNode \<Rightarrow> (ID \<Rightarrow> Stamp) \<Rightarrow> (ID \<Rightarrow> Stamp)" where
@@ -814,20 +880,20 @@ code_pred (modes: i \<Rightarrow> i \<Rightarrow> i \<Rightarrow> o \<Rightarrow
 definition ConditionalEliminationTest13_testSnippet2_initial :: IRGraph where
   "ConditionalEliminationTest13_testSnippet2_initial = irgraph [
   (0, (StartNode (Some 2) 8), VoidStamp),
-  (1, (ParameterNode 0), IntegerStamp 32 (-2147483648) (2147483647)),
+  (1, (ParameterNode 0), default_stamp),
   (2, (FrameState [] None None None), IllegalStamp),
-  (3, (ConstantNode (new_int 32 (0))), IntegerStamp 32 (0) (0)),
-  (4, (ConstantNode (new_int 32 (1))), IntegerStamp 32 (1) (1)),
+  (3, (ConstantNode (new_int 32 (0))), constantAsStamp (IntVal 32 0)),
+  (4, (ConstantNode (new_int 32 (1))), constantAsStamp (IntVal 32 1)),
   (5, (IntegerLessThanNode 1 4), VoidStamp),
   (6, (BeginNode 13), VoidStamp),
   (7, (BeginNode 23), VoidStamp),
   (8, (IfNode 5 7 6), VoidStamp),
-  (9, (ConstantNode (new_int 32 (-1))), IntegerStamp 32 (-1) (-1)),
+  (9, (ConstantNode (new_int 32 (-1))), constantAsStamp (IntVal 32 (-1))),
   (10, (IntegerEqualsNode 1 9), VoidStamp),
   (11, (BeginNode 17), VoidStamp),
   (12, (BeginNode 15), VoidStamp),
   (13, (IfNode 10 12 11), VoidStamp),
-  (14, (ConstantNode (new_int 32 (-2))), IntegerStamp 32 (-2) (-2)),
+  (14, (ConstantNode (new_int 32 (-2))), constantAsStamp (IntVal 32 (-2))),
   (15, (StoreFieldNode 15 ''org.graalvm.compiler.core.test.ConditionalEliminationTestBase::sink2'' 14 (Some 16) None 19), VoidStamp),
   (16, (FrameState [] None None None), IllegalStamp),
   (17, (EndNode), VoidStamp),

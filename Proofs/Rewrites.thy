@@ -228,7 +228,7 @@ proof -
   then have c': "kind g' nid' = ConstantNode (IntVal 1 1)"
     by simp
   have "valid_value (IntVal 1 1) (constantAsStamp (IntVal 1 1))"
-    by fastforce
+    by (metis less_numeral_extra(1) mask_1 neg_one_value new_int_unused_bits_zero rel_simps(25) validDefIntConst)
   then have "[g', m, p] \<turnstile> nid' \<mapsto> IntVal 1 1"
     using Value.distinct(1) \<open>kind g' nid' = ConstantNode (bool_to_val_width1 True)\<close>
     by (metis bool_to_val_width1.simps(1) wf_value_def encodeeval.simps ConstantExpr ConstantNode)
@@ -263,7 +263,7 @@ proof -
   then have c': "kind g' nid' = ConstantNode (IntVal 1 0)"
     by (simp add: calculation(5))
   have "valid_value (IntVal 1 0) (constantAsStamp (IntVal 1 0))"
-    by auto
+    using rel_simps(25) take_bit_of_0 validDefIntConst zero_less_one by blast
   then have "[g', m, p] \<turnstile> nid' \<mapsto> IntVal 1 0"
     by (meson ConstantExpr ConstantNode c' encodeeval.simps wf_value_def)
   from if' c' show ?thesis
