@@ -360,7 +360,6 @@ proof -
     using assms sledgehammer
 
 signed_take_bit n a = take_bit n a OR (of_bool (bit a n) * NOT (mask n))
-*)
 
 lemma signed_lt_trans:
   assumes "0 < b \<and> b' \<le> 64"
@@ -380,6 +379,7 @@ proof -
     using tby assms(4) by simp
   from tbxe tbye assms(5) show ?thesis sorry
 qed
+*)
 
 lemma stamp_under_lower:
   assumes "valid_stamp (stamp_expr u) \<and> valid_stamp (stamp_expr v)"
@@ -388,11 +388,11 @@ lemma stamp_under_lower:
 proof -
   obtain b lu hu du uu where su: "stamp_expr u = IntegerStamp b lu hu du uu"
     by (meson assms(2) combine_cond_lhs is_IntegerStamp_def stamp_instanceof_IntegerStamp)
-  then have tbu: "take_bit b hu = hu"
+  then have tbu: "signed_take_bit (b-1) hu = hu"
     using assms(1) by auto
   obtain b' lv hv dv uv where sv: "stamp_expr v = IntegerStamp b' lv hv dv uv"
     by (meson assms(2) combine_cond_lhs combine_cond_rhs is_IntegerStamp_def stamp_instanceof_IntegerStamp)
-  then have tbv: "take_bit b' lv = lv"
+  then have tbv: "signed_take_bit (b'-1) lv = lv"
     using assms(1) by auto
   have lt64: "64 \<turnstile> hu <j lv"
     using su sv assms stamp_under
@@ -401,9 +401,11 @@ proof -
     sorry
   then have "b \<turnstile> hu <j lv"
     using tbu tbv lt64
-    by (metis Orderings.order_eq_iff assms(1) le_neq_implies_less signed_lt_trans su valid_stamp.simps(1))
+    by (smt (verit, ccfv_SIG) assms(1) int_signed_value.simps raise_lt signed_word_eqI sv valid_stamp.simps(1))
   then show ?thesis
     by (simp add: \<open>b = b'\<close> su sv)
 qed
+
+end
 
 end

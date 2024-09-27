@@ -172,7 +172,7 @@ lemma exp_sign_extend:
 
 lemma exp_and_neutral:
   assumes "wf_stamp x"
-  assumes "stamp_expr x = IntegerStamp b lo hi"
+  assumes "stamp_expr x = IntegerStamp b lo hi d u"
   shows "exp[(x & ~(const (IntVal b 0)))] \<ge> x"
   using assms apply auto[1]
   subgoal premises p for m p xa

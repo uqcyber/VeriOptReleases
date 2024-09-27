@@ -79,9 +79,19 @@ text \<open>
 @{command snipend}
 \<close>
 
+(*translations
+  "\<^latex>\<open>\\index{\<close>v\<^latex>\<open>}\<close>v" <= "v"
+*)
+
 snipbegin \<open>snip-example\<close>
 
 text \<open>Hello world!\<close>
+
+ML \<open> Markup.document_latex\<close>
+(*
+lemma
+  "1 + 1 = Suc (Suc 0)"
+*)
 
 snipend -
 

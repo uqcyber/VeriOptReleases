@@ -82,8 +82,15 @@ lemma fun_add_empty:
   unfolding fun_add_def by simp
 
 lemma upds_inc:
-  "m(a#as [\<rightarrow>] b#bs) = (m(a:=b))(as[\<rightarrow>]bs)"
-  unfolding upds_def fun_add_def apply simp sorry
+  "m(a#as [\<rightarrow>] b#bs) = ((m(a:=b))(as[\<rightarrow>]bs))"
+  unfolding upds_def fun_add_def apply auto
+  unfolding fun_upd_def map_add_def
+proof -
+  have "\<forall>aa. (case case map_of (rev (zip as bs)) aa of None \<Rightarrow> if aa = a then Some b else None | Some x \<Rightarrow> Some x of None \<Rightarrow> m aa | Some b \<Rightarrow> b) = (case map_of (rev (zip as bs)) aa of None \<Rightarrow> if aa = a then b else m aa | Some b \<Rightarrow> b)"
+    by (smt (z3) option.case_eq_if option.simps(5))
+  then show "(\<lambda>aa. case case map_of (rev (zip as bs)) aa of None \<Rightarrow> if aa = a then Some b else None | Some x \<Rightarrow> Some x of None \<Rightarrow> m aa | Some b \<Rightarrow> b) = (\<lambda>aa. case map_of (rev (zip as bs)) aa of None \<Rightarrow> if aa = a then b else m aa | Some b \<Rightarrow> b)"
+    by presburger
+qed
 
 lemma upds_compose:
   "a ++\<^sub>f map_of (rev (zip (n # ns) (v # vs))) = a(n := v) ++\<^sub>f map_of (rev (zip ns vs))"

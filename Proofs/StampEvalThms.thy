@@ -27,7 +27,7 @@ lemma take_bit_eq_word:
 lemma unrestricted_new_int_always_valid [simp]:
   assumes "0 < b \<and> b \<le> 64"
   shows "valid_value (new_int b v) (unrestricted_stamp (IntegerStamp b lo hi d u))"
-  apply simp using min_int_take_bit max_int_take_bit
+  apply simp using min_int_signed_take_bit max_int_signed_take_bit
   by (metis (no_types, lifting) One_nat_def and.right_idem assms int_signed_value.simps max_int_max min_int_min take_bit_eq_mask)
 
 lemma unary_undef: "val = UndefVal \<Longrightarrow> unary_eval op val = UndefVal"
@@ -45,9 +45,9 @@ lemma unrestricted_stamp_valid:
   shows "valid_stamp s"
   using assms apply auto
   using One_nat_def int_signed_value.simps min_int_min 
-  using min_int_take_bit apply blast 
-  using max_int_max apply fastforce 
-  using max_int_take_bit apply blast
+  using min_int_signed_take_bit apply simp
+  using max_int_max apply simp 
+  using max_int_signed_take_bit apply simp
   using max_int_max by force
 
 lemma unrestricted_stamp_valid_value [simp]:
@@ -301,7 +301,7 @@ proof -
     by simp
   show ?thesis unfolding valid_value.simps using lb ub
     and_zero_eq div_le_dividend max_int_max min_int_min numeral_Bit0_div_2 take_bit_of_0 valid_stamp.simps(1) zero_and_eq zero_less_numeral
-    by (metis (no_types, lifting) IntVal1 Value.inject(1) new_int.elims)
+    by (smt (z3) diff_is_0_eq diff_numeral_special(9) int_signed_value.simps le_numeral_extra(4) less_numeral_extra(1) mask_1 mask_eq_exp_minus_1 max_int_def max_int_signed min_int_signed min_int_signed_neg2pow one_le_numeral power_0 signed_take_bit_of_minus_1 signed_take_bit_take_bit take_bit_minus_one_eq_mask)
 qed
 
 lemma bool_stamp_true:
@@ -523,8 +523,8 @@ lemma stamp_meet_commutes:
   assumes "valid_stamp stamp2"
   shows "meet stamp1 stamp2 = meet stamp2 stamp1"
   apply (cases stamp1; cases stamp2; auto)
-  using smax_commute smin_commute assms valid_stamp.simps(1) apply simp
-  using smax_commute smin_commute assms valid_stamp.simps(1) apply simp
+  using smax_signed_commute smin_signed_commute assms valid_stamp.simps(1) apply simp
+  using smax_signed_commute smin_signed_commute assms valid_stamp.simps(1) apply simp
   by (simp add: and.commute or.commute)+
 
 lemma lower_bound_smin:
@@ -675,8 +675,7 @@ proof -
     using yval by blast
   have xunder: "b \<turnstile> xvv \<le>j hi"
     by (metis assms(2,3) wf_stamp_def xstamp valid_value.simps(1) xvv)
-  have yunder: "b \<turnstile> lo \<le>j yvv"
-    using beq
+  have yunder: "b' \<turnstile> lo \<le>j yvv"
     by (metis ystamp valid_value.simps(1) yval yvv)
   have unwrap: "\<forall>cond. bool_to_val_bin b b cond = bool_to_val cond"
     by simp

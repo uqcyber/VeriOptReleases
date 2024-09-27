@@ -276,11 +276,13 @@ value "sint (take_bit 32 (min_int 32))"
 value "int_signed_value 32 (set_bit 31 0::int64)"
 value "int_signed_value 32 (min_int 32)"
 
+(*
 lemma min_int_take_bit:
   assumes "0 < b \<and> b \<le> 64"
   shows "take_bit b (min_int b) = (min_int b)"
   using assms unfolding min_int_def
   by (metis diff_less linorder_not_less take_bit_of_0 take_bit_set_bit_eq zero_less_one)
+*)
 
 lemma max_int_take_bit:
   assumes "0 < b \<and> b \<le> 64"
@@ -292,27 +294,27 @@ lemma min_int_signed:
   assumes "0 < b \<and> b \<le> 64"
   shows "int_signed_value b (min_int b) = -(2 ^ (b-1))" (is "int_signed_value b ?a = _")
 proof -
-  have "min_int b = push_bit (b-1) 1"
+  (*have "min_int b = push_bit (b-1) 1 OR (NOT (mask (b-1)))"
     by (simp add: min_int_def set_bit_def)
   also have "... = 2 ^ (b-1)" (is "_ = ?pow")
     using push_bit_of_1 by blast
   ultimately have min_int_eq: "min_int b = ..."
-    by simp
+    by simp*)
   have "signed_take_bit b ?a = take_bit b ?a OR (of_bool (bit ?a b)) * NOT (mask b)"
     by (simp add: signed_take_bit_def)
-  have pb: "?a = push_bit (b-1) 1"
-    by (simp add: min_int_def set_bit_def)
+  have pb: "?a = push_bit (b-1) 1 OR (NOT (mask (b-1)))"
+    by (metis min_int_def or.left_neutral set_bit_eq_or set_bit_not_eqv)
   have "bit (mask 64::int64) (b-1)"
     using assms bit_mask_iff ValueThms.size64
     by fastforce
   also have "of_bool (bit ?a (b-1)) = 1"
     using calculation
-    by (metis (no_types, lifting) add.right_neutral bit.compl_one bit_0 bit_0_eq bit_0_eq bit_0_eq bit_decr_iff bit_not_iff bit_push_bit_iff diff_is_0_eq' even_bit_succ_iff mask_eq_exp_minus_1 negative_all_set_32 of_bool_eq_1_iff order.refl pb rel_simps(51))
+    using assms bit_or_iff pb push_bit_bit_set by auto
   ultimately have lhse:"signed_take_bit (b-1) ?a = take_bit (b-1) ?a OR (NOT (mask (b-1)))"
     using signed_take_bit_eq_if_negative by auto
   also have "... = (NOT (mask (b-1)))"
     using take_bit_push_bit
-    by (metis (no_types, lifting) cancel_comm_monoid_add_class.diff_cancel or.commute or.right_neutral pb push_bit_of_0 take_bit_0)
+    by (metis (no_types, lifting) assms min_int_push_bit minus_exp_eq_not_mask pb push_bit_or word_or_max)
   ultimately have "(signed_take_bit (b - (1::nat)) (min_int b)) = - ((2) ^ (b - (1::nat)))"
     by (simp add: minus_exp_eq_not_mask)
   then show ?thesis unfolding int_signed_value.simps
@@ -328,6 +330,8 @@ proof -
     by (smt (verit, best) One_nat_def Suc_diff_eq_diff_pred Suc_leI Suc_pred ValueThms.signed_take_bit_int_greater_eq_minus_exp_word Word.bit_mask_iff \<open>bit (mask (64::nat)) ((b::nat) - (1::nat))\<close> add.inverse_inverse assms bit_mask_iff bit_push_bit_iff bit_sint_iff diff_le_mono diff_less len_gt_0 min_less_iff_conj minus_1_eq_mask pb push_bit_minus_one_eq_not_mask signed_take_bit_eq signed_take_bit_int_eq_self_iff signed_take_bit_int_less_self_iff signed_take_bit_minus signed_take_bit_negative_iff sint_word_ariths(4) sint_word_ariths(7) take_bit_int_greater_eq take_bit_not_mask_eq_0 zero_less_one)
 *)
 qed
+
+thm_oracles min_int_signed
 
 lemma max_int_signed:
   assumes "0 < b \<and> b \<le> 64"

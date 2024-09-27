@@ -361,6 +361,7 @@ session ValidationPaperSnippets in "Papers/Validation" = ConditionalElimination 
 session CodeGenPaper in "Papers/CodeGen" = OptimizationDSL +
   description
     "Snippets of Isabelle theories used for a paper on the code generation facilities"
+
   options [document = pdf, document_output = "output",
            show_question_marks = false, quick_and_dirty]
   sessions

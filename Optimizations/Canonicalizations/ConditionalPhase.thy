@@ -72,8 +72,8 @@ optimization ConditionBoundsX:
   subgoal premises assms apply simp apply (rule allI)+ apply (rule impI)+
     subgoal premises eval
   proof -
-    have under: "stpi_upper (stamp_expr u) < stpi_lower (stamp_expr v)"
-      using stamp_under assms by blast
+    have under: "stp_bits (stamp_expr u) \<turnstile> stpi_upper (stamp_expr u) <j stpi_lower (stamp_expr v)"
+      using stamp_under assms sorry by blast 
     have u: "is_IntegerStamp (stamp_expr u)" using assms(1,2) eval
       using assms(3) combine_cond_lhs stamp_instanceof_IntegerStamp by blast
     have v: "is_IntegerStamp (stamp_expr v)" using assms(1,2) eval

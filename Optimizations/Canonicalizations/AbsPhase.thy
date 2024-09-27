@@ -277,7 +277,7 @@ lemma mono_undef_abs:
 
 (* Value level proofs *)
 lemma val_abs_idem:
-  assumes "valid_value x (IntegerStamp b l h)"
+  assumes "valid_value x (IntegerStamp b l h d u)"
   assumes "val[abs(abs(x))] \<noteq> UndefVal"
   shows "val[abs(abs(x))] = val[abs x]"
 proof -

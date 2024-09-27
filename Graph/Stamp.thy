@@ -14,7 +14,7 @@ Stamp information is used in a variety of ways in optimizations, and so, we
 additionally provide a number of lemmas which help to prove future optimizations.
 \<close>
 
-datatype Stamp = 
+datatype Stamp =
   VoidStamp
   | IntegerStamp (stp_bits: nat) (stpi_lower: int64) (stpi_upper: int64) (stpi_down: int64) (stpi_up: int64)
   (* | FloatStamp (stp_bits: nat) (stpf_lower: float) (stpf_upper: float) *)
@@ -31,8 +31,15 @@ abbreviation IntegerStampM :: "nat \<Rightarrow> int64 \<Rightarrow> int64 \<Rig
   "IntegerStampM b lo hi down up \<equiv> IntegerStamp b lo hi down up"
 
 
+abbreviation javaLT :: "nat \<Rightarrow> int64 \<Rightarrow> int64 \<Rightarrow> bool" ("_ \<turnstile> _ <j _" 50) where
+  "javaLT b x y \<equiv> (int_signed_value b x < int_signed_value b y)"
+
+abbreviation javaLTE :: "nat \<Rightarrow> int64 \<Rightarrow> int64 \<Rightarrow> bool" ("_ \<turnstile> _ \<le>j _" 50) where
+  "javaLTE b x y \<equiv> (int_signed_value b x \<le> int_signed_value b y)"
+
+
 fun is_stamp_empty :: "Stamp \<Rightarrow> bool" where
-  "is_stamp_empty (IntegerStamp b lower upper down up) = (upper < lower)" |
+  "is_stamp_empty (IntegerStamp b lower upper down up) = (b \<turnstile> upper <j lower)" |
   (* "is_stamp_empty (FloatStamp b lower upper) = (upper < lower)" | *)
   "is_stamp_empty x = False"
 
@@ -52,8 +59,21 @@ text \<open>Just like the IntegerStamp class, we need to know that our lo/hi bou
 (* TODO: should we have tight bounds for empty stamp, or just hi<lo?
    We could have: (lo = snd (bit_bounds bits) \<and> hi = fst (bit_bounds bits) 
  *)
+context includes bit_operations_syntax begin
 definition min_int :: "nat \<Rightarrow> int64" where
-  "min_int bits = set_bit (bits-1) 0"
+  "min_int bits = (NOT (mask (bits-1)))"
+end
+
+value "(min_int 32)"
+value "signed_take_bit 31 (min_int 32)"
+value "signed_take_bit 32 (min_int 32)"
+value "signed_take_bit 36 (min_int 32)"
+
+value "signed_take_bit 2 5::int64"
+value "signed_take_bit 2 (13)::int64"
+value "sint (signed_take_bit 2 5::int64)"
+value "sint (signed_take_bit 2 (13)::int64)"
+
 
 lemma min_int_push_bit:
   assumes "0 < b \<and> b \<le> 64"
@@ -66,11 +86,31 @@ proof -
   ultimately show ?thesis by simp
 qed
 
-lemma min_int_signed_neg2pow:
+lemma min_int_signed_neg2pow_signed:
   assumes "0 < b \<and> b \<le> 64"
   shows "int_signed_value b (min_int b) = int_signed_value b (-(2^(b-1)))"
-  using assms
-  by (metis (no_types, lifting) One_nat_def diff_diff_cancel int_signed_value.simps le_simps(3) mask_1 mask_eq_take_bit_minus_one min_int_def min_int_push_bit or.left_neutral set_bit_def signed_take_take_bit take_bit_push_bit)
+  using assms unfolding min_int_def
+  by (smt (verit, del_insts) Word.bit_mask_iff bit.compl_zero bit_mask_iff bit_push_bit_iff diff_is_0_eq less_numeral_extra(1) linorder_not_less mask_0 mask_eq_take_bit_minus_one min_int_push_bit min_less_iff_conj minus_1_eq_mask minus_exp_eq_not_mask neg_0_equal_iff_equal one_neq_zero or.idem or.left_neutral set_bit_eq_idem_iff set_bit_eq_or take_bit_not_mask_eq_0 word_bw_comms(2))
+
+context includes bit_operations_syntax begin
+lemma set_bit_not_eqv:
+  "set_bit (b-1) 0 OR (NOT (mask (b-1))) = NOT (mask (b-1))"
+  by (metis bit.disj_one_right or.left_neutral push_bit_minus_one_eq_not_mask push_bit_or set_bit_eq_or)
+
+lemma min_int_signed_neg2pow:
+  "(min_int b) = (-(2^(b-1)))"
+proof -
+  have "-(2^(b-1)) = NOT ((2^(b-1)) - 1)"
+    using minus_eq_not_minus_1 by simp
+  also have "... = NOT (mask (b-1))"
+    using mask_eq_exp_minus_1 by metis
+  also have "... = min_int b"
+    using min_int_def by simp
+  ultimately show ?thesis
+    by metis
+qed
+
+end
 
 definition max_int :: "nat \<Rightarrow> int64" where
   "max_int bits = mask (bits - 1)"
@@ -82,23 +122,101 @@ lemma max_int_mask:
   by (simp add: mask_eq_decr_exp)
 
 lemma max_int_signed_2pow:
+  "(max_int b) = ((2 ^ (b - 1)) - 1)"
+  by (simp add: mask_eq_exp_minus_1 max_int_def)
+
+lemma max_int_signed_2pow_signed:
   assumes "0 < b \<and> b \<le> 64"
   shows "int_signed_value b (max_int b) = int_signed_value b ((2 ^ (b - 1)) - 1)"
   using assms
   by (simp add: mask_eq_exp_minus_1 max_int_def)
 
+lemma raise_lt:
+  assumes "0 < b \<and> b \<le> 64"
+  assumes "b \<turnstile> x <j y"
+  shows "64 \<turnstile> (signed_take_bit (b-1) x) <j (signed_take_bit (b-1) y)"
+  using assms unfolding int_signed_value.simps
+  by fastforce
 
-abbreviation javaLT :: "nat \<Rightarrow> int64 \<Rightarrow> int64 \<Rightarrow> bool" ("_ \<turnstile> _ <j _" 50) where
-  "javaLT b x y \<equiv> (int_signed_value b x < int_signed_value b y)"
+lemma
+  assumes "signed_take_bit (b-1) v = v"
+  assumes "signed_take_bit (b-1) x = x"
+  assumes "0 < b \<and> b \<le> 64"
+  assumes "b \<turnstile> x <j v"
+  shows "64 \<turnstile> x <j v"
+  using assms
+  by (metis raise_lt)
 
-abbreviation javaLTE :: "nat \<Rightarrow> int64 \<Rightarrow> int64 \<Rightarrow> bool" ("_ \<turnstile> _ \<le>j _" 50) where
-  "javaLTE b x y \<equiv> (int_signed_value b x \<le> int_signed_value b y)"
+lemma max_int_signed_take_bit:
+  assumes "0 < b \<and> b \<le> 64"
+  shows "signed_take_bit (b-1) (max_int b) = max_int b" (is "signed_take_bit ?b ?m = ?m")
+proof -
+  have "max_int b = take_bit (b-1) (-1)"
+    using take_bit_minus_one_eq_mask unfolding max_int_def by simp
+  also have "signed_take_bit (b-1) (take_bit (b-1) (-1)) = take_bit (b-1) (-1)"
+    using signed_take_bit_take_bit eq_imp_le
+    by (metis (mono_tags, lifting))
+  ultimately show ?thesis
+    by simp
+qed
+
+context includes bit_operations_syntax begin
+
+lemma push_bit_bit_set_:
+  assumes "b < LENGTH('a)"
+  shows "bit (push_bit b (1::'a::len word)) b" (is "bit ?pb ?b")
+  using assms
+  by (simp add: bit_exp_iff)
+
+lemma push_bit_bit_set:
+  assumes "0 < b \<and> b \<le> 64"
+  shows "bit (push_bit (b-1) (1::int64)) (b-1)" (is "bit ?pb ?b")
+proof -
+  have "?pb = 1 * 2 ^ ?b"
+    using push_bit_eq_mult by blast
+  also have "... = 2 ^ ?b"
+    using calculation by simp
+  also have "... \<noteq> 0" 
+    using assms
+    by (metis (mono_tags, lifting) diff_less exp_eq_zero_iff nat_less_le nle_le order_trans size64 wsst_TYs(3) zero_less_one)
+  ultimately have "?pb \<noteq> 0"
+    using assms by simp
+  then have "(push_bit (b-1) (1::int64)) AND (push_bit (b-1) (1::int64)) \<noteq> 0"
+    by simp
+  then show ?thesis using bit_iff_and_push_bit_not_eq_0
+    by blast
+qed
+
+lemma min_int_signed_take_bit:
+  assumes "0 < b \<and> b \<le> 64"
+  shows "signed_take_bit (b-1) (min_int b) = min_int b" (is "signed_take_bit ?b ?m = ?m")
+proof -
+  have "signed_take_bit ?b ?m = take_bit ?b ?m OR (of_bool (bit ?m ?b) * NOT (mask ?b))"
+    using signed_take_bit_def by blast
+  have "bit (push_bit (b-1) (1::int64)) (b-1)"
+    using assms bit_iff_and_push_bit_not_eq_0
+    using push_bit_bit_set by presburger
+  then have "bit (set_bit (b-1) (0::64 word)) (b-1)"
+    using assms
+    using bit_push_bit_iff bit_set_bit_iff by blast
+  then have "bit ?m ?b"
+    unfolding min_int_def
+    using bit_or_iff
+    by (metis set_bit_not_eqv)
+  then have "signed_take_bit ?b ?m = take_bit ?b ?m OR (NOT (mask ?b))"
+    by (simp add: signed_take_bit_eq_if_negative)
+  then show ?thesis
+    by (metis (no_types, lifting) bit.disj_one_right min_int_def or.left_neutral push_bit_minus_one_eq_not_mask push_bit_or set_bit_eq_or take_bit_minus_one_eq_mask take_bit_not_take_bit take_bit_of_0 word_bitwise_m1_simps(1))
+qed
+
+thm_oracles min_int_signed_take_bit
+end
 
 fun valid_stamp :: "Stamp \<Rightarrow> bool" where
   "valid_stamp (IntegerStamp bits lo hi down up) = 
      (0 < bits \<and> bits \<le> 64 \<and>
-     take_bit bits lo = lo \<and> (bits \<turnstile> (min_int bits) \<le>j lo) \<and> (bits \<turnstile> lo \<le>j (max_int bits)) \<and>
-     take_bit bits hi = hi \<and> (bits \<turnstile> (min_int bits) \<le>j hi) \<and> (bits \<turnstile> hi \<le>j (max_int bits)))" |
+     signed_take_bit (bits-1) lo = lo \<and> (bits \<turnstile> (min_int bits) \<le>j lo) \<and> (bits \<turnstile> lo \<le>j (max_int bits)) \<and>
+     signed_take_bit (bits-1) hi = hi \<and> (bits \<turnstile> (min_int bits) \<le>j hi) \<and> (bits \<turnstile> hi \<le>j (max_int bits)))" |
   "valid_stamp s = True"
 
 (* Note: we could support 32/64-bit unsigned values by relaxing this definition to:
@@ -108,7 +226,7 @@ fun valid_stamp :: "Stamp \<Rightarrow> bool" where
 *)
 
 experiment begin
-corollary "int_signed_value 1 (min_int 1) = -1 \<and> max_int 1 = 0" by eval  (* this matches the compiler stamps. *)
+corollary "min_int 1 = -1 \<and> max_int 1 = 0" by eval  (* this matches the compiler stamps. *)
 end
 
 (* NOTE: the FloatStamp has been commented out to allow use of code generation facilities *)
@@ -173,6 +291,20 @@ lemma smax_commute:
   unfolding smax_def
   by (meson assms(1) assms(2) nle_le signed_value_eq)
 
+lemma smin_signed_commute:
+  assumes "signed_take_bit (b-1) x = x"
+  assumes "signed_take_bit (b-1) y = y"
+  shows "smin b x y = smin b y x"
+  unfolding smin_def
+  using assms(1) assms(2) signed_word_eqI by auto
+
+lemma smax_signed_commute:
+  assumes "signed_take_bit (b-1) x = x"
+  assumes "signed_take_bit (b-1) y = y"
+  shows "smax b x y = smax b y x"
+  unfolding smax_def
+  using assms(1) assms(2) signed_word_eqI by auto
+
 
 \<comment> \<open>Calculate the meet stamp of two stamps\<close>
 fun meet :: "Stamp \<Rightarrow> Stamp \<Rightarrow> Stamp" where
@@ -201,7 +333,7 @@ fun join :: "Stamp \<Rightarrow> Stamp \<Rightarrow> Stamp" where
   "join VoidStamp VoidStamp = VoidStamp" |
   "join (IntegerStamp b1 l1 u1 d1 up1) (IntegerStamp b2 l2 u2 d2 up2) = (
     if b1 \<noteq> b2 then IllegalStamp else 
-    (IntegerStamp b1 (max l1 l2) (min u1 u2) (or d1 d2) (and up1 up2))
+    (IntegerStamp b1 (smax b1 l1 l2) (smin b2 u1 u2) (or d1 d2) (and up1 up2))
   )" |
   (* "join (FloatStamp b1 l1 u1) (FloatStamp b2 l2 u2) = (
     if b1 \<noteq> b2 then IllegalStamp else 
@@ -242,7 +374,7 @@ fun neverDistinct :: "Stamp \<Rightarrow> Stamp \<Rightarrow> bool" where
   "neverDistinct stamp1 stamp2 = (asConstant stamp1 = asConstant stamp2 \<and> asConstant stamp1 \<noteq> UndefVal)"
 
 fun constantAsStamp :: "Value \<Rightarrow> Stamp" where
-  "constantAsStamp (IntVal b v) = (IntegerStamp b (take_bit b v) (take_bit b v) (and v (mask b)) (and v (mask b)))" |
+  "constantAsStamp (IntVal b v) = (IntegerStamp b (signed_take_bit (b-1) v) (signed_take_bit (b-1) v) (and v (mask b)) (and v (mask b)))" |
   "constantAsStamp (ObjRef (None)) = ObjectStamp '''' False False True" |
   "constantAsStamp (ObjRef (Some n)) = ObjectStamp '''' False True False" |
   (* TODO: float *)
@@ -322,4 +454,32 @@ value "and (not 255) (0::64 word) = 0"
 value "((and 255 (not (mask 32)))::int64) = 0"
 value "valid_stamp default_stamp"
 value "valid_value (IntVal 32 (255)) default_stamp"
+
+context includes bit_operations_syntax begin
+value "bit (5::int64) 0"
+value "bit (5::int64) 1"
+value "bit (5::int64) 2"
+value "(1::int64) AND (3::int64)"
+value "(5::int64) AND (5::int64)"
+value "(5::int64) OR (3::int64)"
+value "(5::int64) OR (5::int64)"
+value "(5::int64) XOR (3::int64)"
+value "(5::int64) XOR (5::int64)"
+value "(mask 2::int64)"
+value "(mask 3::int64)"
+value "(set_bit 2 5::int64)"
+value "(set_bit 1 5::int64)"
+value "(unset_bit 2 5::int64)"
+value "(unset_bit 1 5::int64)"
+value "(flip_bit 2 5::int64)"
+value "(flip_bit 1 5::int64)"
+value "(push_bit 1 1::int64)"
+value "(push_bit 1 3::int64)"
+value "(push_bit 2 1::int64)"
+value "(drop_bit 1 5::int64)"
+value "(drop_bit 1 7::int64)"
+value "(drop_bit 2 5::int64)"
+value "(take_bit 1 3::int64)"
+value "(take_bit 2 3::int64)"
+end
 end
