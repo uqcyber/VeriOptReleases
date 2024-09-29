@@ -374,7 +374,7 @@ fun neverDistinct :: "Stamp \<Rightarrow> Stamp \<Rightarrow> bool" where
   "neverDistinct stamp1 stamp2 = (asConstant stamp1 = asConstant stamp2 \<and> asConstant stamp1 \<noteq> UndefVal)"
 
 fun constantAsStamp :: "Value \<Rightarrow> Stamp" where
-  "constantAsStamp (IntVal b v) = (IntegerStamp b (signed_take_bit (b-1) v) (signed_take_bit (b-1) v) (and v (mask b)) (and v (mask b)))" |
+  "constantAsStamp (IntVal b v) = (IntegerStamp b (signed_take_bit (b-1) v) (signed_take_bit (b-1) v) v v)" |
   "constantAsStamp (ObjRef (None)) = ObjectStamp '''' False False True" |
   "constantAsStamp (ObjRef (Some n)) = ObjectStamp '''' False True False" |
   (* TODO: float *)
