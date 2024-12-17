@@ -166,6 +166,50 @@ lemma
   using assms
   using take_bit_eq_mask by blast
 
+fun old_intval_right_shift :: "Value \<Rightarrow> Value \<Rightarrow> Value" where
+  "old_intval_right_shift (IntVal b1 v1) (IntVal b2 v2) = 
+     (let shift = shift_amount b1 v2 in
+      let ones = and (mask b1) (not (mask (b1 - shift) :: int64)) in
+      (if int_signed_value b1 v1 < 0
+       then new_int b1 (or ones (v1 >>> shift))
+       else new_int b1 (v1 >>> shift)))" |
+  "old_intval_right_shift _ _ = UndefVal"
+
+value "mask 6:: 64 word"
+
+lemma
+  assumes "0 < b1 \<and> b1 \<le> 64 \<and> 0 < b2 \<and> b2 \<le> 64"
+  shows "old_intval_right_shift (IntVal b1 v1) (IntVal b2 v2)
+    = new_int b1 (v1 >>[b1] shift_amount b1 v2)" (is "?lhs = ?rhs")
+proof (cases "int_signed_value b1 v1 < 0")
+  case True
+  have neg: "(bit v1 (b1 - (1::nat)))"
+    using True
+    by (metis Suc_leI Suc_pred assms bit_1_0 bit_imp_le_length bit_last_iff bit_take_bit_iff int_signed_value.simps not_less push_bit_bit_set signed_take_bit_eq_if_positive)
+  obtain n where n: "n = shift_amount b1 v2" by simp
+  have rhs: "?rhs = new_int b1 (or (v1 >>> n) ((not (mask (b1-n)))))"
+    using neg
+    by (simp add: n sshiftr_def)
+  obtain ones where ones: "ones = and (mask b1) (not (mask (b1 - n) :: int64))"
+    by auto
+  then have lhs: "?lhs = new_int b1 (or ones (v1 >>> n))"
+    by (smt (verit, ccfv_SIG) True old_intval_right_shift.simps(1) n)
+  from lhs rhs show ?thesis
+    by (metis (no_types, lifting) new_int.simps ones take_bit_eq_mask word_ao_absorbs(6) word_ao_dist word_bw_comms(1) word_bw_comms(2) word_oa_dist)
+next
+  case False
+  have lhs: "?lhs = new_int b1 (v1 >>> shift_amount b1 v2)"
+    using False unfolding old_intval_right_shift.simps
+    by presburger
+  have "\<not>(bit v1 (b1 - (1::nat)))"
+    using False
+    using assms jlt_zero_sign_bit by force
+  then have rhs: "?rhs = new_int b1 (v1 >>> shift_amount b1 v2)"
+    unfolding sshiftr_def by auto
+  from lhs rhs show ?thesis
+    by presburger
+qed
+
 (*
 lemma positive_negation_is_negative:
   assumes "0 < b \<and> b \<le> 64"

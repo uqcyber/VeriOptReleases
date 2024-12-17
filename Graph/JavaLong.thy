@@ -271,7 +271,7 @@ subsection \<open>Long.reverseBytes\<close>
 (* Recursive version of reverseBytes for code generation *)
 fun reverseBytes_fun :: "('a::len) word \<Rightarrow> nat \<Rightarrow> ('a::len) word \<Rightarrow> ('a::len) word" where
   "reverseBytes_fun v b flip = (if (b = 0) then (flip) else
-                       (reverseBytes_fun (v >> 8) (b - 8) (or (flip << 8) (take_bit 8 v))))"
+                       (reverseBytes_fun (v >>[b] 8) (b - 8) (or (flip << 8) (take_bit 8 v))))"
 
 subsection \<open>Long.bitCount\<close>
 

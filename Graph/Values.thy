@@ -153,17 +153,17 @@ fun intval_mul_high :: "Value \<Rightarrow> Value \<Rightarrow> Value" where
       if (((int_signed_value b1 v1) < 0) \<or> ((int_signed_value b2 v2) < 0))
          then (
 
-       let x1 = (v1 >> 32)              in
+       let x1 = (v1 >>[b1] 32)              in
        let x2 = (and v1 4294967295)     in
-       let y1 = (v2 >> 32)              in
+       let y1 = (v2 >>[b1] 32)              in
        let y2 = (and v2 4294967295)     in
        let z2 = (x2 * y2)               in
        let t  = (x1 * y2 + (z2 >>> 32)) in
        let z1 = (and t 4294967295)      in
-       let z0 = (t >> 32)               in
+       let z0 = (t >>[b1] 32)               in
        let z1 = (z1 + (x2 * y1))        in
 
-       let result = (x1 * y1 + z0 + (z1 >> 32)) in
+       let result = (x1 * y1 + z0 + (z1 >>[b1] 32)) in
 
        (new_int b1 result)
       ) else (
@@ -188,7 +188,7 @@ fun intval_mul_high :: "Value \<Rightarrow> Value \<Rightarrow> Value" where
       let newv2 = (word_of_int (int_signed_value b1 v2)) in
       let r = (newv1 * newv2)                            in
 
-      let result = (r >> 32) in
+      let result = (r >>[b1] 32) in
 
        (new_int b1 result)
       ) else UndefVal)
@@ -403,14 +403,16 @@ fun intval_left_shift :: "Value \<Rightarrow> Value \<Rightarrow> Value" where
 
 text \<open>Signed shift is more complex, because we sometimes have to insert 1 bits
   at the correct point, which is at b1 bits.\<close>
+text \<open>Note: this slightly simplified version of the right shift semantics replaces the old
+      semantics which now lives in the AbsPhase as old\_intval\_right\_shift
+      and is proved equivalent.\<close>
 fun intval_right_shift :: "Value \<Rightarrow> Value \<Rightarrow> Value" where
-  "intval_right_shift (IntVal b1 v1) (IntVal b2 v2) = 
-     (let shift = shift_amount b1 v2 in
-      let ones = and (mask b1) (not (mask (b1 - shift) :: int64)) in
-      (if int_signed_value b1 v1 < 0
-       then new_int b1 (or ones (v1 >>> shift))
-       else new_int b1 (v1 >>> shift)))" |
+  "intval_right_shift (IntVal b1 v1) (IntVal b2 v2) = new_int b1 (v1 >>[b1] shift_amount b1 v2)" |
   "intval_right_shift _ _ = UndefVal"
+
+
+value "intval_right_shift (IntVal 8 (255)) (IntVal 8 (255))"
+value "new_int 8 (255 >>[8] shift_amount 8 255)"
 
 fun intval_uright_shift :: "Value \<Rightarrow> Value \<Rightarrow> Value" where
   "intval_uright_shift (IntVal b1 v1) (IntVal b2 v2) = new_int b1 (v1 >>> shift_amount b1 v2)" |

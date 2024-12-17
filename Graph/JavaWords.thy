@@ -76,10 +76,13 @@ corollary "(255 :: 8 word) >>> (2 :: nat) = 63" by code_simp
 
 (* TODO: define this using Word.signed_drop_bit ? *)
 text \<open>Signed shift right.\<close>
-definition sshiftr :: "'a :: len word \<Rightarrow> nat \<Rightarrow> 'a :: len word" (infix ">>" 75) where 
-  "sshiftr w n = word_of_int ((sint w) div (2 ^ n))"
+(*definition sshiftr :: "'a :: len word \<Rightarrow> nat \<Rightarrow> 'a :: len word" (infix ">>" 75) where 
+  "sshiftr w n = word_of_int ((sint w) div (2 ^ n))"*)
 
-corollary "(128 :: 8 word) >> 2 = 0xE0" by code_simp
+definition sshiftr :: "'a :: len word \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> 'a :: len word" ("_ >>[_] _" 75) where 
+  "sshiftr w b n = (or (w >>> n) (of_bool (bit w (b-1)) * (not (mask (b-n)))))"
+
+corollary "take_bit 8 ((128 :: 64 word) >>[8] 2) = take_bit 8 (-32)" by code_simp
 
 
 subsection \<open>Fixed-width Word Theories\<close>

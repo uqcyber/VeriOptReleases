@@ -78,6 +78,7 @@ lemma bin_eval_int:
                       apply (meson new_int_bin.simps)+
                       apply (meson bool_to_val.elims)
                       apply (meson bool_to_val.elims)
+                      apply (meson bool_to_val.elims)
                      apply (smt (verit, del_insts) new_int.simps)+
   by (metis bool_to_val.elims)+
 
@@ -141,7 +142,7 @@ next
 next
   case BinRightShift
   then show ?thesis
-    using assms apply (cases x; cases y; auto) by (smt (verit, del_insts) new_int.simps)+
+    using assms by (cases x; cases y; auto)
 next
   case BinURightShift
   then show ?thesis
