@@ -397,6 +397,42 @@ text \<open>Note that Java shift operators use unary numeric promotion, unlike o
 fun shift_amount :: "iwidth \<Rightarrow> int64 \<Rightarrow> nat" where
   "shift_amount b val = unat (and val (if b = 64 then 0x3F else 0x1f))"
 
+lemma shift_amount_64:
+  "and (v::64 word) 0x3F = v mod 64"
+proof -
+  have T: "and (v::64 word) (mask 6) = take_bit 6 v"
+    by (simp add: take_bit_eq_mask)
+  have "(2::64 word)^6 = 64"
+    by eval
+  then have r1: "v mod 64 = take_bit 6 v"
+    using take_bit_eq_mod
+    by metis
+  also have r2: "(0x3F::64 word) = mask 6"
+    by eval
+  show ?thesis
+    apply (subst r1)
+    apply (subst r2)
+    using T by simp
+  qed
+
+lemma shift_amount_32:
+  "and (v::64 word) 0x1F = v mod 32"
+proof -
+  have T: "and (v::64 word) (mask 5) = take_bit 5 v"
+    by (simp add: take_bit_eq_mask)
+  have "(2::64 word)^5 = 32"
+    by eval
+  then have r1: "v mod 32 = take_bit 5 v"
+    using take_bit_eq_mod
+    by metis
+  also have r2: "(0x1F::64 word) = mask 5"
+    by eval
+  show ?thesis
+    apply (subst r1)
+    apply (subst r2)
+    using T by simp
+  qed
+
 fun intval_left_shift :: "Value \<Rightarrow> Value \<Rightarrow> Value" where
   "intval_left_shift (IntVal b1 v1) (IntVal b2 v2) = new_int b1 (v1 << shift_amount b1 v2)" |
   "intval_left_shift _ _ = UndefVal"
