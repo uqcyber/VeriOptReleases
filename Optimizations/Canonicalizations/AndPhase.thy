@@ -241,19 +241,77 @@ optimization AndSignExtend: "BinaryExpr BinAnd (UnaryExpr (UnarySignExtend In Ou
    using exp_sign_extend by simp 
 *)
 
-optimization AndNeutral:
-  "(x & ~y) \<longmapsto> x
-   when (WellFormed x && IsIntegerStamp x && IsConstantValue y x 0)"
+optimization AndNeutral32:
+  when "wf_stamp x"
+  when "stamp_expr x = IntegerStampM 32 lo hi d u"
+  "(x & ~(const (IntVal 32 0))) \<longmapsto> x"
   using exp_and_neutral
-  by (metis Stamp.collapse(1) StampEvalThms.wf_stamp_def)
+  by blast
 
-optimization AndRightFallThrough: "(x & y) \<longmapsto> y
+optimization AndNeutral[nogen]:
+  when "wf_stamp x"
+  when "stamp_expr x = IntegerStampM b lo hi d u"
+  "(x & ~(const (IntVal b 0))) \<longmapsto> x"
+  using exp_and_neutral
+  by blast
+
+lemma down_mask_wf_stamp:
+  assumes "wf_stamp x"
+  assumes "[m, p] \<turnstile> x \<mapsto> IntVal b xv"
+  shows "and (not xv) (stpi_down (stamp_expr x)) = 0"
+  using assms unfolding wf_stamp_def using valid_value.simps(1)
+  using valid_int_gives by fastforce
+
+lemma up_mask_wf_stamp:
+  assumes "wf_stamp x"
+  assumes "[m, p] \<turnstile> x \<mapsto> IntVal b xv"
+  shows "and xv (stpi_up (stamp_expr x)) = xv"
+  using assms unfolding wf_stamp_def using valid_value.simps(1)
+  using valid_int_gives by fastforce
+
+optimization AndRightFallThrough:
+  when "wf_stamp x"
+  when "wf_stamp y"
+  when "and (not (stpi_down (stamp_expr x))) (stpi_up (stamp_expr y)) = 0"
+  (*when "cond[((~(x..mustBeSet())) & (y..mayBeSet())) eq (Constant 0)]"*)
+  "(x & y) \<longmapsto> y"
+  unfolding le_expr_def apply (rule allI)+ apply (rule impI)
+  subgoal premises assms for m p v 
+  proof -
+    let ?dm = "(stpi_down (stamp_expr x))"
+    let ?um = "(stpi_up (stamp_expr y))"
+  obtain xv b where xv: "[m, p] \<turnstile> x \<mapsto> IntVal b xv"
+    using assms bin_eval.simps(6) intval_and.simps
+    by (smt (z3) BinaryExprE intval_and.elims)
+  then obtain yv where yv: "[m, p] \<turnstile> y \<mapsto> IntVal b yv"
+    using assms(3) bin_eval.simps(6) intval_and.simps new_int_bin.simps unfold_binary
+    by (smt (z3) evalDet intval_and.elims)
+  have dm: "and (not xv) ?dm = 0"
+    using assms(2) down_mask_wf_stamp xv by blast
+  have um: "and yv ?um = yv"
+    using assms(2) up_mask_wf_stamp yv by blast
+  have "v = new_int_bin b b (and xv yv)"
+    by (metis BinaryExprE assms(3) bin_eval.simps(6) evalDet intval_and.simps(1) xv yv)
+  then show ?thesis
+    by (metis (no_types, lifting) and.commute assms(1) bit.conj_disj_distribs(1) bit.double_compl dm eval_unused_bits_zero new_int.simps new_int_bin.simps or.comm_neutral um word_ao_absorbs(8) word_not_dist(2) yv)
+qed
+  done
+(*
   when (Equals (NumberCondition.BitAnd (NumberCondition.BitNot (DownMask x)) (UpMask y)) (Const 0))"
   by (simp add: IRExpr_down_def IRExpr_up_def)
+*)
 
-optimization AndLeftFallThrough: "(x & y) \<longmapsto> x
+optimization AndLeftFallThrough: 
+  when "wf_stamp x"
+  when "wf_stamp y"
+  when "and (not (stpi_down (stamp_expr y))) (stpi_up (stamp_expr x)) = 0"
+  "(x & y) \<longmapsto> x"
+  by (meson AndRightFallThrough(1) le_expr_def rewrite_preservation.simps(1) simple_mask.AndCommute_Exp)
+
+(*
    when (Equals (NumberCondition.BitAnd (NumberCondition.BitNot (DownMask y)) (UpMask x)) (Const 0))"
   by (simp add: IRExpr_down_def IRExpr_up_def)
+*)
 
 value "export_rules AndRightFallThrough_code"
 value "export_rules AndLeftFallThrough_code"

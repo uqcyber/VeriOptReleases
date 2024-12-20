@@ -168,6 +168,7 @@ inductive step :: "IRGraph \<Rightarrow> Params \<Rightarrow> (ID \<times> MapSt
   EndNodes:
   "\<lbrakk>is_AbstractEndNode (kind g nid);
     merge = any_usage g nid;
+    nid \<in> set (ir_ends (kind g merge));
     is_AbstractMergeNode (kind g merge);
 
     indexof (inputs_of (kind g merge)) i nid;

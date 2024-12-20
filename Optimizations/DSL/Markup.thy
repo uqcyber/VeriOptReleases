@@ -18,7 +18,8 @@ datatype 'a ExtraNotation =
   FalseNotation ("false") |
   LogicNegationNotation 'a ("!_") |
   ShortCircuitOr 'a 'a ("_ || _") |
-  Remainder 'a 'a ("_ % _")
+  Remainder 'a 'a ("_ % _") |
+  SignedRightShiftNotation 'a 'a (infix ">>" 75)
 
 definition word :: "('a::len) word \<Rightarrow> 'a word" where
   "word x = x"

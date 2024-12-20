@@ -73,7 +73,7 @@ optimization ConditionBoundsX:
     subgoal premises eval
   proof -
     have under: "stp_bits (stamp_expr u) \<turnstile> stpi_upper (stamp_expr u) <j stpi_lower (stamp_expr v)"
-      using stamp_under assms sorry by blast 
+      using stamp_under assms sorry
     have u: "is_IntegerStamp (stamp_expr u)" using assms(1,2) eval
       using assms(3) combine_cond_lhs stamp_instanceof_IntegerStamp by blast
     have v: "is_IntegerStamp (stamp_expr v)" using assms(1,2) eval
@@ -117,9 +117,9 @@ optimization ConditionalEliminateKnownLess:
 
 
 lemma ExpIntBecomesIntVal:
-  assumes "stamp_expr x = IntegerStamp b xl xh"
+  assumes "stamp_expr x = IntegerStamp b xl xh xd xu"
   assumes "wf_stamp x"
-  assumes "valid_value v (IntegerStamp b xl xh)"
+  assumes "valid_value v (IntegerStamp b xl xh xd xu)"
   assumes "[m,p] \<turnstile> x \<mapsto> v"
   shows "\<exists>xv. v = IntVal b xv"
   using assms by (simp add: IRTreeEvalThms.valid_value_elims(3))
@@ -148,10 +148,10 @@ lemma preserveBoolean:
   by (metis (no_types, lifting) IntVal0 IntVal1 intval_logic_negation.simps(1) logic_negate_def)
 
 optimization ConditionalIntegerEquals1[notactic]: "exp[BinaryExpr BinIntegerEquals (c ? x : y) (x)] \<longmapsto> c
-                                          when IsIntegerStamp x && WellFormed x &&
-                                               IsIntegerStamp y && WellFormed y &&
-                                               AlwaysDistinct x y &&
-                                               IsBoolStamp c && WellFormed c"
+                                          when IsIntegerStamp x; WellFormed x;
+                                               IsIntegerStamp y; WellFormed y;
+                                               AlwaysDistinct x y;
+                                               IsBoolStamp c; WellFormed c"
   defer apply simp
   apply (metis Canonicalization.cond_size add_lessD1 size_binary_lhs) apply auto[1]
   subgoal premises p for m p cExpr xv cond

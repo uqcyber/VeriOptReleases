@@ -51,14 +51,36 @@ lemma val_eliminate_redundant_false:
   shows   "val[x ^ (bool_to_val False)] = x"
   using assms by (auto; meson)
 
+lemma bit_wf_stamp:
+  assumes "wf_stamp x"
+  assumes "[m, p] \<turnstile> x \<mapsto> IntVal b xv"
+  assumes "stamp_expr x = IntegerStamp b' l h d u"
+  shows "b = b'"
+  using assms unfolding wf_stamp_def using valid_value.simps(1)
+  using valid_value.elims(2) by fastforce
+
 (* Exp level proofs *)
 lemma exp_xor_self_is_false:
  assumes "wf_stamp x \<and> stamp_expr x = default_stamp" 
  shows   "exp[x ^ x] \<ge> exp[false]" 
-  using assms apply auto[1] unfolding wf_stamp_def
-  by (smt (z3) validDefIntConst IntVal0 Value.inject(1) bool_to_val.simps(2) 
-      constantAsStamp.simps(1) evalDet int_signed_value_bounds new_int.simps unfold_const 
-      val_xor_self_is_false_2 valid_int valid_stamp.simps(1) valid_value.simps(1) wf_value_def)
+  apply simp apply (rule allI)+ apply (rule impI)
+  subgoal premises p for m p v
+  proof -
+    obtain xv where xv: "[m, p] \<turnstile> x \<mapsto> IntVal 32 xv"
+      using p bit_wf_stamp assms unfolding default_stamp_def unrestricted_stamp.simps
+      by (metis EvalTreeE(5) assms(1) valid_value_elims(3) wf_stamp_def)
+    then have e: "[m, p] \<turnstile> BinaryExpr BinXor x x \<mapsto> intval_xor (IntVal 32 xv) (IntVal 32 xv)"
+      using p
+      using evalDet by auto
+    then have c: "[m, p] \<turnstile> (ConstantExpr (IntVal 32 0)) \<mapsto> (IntVal 32 0)"
+      using wf_value_def valid_value.simps constantAsStamp.simps
+      by (metis ConstantExpr IntVal0 Value.inject(1) eval_bits_1_64 new_int.simps validDefIntConst xv)
+    have "intval_xor (IntVal 32 xv) (IntVal 32 xv) = IntVal 32 0"
+      unfolding intval_xor.simps new_int_bin.simps by auto
+    then show ?thesis using p e evalDet
+      by (metis c)
+  qed
+  done
 
 lemma exp_eliminate_redundant_false:
   shows "exp[x ^ false] \<ge> exp[x]"

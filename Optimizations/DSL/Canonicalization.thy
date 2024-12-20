@@ -15,6 +15,9 @@ theory Canonicalization
     "gencode" :: thy_decl
 begin
 
+no_syntax (ASCII) \<comment>\<open>Conflicts with right shift notation\<close>
+  "_thenM" :: "['a, 'b] \<Rightarrow> 'c" (infixl ">>" 54)
+
 print_methods
 
 ML \<open>

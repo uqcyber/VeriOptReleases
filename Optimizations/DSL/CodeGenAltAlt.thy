@@ -1781,7 +1781,7 @@ definition pattern_refinement :: "IRExpr \<Rightarrow> IRExpr \<Rightarrow> bool
                                 \<longrightarrow> (\<forall>ge\<^sub>1 ge\<^sub>2. ((\<sigma> \<turnstile> ge\<^sub>1 \<preceq> e\<^sub>1) \<and> (\<sigma> \<turnstile> ge\<^sub>2 \<preceq> e\<^sub>2)) \<longrightarrow> ge\<^sub>1 \<le> ge\<^sub>2))"
 *)
 definition pattern_refinement :: "PatternExpr \<Rightarrow> PatternExpr \<Rightarrow> bool" where
-  "pattern_refinement e\<^sub>1 e\<^sub>2 = (\<forall>\<sigma>. \<forall>ge\<^sub>1 ge\<^sub>2. (\<sigma> \<turnstile> ge\<^sub>1 \<preceq> e\<^sub>1) \<and> (\<sigma> \<turnstile> ge\<^sub>2 \<preceq> e\<^sub>2) \<longrightarrow> ge\<^sub>1 \<le> ge\<^sub>2)"
+  "pattern_refinement e\<^sub>1 e\<^sub>2 = (\<forall>\<sigma> ge\<^sub>1 ge\<^sub>2. (\<sigma> \<turnstile> ge\<^sub>1 \<preceq> e\<^sub>1) \<and> (\<sigma> \<turnstile> ge\<^sub>2 \<preceq> e\<^sub>2) \<longrightarrow> ge\<^sub>1 \<le> ge\<^sub>2)"
 
 lemma ground_requires_mdom:
   assumes "m \<turnstile> ge1 \<preceq> e1"

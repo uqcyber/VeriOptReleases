@@ -58,10 +58,13 @@ end
 
 section \<open>Meta-optimizations\<close>
 
+definition valid_metaopt :: "(Rules \<Rightarrow> Rules option) \<Rightarrow> bool" where
+  "valid_metaopt f = (\<forall>r r' u e. valid_rules r \<longrightarrow> f r = Some r' \<longrightarrow> eval_rules r u e = eval_rules r' u e \<and> valid_rules r')"
+
 locale metaopt =
   fixes opt :: "Rules \<Rightarrow> Rules option"
   fixes size :: "Rules \<Rightarrow> nat"
-  assumes sound: "valid_rules r \<and> opt r = Some r' \<Longrightarrow> eval_rules r \<sigma> = eval_rules r' \<sigma>"
+  assumes sound: "valid_metaopt opt"
   assumes terminates: "opt r = Some r' \<Longrightarrow> size r' < size r"
   assumes size_else: "size r1 < size (either r1 r2) \<and> size r2 < size (either r1 r2)"
   assumes size_choice: "\<forall>r \<in> set rules. size r < size (choice rules)"
@@ -181,7 +184,7 @@ proof (induction r arbitrary: \<sigma> rule: apply_meta.induct)
     qed
   next
     case (Some a)
-    then show ?thesis using 1
+    then show ?thesis using 1 valid_metaopt_def
       by (metis (no_types, lifting) apply_meta.elims domI domIff maybe_opt_def metaopt.sound metaopt_axioms option.simps(5))
   qed
 qed
@@ -241,8 +244,8 @@ setup \<open>Locale_Code.open_block\<close>
 interpretation lift_cond : metaopt
   lift_cond
   combined_size
-  apply standard apply auto
-  using lift_cond_sound lift_condE apply blast
+  apply standard apply auto unfolding valid_metaopt_def
+  apply (metis lift_condE lift_cond_sound valid_match.simps(3) valid_rules.simps(1))
   using combined_size_decreases lift_condE apply blast
   subgoal for rules r apply (induction rules) 
     apply fastforce
@@ -256,14 +259,14 @@ thm lift_cond.apply_meta_sound
 thm_oracles lift_cond.apply_meta_sound
 
 value "(snd (Predicate.the (generateC STR ''myrule''
-    (BinaryExprPattern BinSub (BinaryExprPattern BinAdd (VariableExprPattern STR ''x'') (VariableExprPattern STR ''y'')) (VariableExprPattern STR ''x''))
+    (BinaryPattern BinSub (BinaryPattern BinAdd (VariablePattern STR ''x'') (VariablePattern STR ''y'')) (VariablePattern STR ''x''))
     None
-    (VariableExprPattern STR ''x''))))"
+    (VariablePattern STR ''x''))))"
 
 value "run (snd (Predicate.the (generateC STR ''myrule''
-    (BinaryExprPattern BinSub (BinaryExprPattern BinAdd (VariableExprPattern STR ''x'') (VariableExprPattern STR ''y'')) (VariableExprPattern STR ''x''))
+    (BinaryPattern BinSub (BinaryPattern BinAdd (VariablePattern STR ''x'') (VariablePattern STR ''y'')) (VariablePattern STR ''x''))
     None
-    (VariableExprPattern STR ''x''))))"
+    (VariablePattern STR ''x''))))"
 
 
 
@@ -370,8 +373,9 @@ setup \<open>Locale_Code.open_block\<close>
 interpretation join_conditions : metaopt
   join_conditions
   size
-  apply standard
-  using join_conditions_sound apply blast
+  apply standard unfolding valid_metaopt_def
+  using join_conditions_sound
+  apply (smt (z3) join_conditions.elims option.discI option.inject valid_rules.simps(1) valid_rules.simps(2))
   apply (smt (z3) Rules.size(7) Rules.size(8) add.right_neutral add_Suc_right join_conditions.elims less_add_Suc1 option.distinct(1) option.sel plus_nat.simps(2))
   apply simp+
   subgoal for rules apply (induction rules; auto) done
@@ -572,26 +576,30 @@ qed
 (*
 lemma eval_rules_choice_empty:
   assumes "eval_rules (choice []) u e"
+  assumes "m \<U> u = u'"
   shows "eval_rules (m ? choice []) u e"
 proof -
   have "eval_rules (choice []) u None"
     by (simp add: eval_rules.intros(7))
   have "eval_rules (m ? choice []) u None"
-    sledgehammer
+    by (smt (verit, ccfv_threshold) assms(2) eval_rules.simps)
   then show "eval_rules (m ? choice []) u e"
-    sledgehammer
+    by (smt (verit, ccfv_SIG) Rules.distinct(13) Rules.distinct(17) Rules.inject(5) Rules.simps(13) Rules.simps(25) assms(1) empty_iff eval_rules.simps list.set(1))
+qed
 
 lemma pull_cond_out_rhs:
   assumes "eval_rules (choice (map ((?) m) rules)) u e" (is "eval_rules ?lhs u e")
+  assumes "m \<U> u = u'"
   shows "eval_rules (m ? choice rules) u e" (is "eval_rules ?rhs u e")
 proof (cases rules)
   case Nil
-  then show ?thesis using assms sledgehammer
+  then show ?thesis using assms
+    by (simp add: eval_rules_choice_empty)
 next
   case (Cons a list)
   then show ?thesis sorry
 qed
-  proof (cases "\<not>(\<exists>e. eval_match m u e)")
+proof (cases "\<not>(\<exists>e. eval_match m u e)")
     case True \<comment> \<open>If m doesn't match then both the lhs and rhs should evaluate to e = None\<close>
     have lhs: "\<forall>e. eval_rules ?lhs u e \<longrightarrow> e = None"
       using True eval_rules.intros(2) eval_rules.intros(5)
@@ -599,10 +607,11 @@ qed
     have rhs: "\<forall>e. eval_rules ?rhs u e \<longrightarrow> e = None"
       by (meson True condE)
     then show ?thesis using assms condE
-      using lhs rhs sledgehammer
-      using eval_always_result
-      using assms by blast
+      using lhs rhs
+      using True by blast
   next
+    case False
+    then show ?thesis 
     case match: (Some a) \<comment> \<open>Drop down into evaluation post matching m\<close>
       have allEval: "\<forall>r \<in> set rules. eval_rules r a e = eval_rules (m ? r) u e"
         by (metis match condE eval_rules.intros(2) option.distinct(1) option.sel)
@@ -821,6 +830,10 @@ lemma evalchoice_twoelement:
   using assms choiceE by fastforce
 *)
 
+
+
+
+(*
 lemma combine_conditions_valid:
   "combine_conditions r = Some r' \<Longrightarrow> eval_rules r u e = eval_rules r' u e"
   apply (induction r arbitrary: u e r' rule: combine_conditions.induct) defer apply simp+
@@ -836,7 +849,7 @@ lemma combine_conditions_valid:
       case None
       have "eval_rules (m ? (choice (r # join_common m rules))) u None \<and>
   eval_rules ((choice (join_uncommon m rules))) u None"
-        sorry
+        sledgehammer
         using None cases_None eval by blast
       then have "eval_rules (m ? combine_conditions (choice (r # join_common m rules))) u None \<and>
   eval_rules (combine_conditions (choice (join_uncommon m rules))) u None" 
@@ -879,23 +892,21 @@ lemma combine_conditions_valid:
     qed
   qed
   done
+*)
 
 
-fun eliminate_choice :: "Rules \<Rightarrow> Rules" where
-  "eliminate_choice (base e) = base e" |
-  "eliminate_choice (r1 else r2) = (eliminate_choice r1 else eliminate_choice r2)" |
-  "eliminate_choice (m ? r) = (m ? eliminate_choice r)" |
-  "eliminate_choice (choice (r # [])) = eliminate_choice r" |
-  "eliminate_choice (choice rules) = 
-    choice (map eliminate_choice rules)" |
-  "eliminate_choice (r1 \<Zsemi> r2) = (eliminate_choice r1 \<Zsemi> eliminate_choice r2)"
+fun eliminate_choice :: "Rules \<Rightarrow> Rules option" where
+  "eliminate_choice (choice (r # [])) = Some r" |
+  "eliminate_choice _ = None"
 
 lemma choice_Single:
   "eval_rules (choice [r]) u e = eval_rules r u e"
-  apply (cases e)
+  apply (cases e) 
   using eval_choice_none apply auto[1]
-  using choiceE eval_rules.intros(6) by fastforce
+  using choiceE eval_rules.intros(6)
+  by (smt (verit, best) RuleChoiceSome empty_iff list.set(1) list.set_intros(1) set_ConsD)
 
+(*
 lemma entry_var_single_choice:
   "entry_var r = entry_var (choice [r])"
   unfolding entry_var.simps by simp
@@ -911,65 +922,109 @@ lemma entry_var_eliminate_choice:
   apply simp 
   using entry_var_rules apply blast
   using entry_var.simps(5) by presburger
-
-
-lemma eliminate_choice_valid_1:
-  "{e. eval_rules r u e} = {e. eval_rules (eliminate_choice r) u e}"
-  apply (induction r arbitrary: u rule: eliminate_choice.induct)
-  apply simp unfolding eliminate_choice.simps
-  apply (smt (verit) Collect_cong elseE eval_rules.intros(4) eval_rules.intros(5) mem_Collect_eq)
-  unfolding eliminate_choice.simps
-      apply (smt (verit) Collect_cong condE eval_rules.intros(3) eval_rules.simps mem_Collect_eq)
-  unfolding eliminate_choice.simps
-  using choice_Single apply presburger
-  using monotonic_choice apply blast
-  apply (metis Collect_cong mem_Collect_eq monotonic_choice)
-  using entry_var_eliminate_choice
-  by (smt (verit, ccfv_SIG) Collect_cong mem_Collect_eq monotonic_seq_with_entry)
+*)
 
 lemma eliminate_choice_valid:
-  "eval_rules r u e = eval_rules (eliminate_choice r) u e"
-  using eliminate_choice_valid_1 by blast
+  "eliminate_choice r = Some r' \<Longrightarrow> eval_rules r u e = eval_rules r' u e"
+  by (smt (verit) choice_Single eliminate_choice.elims option.distinct(1) option.sel)
+end
+
+interpretation eliminate_choice : metaopt
+  eliminate_choice
+  combined_size
+  apply standard apply auto
+  using eliminate_choice_valid
+  apply (smt (verit) Rules.inject(5) eliminate_choice.elims eliminate_choice.simps(2) eliminate_choice.simps(3) eliminate_choice.simps(4) eliminate_choice.simps(5) list.set_intros(1) option.distinct(1) option.sel valid_metaopt_def valid_rules.elims(1))
+  apply (smt (verit) eliminate_choice.elims lift_cond.size_choice list.set_intros(1) opt_to_list.simps(2) option.distinct(1))
+  using lift_cond.size_choice by force
+
+
+
+definition option_composition :: "(Rules \<Rightarrow> Rules option) \<Rightarrow> (Rules \<Rightarrow> Rules option) \<Rightarrow> (Rules \<Rightarrow> Rules option)" (infixl "\<Zspot>" 76) where
+  "option_composition f\<^sub>1 f\<^sub>2 = (\<lambda>r. (case f\<^sub>1 r of Some r' \<Rightarrow> f\<^sub>2 r' | None \<Rightarrow> f\<^sub>2 r))"
+
+lemma option_composition_valid:
+  assumes "valid_metaopt f\<^sub>1"
+  assumes "valid_metaopt f\<^sub>2"
+  shows "valid_metaopt (f\<^sub>1 \<Zspot> f\<^sub>2)"
+  using assms unfolding option_composition_def valid_metaopt_def
+  by (metis (full_types) option.case_eq_if option.collapse)
+
+lemma option_composition_terminates:
+  fixes s :: "Rules \<Rightarrow> nat"
+  assumes "\<forall>r r'. f\<^sub>1 r = Some r' \<longrightarrow> s r' < s r"
+  assumes "\<forall>r r'. f\<^sub>2 r = Some r' \<longrightarrow> s r' < s r"
+  shows "\<forall>r r'. (f\<^sub>1 \<Zspot> f\<^sub>2) r = Some r' \<longrightarrow> s r' < s r"
+  apply (rule allI)+ apply (rule impI)
+  subgoal premises p for r r'
+  proof (cases "f\<^sub>1 r")
+    case None
+    then show ?thesis
+      using p
+      by (simp add: assms(2) option_composition_def)
+  next
+    case s: (Some a)
+    have "s a < s r"
+      using s assms(1) by force
+    then show ?thesis proof (cases "f\<^sub>2 a")
+      case None
+      then show ?thesis using p
+        by (simp add: s option_composition_def)
+    next
+      case (Some a')
+      have "s a' < s a"
+        by (simp add: Some assms(2))
+      have "a' = r'"
+        using s Some option_composition_def p
+        by auto
+      have "s r' < s a \<and> s a < s r"
+        using \<open>a' = r'\<close> \<open>s a < s r\<close> \<open>s a' < s a\<close> by blast
+      then show ?thesis
+        using order.strict_trans by blast
+    qed
+  qed
+  done
+
+lemma metaopt_composition:
+  assumes "metaopt f\<^sub>1 s"
+  assumes "metaopt f\<^sub>2 s"
+  shows "metaopt (f\<^sub>1 \<Zspot> f\<^sub>2) s"
+  using assms unfolding metaopt_def
+  apply auto
+  using option_composition_valid apply blast
+  by (metis is_none_code(2) option.case_eq_if option.split_sel option_composition_def order.strict_trans)
 
 definition optimized_export where
-  "optimized_export = eliminate_choice \<circ> combine_conditions o lift_common o lift_match o eliminate_noop"
+  "optimized_export = lift_cond \<Zspot> join_conditions \<Zspot> combine_conditions \<Zspot> eliminate_choice"
 
-lemma elim_noop_preserve_def_vars:
-  "def_vars m = def_vars (elim_noop m)"
-  apply (induction m rule: elim_noop.induct) by simp+
+value "optimized_export f"
 
-lemma elim_noop_preserve_use_vars:
-  "use_vars m = use_vars (elim_noop m)"
-  apply (induction m rule: elim_noop.induct) apply simp+
-  using elim_noop_preserve_def_vars by simp+
+definition optimized_export' where
+  "optimized_export' = lift_cond \<Zspot> join_conditions \<Zspot> eliminate_choice"
 
-lemma elim_noop_preserve_valid:
-  assumes "valid_match m"
-  shows "valid_match (elim_noop m)"
-    using assms apply (induction m rule: elim_noop.induct) apply simp+
-    using elim_noop_preserve_def_vars elim_noop_preserve_use_vars by simp+
-
-lemma eliminate_noop_preserve_valid:
-  assumes "valid_rules r"
-  shows "valid_rules (eliminate_noop r)"
-  using assms apply (induction r rule: eliminate_noop.induct) apply simp
-  apply (simp add: elim_noop_preserve_valid) by simp+
+setup \<open>Locale_Code.open_block\<close>
+interpretation optimized_export : metaopt
+  optimized_export'
+  combined_size
+  (*using metaopt_composition optimized_export'_def
+  lift_cond.metaopt_axioms join_conditions.metaopt_axioms eliminate_choice.metaopt_axioms*)
+  apply standard apply auto using option_composition_valid unfolding valid_metaopt_def 
+  unfolding optimized_export'_def
+    apply (metis eliminate_choice.sound join_conditions.sound lift_cond.sound option_composition_valid valid_metaopt_def)
+  unfolding option_composition_def
+  apply (smt (z3) eliminate_choice.simps(3) eliminate_choice.terminates join_conditions.elims option.case_eq_if option.distinct(1) option.sel)
+  using lift_cond.size_choice by blast
+setup \<open>Locale_Code.close_block\<close>
 
 
-lemma lift_match_preserve_valid:
-  assumes "valid_rules r"
-  shows "valid_rules (lift_match r)"
-  using assms apply (induction r rule: lift_match.induct) apply simp
-  by simp+
 
-lemma optimized_export_valid:
-  assumes "valid_rules r"
-  shows "eval_rules r u e = eval_rules (optimized_export r) u e"
-  unfolding optimized_export_def comp_def
-  using lift_common_valid lift_match_valid eliminate_noop_valid 
-  using combine_conditions_valid eliminate_choice_valid
-  by (metis assms eliminate_noop_preserve_valid lift_match_preserve_valid)
+fun runall where "runall x = optimized_export.apply_meta x"
 
-thm_oracles optimized_export_valid
+value "runall x"
+
+value "runall (snd (Predicate.the (generateC STR ''myrule''
+    (BinaryPattern BinSub (BinaryPattern BinAdd (VariablePattern STR ''x'') (VariablePattern STR ''y'')) (VariablePattern STR ''x''))
+    None
+    (VariablePattern STR ''x''))))"
 
 end

@@ -295,9 +295,9 @@ qed
 lemma bool_stamp_false:
   "valid_value (IntVal 32 0) (IntegerStamp 32 0 1 0 1)"
 proof -
-  have lb: "32::nat \<turnstile> 0::64 word \<le>j 0::64 word"
+  have lb: "(32::nat) \<turnstile> (0::64 word) \<le>j (0::64 word)"
     by simp
-  have ub: "32::nat \<turnstile> 0::64 word \<le>j 1::64 word"
+  have ub: "(32::nat) \<turnstile> (0::64 word) \<le>j (1::64 word)"
     by simp
   show ?thesis unfolding valid_value.simps using lb ub
     and_zero_eq div_le_dividend max_int_max min_int_min numeral_Bit0_div_2 take_bit_of_0 valid_stamp.simps(1) zero_and_eq zero_less_numeral

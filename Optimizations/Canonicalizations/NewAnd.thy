@@ -4,6 +4,7 @@ theory NewAnd
   imports
     Common
     Graph.JavaLong
+    Proofs.StampEvalThms
 begin
 
 lemma intval_distribute_and_over_or:
@@ -801,10 +802,24 @@ lemma
   shows "stampConditions ((Expr u)..stamp()) ((Stamp (stamp_expr u)))"
   using stamp_Method by blast
 
-context stamp_mask begin
+lemma down_mask_wf_stamp:
+  assumes "wf_stamp x"
+  assumes "[m, p] \<turnstile> x \<mapsto> IntVal b xv"
+  shows "and (not xv) (stpi_down (stamp_expr x)) = 0"
+  using assms unfolding wf_stamp_def using valid_value.simps(1)
+  using valid_int_gives by fastforce
+
+lemma up_mask_wf_stamp:
+  assumes "wf_stamp x"
+  assumes "[m, p] \<turnstile> x \<mapsto> IntVal b xv"
+  shows "and xv (stpi_up (stamp_expr x)) = xv"
+  using assms unfolding wf_stamp_def using valid_value.simps(1)
+  using valid_int_gives by fastforce
+
+(*
 lemma stamp_upMask_eq:
   assumes "evalCondition cond[(((Expr u)..stamp()..upMask()) & ((Expr v)..stamp()..upMask())) eq (const 0)]" (is "evalCondition cond[?lhs eq ?rhs]")
-  shows "and (\<up>x) (\<up>y) = 0"
+  shows "and (stpi_upper (stamp_expr x)) (stpi_upper (stamp_expr y)) = 0"
 proof -
   obtain res where resdef: "stampConditions cond[?lhs eq ?rhs] (Value res)"
     using assms evalCondition_def
@@ -827,7 +842,7 @@ proof -
   obtain uv where uvdef: "stampConditions ((Expr u)..stamp()..upMask()) (Value uv)"
     by (meson cond_Binary xvdef)
   also have "stampConditions ((Stamp (stamp_expr u))..upMask()) (Value uv)"
-    sorry
+    by (smt (verit, ccfv_threshold) cond_Method_cases(2) stampConditions.intros(13) stampConditions.intros(6) stampConditions_det stamp_Method uvdef)
   have "uv = IntVal 64 0"
     sorry
   obtain vv where vvdef: "stampConditions ((Expr v)..stamp()..upMask()) (Value vv)"
@@ -840,41 +855,74 @@ proof -
   then show ?thesis sorry
 qed
 end
+*)
+
+locale wf_expr =
+  fixes e :: IRExpr
+  assumes wf: "wf_stamp e"
+
+sublocale wf_expr \<subseteq>
+  stamp_mask "stpi_up o stamp_expr" "stpi_down o stamp_expr"
+  apply standard using wf down_mask_wf_stamp defer sorry
+
+
+definition UpMaskCancels where
+  "UpMaskCancels x y = (and ((stpi_up o stamp_expr) x) ((stpi_up o stamp_expr) y) = 0)"
+
+lemma (in wf_expr) RedundantLHSYOr:
+  assumes "UpMaskCancels y z"
+  shows "exp[((x | y) & z)] \<ge> exp[(x & z)]"
+  using assms UpMaskCancels_def exp_eliminate_y by blast
+
+lemma (in wf_expr) RedundantLHSXOr:
+  assumes "UpMaskCancels x z"
+  shows "exp[((x | y) & z)] \<ge> exp[y & z]"
+  using assms 
+  by (meson RedundantLHSYOr exp_or_commute le_expr_def mono_binary)
 
 phase NewAnd
   terminating size
 begin
 
-optimization RedundantLHSYOr: 
-  when "cond[((y..stamp()..upMask()) & (z..stamp()..upMask())) eq (const 0)]"
+
+optimization RedundantLHSYOr:
+  when "wf_stamp x \<and> wf_stamp y \<and> wf_stamp z"
+  when "UpMaskCancels y z"
   "((x | y) & z) \<longmapsto> (x & z)"
   apply (cases z; auto)
   apply (simp add: size_binary_lhs)+
-  using simple_mask.exp_eliminate_y by blast
+   using wf_expr.RedundantLHSYOr by (meson le_expr_def wf_expr.intro)
 
-optimization RedundantLHSXOr: "((x | y) & z) \<longmapsto> y & z
-                                when UpMaskCancels x z"
-  apply (simp add: IRExpr_up_def)
-  using simple_mask.exp_eliminate_y
-  by (meson exp_or_commute mono_binary order_refl order_trans)
+optimization RedundantLHSXOr:
+  when "wf_stamp x \<and> wf_stamp y \<and> wf_stamp z"
+  when "UpMaskCancels x z"
+  "((x | y) & z) \<longmapsto> y & z"
+  apply (cases z; auto)
+          apply (simp add: size_binary_rhs)+
+  by (meson le_expr_def wf_expr.RedundantLHSXOr wf_expr.intro)
 
-optimization RedundantRHSYOr: "(z & (x | y)) \<longmapsto> z & x
-                                when UpMaskCancels y z"
-  apply (simp add: IRExpr_up_def)
-  using simple_mask.exp_eliminate_y
-  by (meson exp_and_commute order.trans)
+optimization RedundantRHSYOr: 
+  when "wf_stamp x \<and> wf_stamp y \<and> wf_stamp z"
+  when "UpMaskCancels y z"
+  "(z & (x | y)) \<longmapsto> z & x"
+   apply (cases z; cases x; cases y; auto)
+  apply (simp add: size_binary_rhs size_binary_lhs)+
+  by (metis exp_and_commute le_expr_def wf_expr.RedundantLHSYOr wf_expr.intro)
 
-optimization RedundantRHSXOr: "(z & (x | y)) \<longmapsto> z & y
-                                when UpMaskCancels x z"
-  apply (simp add: IRExpr_up_def)
-  using simple_mask.exp_eliminate_y
-  by (meson dual_order.trans exp_and_commute exp_or_commute mono_binary order_refl)
+optimization RedundantRHSXOr: 
+  when "wf_stamp x \<and> wf_stamp y \<and> wf_stamp z"
+  when "UpMaskCancels x z"
+  "(z & (x | y)) \<longmapsto> z & y"
+  apply (cases z; cases x; cases y; auto)
+  apply (simp add: size_binary_rhs size_binary_lhs)+
+  by (meson exp_and_commute le_expr_def wf_expr.RedundantLHSXOr wf_expr.intro)
 
 (*
 optimization redundant_lhs_add: "((x + y) & z) \<longmapsto> x & z
                                when ((and (IRExpr_up y) (IRExpr_down z)) = 0)"
 *)
 
+(*
 value "
   (optimized_export
     ((RedundantLHSYOr_code else
@@ -882,6 +930,7 @@ value "
       (RedundantRHSYOr_code else
       RedundantRHSXOr_code)
     ))"
+*)
 
 end
 

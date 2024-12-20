@@ -7,7 +7,8 @@ begin
 
 definition wf_start where
   "wf_start g = (0 \<in> ids g \<and>
-    is_StartNode (kind g 0))"
+    is_StartNode (kind g 0) \<and>
+    predecessors g 0 = {})"
 
 definition wf_closed where
   "wf_closed g = 

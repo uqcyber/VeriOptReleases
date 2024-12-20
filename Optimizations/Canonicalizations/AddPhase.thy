@@ -30,7 +30,8 @@ proof -
     using assms
     using intval_add.simps(1) by presburger
   then have csdef: "constantAsStamp (intval_add x y) = (IntegerStamp b (signed_take_bit (b-1) ?val) (signed_take_bit (b-1) ?val) (and (take_bit b (xv + yv)) (mask b)) (and (take_bit b (xv+yv)) (mask b)))" (is "_ = ?stamp")
-    using constantAsStamp.simps(1) by presburger
+    using constantAsStamp.simps(1)
+    by (simp add: take_bit_eq_mask)
   then have "valid_stamp ?stamp"
     by (metis assms(3) constantAsStamp.simps(1) validStampIntConst valid_stamp.simps(1) valid_value.simps(1) wf_value_def yv)
   then show ?thesis 

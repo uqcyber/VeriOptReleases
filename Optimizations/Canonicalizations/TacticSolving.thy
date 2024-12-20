@@ -102,14 +102,36 @@ lemma val_xor_self_is_false:
 definition wf_stamp :: "IRExpr \<Rightarrow> bool" where
   "wf_stamp e = (\<forall>m p v. ([m, p] \<turnstile> e \<mapsto> v) \<longrightarrow> valid_value v (stamp_expr e))"
 
-lemma exp_xor_self_is_false: 
-  assumes "stamp_expr x = IntegerStamp 32 l h"
+lemma bit_wf_stamp:
   assumes "wf_stamp x"
-  shows "exp[x ^ x] >= exp[false]"
-  by (smt (z3) wf_value_def bin_eval.simps(8) bin_eval_new_int constantAsStamp.simps(1) evalDet 
-      int_signed_value_bounds new_int.simps new_int_take_bits unfold_binary unfold_const valid_int 
-      valid_stamp.simps(1) valid_value.simps(1) well_formed_equal_defn val_xor_self_is_false 
-      le_expr_def assms wf_stamp_def)
+  assumes "[m, p] \<turnstile> x \<mapsto> IntVal b xv"
+  assumes "stamp_expr x = IntegerStamp b' l h d u"
+  shows "b = b'"
+  using assms unfolding wf_stamp_def using valid_value.simps(1)
+  using valid_value.elims(2) by fastforce
+
+lemma exp_xor_self_is_false: 
+  assumes "stamp_expr x = IntegerStamp 32 l h d u"
+  assumes "wf_stamp x"
+  shows "exp[x ^ x] \<ge> exp[false]"
+  apply simp apply (rule allI)+ apply (rule impI)
+  subgoal premises p for m p v
+  proof -
+    obtain xv where xv: "[m, p] \<turnstile> x \<mapsto> IntVal 32 xv"
+      using p bit_wf_stamp
+      by (metis EvalTreeE(5) assms(1) assms(2) valid_value_elims(3) wf_stamp_def)
+    then have e: "[m, p] \<turnstile> BinaryExpr BinXor x x \<mapsto> intval_xor (IntVal 32 xv) (IntVal 32 xv)"
+      using p
+      using evalDet by auto
+    then have c: "[m, p] \<turnstile> (ConstantExpr (IntVal 32 0)) \<mapsto> (IntVal 32 0)"
+      using wf_value_def valid_value.simps constantAsStamp.simps
+      by (metis ConstantExpr IntVal0 Value.inject(1) eval_bits_1_64 new_int.simps validDefIntConst xv)
+    have "intval_xor (IntVal 32 xv) (IntVal 32 xv) = IntVal 32 0"
+      unfolding intval_xor.simps new_int_bin.simps by auto
+    then show ?thesis using p e evalDet
+      by (metis c)
+  qed
+  done
 
 lemma val_or_commute[simp]:
    "val[x | y] = val[y | x]"
@@ -133,7 +155,7 @@ lemma exp_xor_commutative:
 
 lemma exp_and_commutative:
   "exp[x & y] \<ge> exp[y & x]"
-  by auto 
+  by auto
 
 (*
 text \<open>--- --- New Optimisations - submitted and added into Graal ---\<close>

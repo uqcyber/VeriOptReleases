@@ -329,9 +329,9 @@ lemma greaterConstant:
   sorry
 
 lemma exp_distribute_multiplication:
-  assumes "stamp_expr x = IntegerStamp b xl xh"
-  assumes "stamp_expr q = IntegerStamp b ql qh"
-  assumes "stamp_expr y = IntegerStamp b yl yh"
+  assumes "stamp_expr x = IntegerStamp b xl xh xd xu"
+  assumes "stamp_expr q = IntegerStamp b ql qh qd qu"
+  assumes "stamp_expr y = IntegerStamp b yl yh yd yu"
   assumes "wf_stamp x"
   assumes "wf_stamp q"
   assumes "wf_stamp y"
@@ -370,14 +370,14 @@ optimization EliminateRedundantNegative: "-x * -y \<longmapsto> x * y"
 optimization MulNeutral[nogen]: "x * (const 1) \<longmapsto> x"
   using exp_multiply_neutral by simp
 
-optimization MulEliminator: "x * y \<longmapsto> forZero x when IsConstantValue y x 0"
+optimization MulEliminator[nogen]: "x * (const 0) \<longmapsto> const 0"
   using exp_multiply_zero_64 by fast
 
 optimization MulNegate[nogen]: "x * -(const 1) \<longmapsto> -x"
   using exp_multiply_negative by presburger
 
 fun isNonZero :: "Stamp \<Rightarrow> bool" where
-  "isNonZero (IntegerStamp b lo hi) = (lo > 0)" |
+  "isNonZero (IntegerStamp b lo hi d u) = (int_signed_value b lo > 0)" |
   "isNonZero _ = False"
 
 lemma isNonZero_defn:
@@ -386,14 +386,15 @@ lemma isNonZero_defn:
   shows "([m, p] \<turnstile> x \<mapsto> v) \<longrightarrow> (\<exists>vv b. (v = IntVal b vv \<and> val_to_bool val[(IntVal b 0) < v]))"
   apply (rule impI) subgoal premises eval
 proof -
-  obtain b lo hi where xstamp: "stamp_expr x = IntegerStamp b lo hi"
+  obtain b lo hi d u where xstamp: "stamp_expr x = IntegerStamp b lo hi d u"
     by (meson isNonZero.elims(2) assms)
   then obtain vv where vdef: "v = IntVal b vv"
     by (metis assms(2) eval valid_int wf_stamp_def)
-  have "lo > 0"
+  have "int_signed_value b lo > 0"
     using assms(1) xstamp by force
   then have signed_above: "int_signed_value b vv > 0"
-    using assms eval vdef xstamp wf_stamp_def by fastforce
+    using assms eval vdef xstamp wf_stamp_def
+    by fastforce
   have "take_bit b vv = vv"
     using eval eval_unused_bits_zero vdef by auto
   then have "vv > 0"
@@ -405,9 +406,9 @@ qed
   done
 
 lemma ExpIntBecomesIntValArbitrary:
-  assumes "stamp_expr x = IntegerStamp b xl xh"
+  assumes "stamp_expr x = IntegerStamp b xl xh xd xu"
   assumes "wf_stamp x"
-  assumes "valid_value v (IntegerStamp b xl xh)"
+  assumes "valid_value v (IntegerStamp b xl xh xd xu)"
   assumes "[m,p] \<turnstile> x \<mapsto> v"
   shows "\<exists>xv. v = IntVal b xv"
   using assms by (simp add: IRTreeEvalThms.valid_value_elims(3))

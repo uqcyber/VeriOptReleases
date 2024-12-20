@@ -284,7 +284,7 @@ fun generate_stamp :: "string \<Rightarrow> string list \<Rightarrow> string" wh
 register_method stamp: stamp_of generate_stamp
 
 fun upMask_of :: "Condition \<Rightarrow> Condition list \<Rightarrow> Condition" where
-  "upMask_of (Stamp s) _ = (Constant 0)"
+  "upMask_of (Stamp s) _ = (Constant (stpi_up s))"
 
 fun generate_upMask :: "string \<Rightarrow> string list \<Rightarrow> string" where
   "generate_upMask e _ = e @ ''.mayBeSet()''"
@@ -293,7 +293,7 @@ register_method upMask: upMask_of generate_upMask
 register_method mayBeSet: upMask_of generate_upMask
 
 fun downMask_of :: "Condition \<Rightarrow> Condition list \<Rightarrow> Condition" where
-  "downMask_of (Stamp s) _ = (Constant 0)"
+  "downMask_of (Stamp s) _ = (Constant (stpi_down s))"
 
 fun generate_downMask :: "string \<Rightarrow> string list \<Rightarrow> string" where
   "generate_downMask e _ = e @ ''.mustBeSet()''"

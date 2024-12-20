@@ -39,7 +39,7 @@ lemma exp_negative_cancel:
       intval_negate.simps(1) minus_equation_iff take_bit_dist_neg) 
  
 lemma exp_negative_shift: 
-  assumes "stamp_expr x = IntegerStamp b' lo hi" 
+  assumes "stamp_expr x = IntegerStamp b' lo hi d u" 
   and     "unat y = (b' - 1)"
   shows   "exp[-(x >> (const (new_int b y)))] \<ge> exp[x >>> (const (new_int b y))]"
   apply auto[1]
