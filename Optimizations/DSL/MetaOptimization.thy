@@ -58,32 +58,48 @@ end
 
 section \<open>Meta-optimizations\<close>
 
-definition valid_metaopt :: "(Rules \<Rightarrow> Rules option) \<Rightarrow> bool" where
-  "valid_metaopt f = (\<forall>r r' u e. valid_rules r \<longrightarrow> f r = Some r' \<longrightarrow> eval_rules r u e = eval_rules r' u e \<and> valid_rules r')"
+definition valid_rule_transform :: "(Rules \<Rightarrow> Rules option) \<Rightarrow> bool" where
+  "valid_rule_transform f = (\<forall>r r' u e. valid_rules r \<longrightarrow> f r = Some r' \<longrightarrow> eval_rules r u e = eval_rules r' u e \<and> valid_rules r')"
 
-locale metaopt =
-  fixes opt :: "Rules \<Rightarrow> Rules option"
+definition decreasing_measure :: "(Rules \<Rightarrow> nat) \<Rightarrow> bool" where
+  "decreasing_measure f = 
+    (\<forall>r1 r2 rules r m. 
+      (f r1 < f (either r1 r2) \<and> f r2 < f (either r1 r2))
+    \<and> (\<forall>r \<in> set rules. f r < f (choice rules))
+    \<and> (f r < f (cond m r))
+    \<and> f r1 < f (seq r1 r2) \<and> f r2 < f (seq r1 r2))"
+
+locale rule_transform =
+  fixes transformation :: "Rules \<Rightarrow> Rules option"
   fixes size :: "Rules \<Rightarrow> nat"
-  assumes sound: "valid_metaopt opt"
-  assumes terminates: "opt r = Some r' \<Longrightarrow> size r' < size r"
-  assumes size_else: "size r1 < size (either r1 r2) \<and> size r2 < size (either r1 r2)"
-  assumes size_choice: "\<forall>r \<in> set rules. size r < size (choice rules)"
-  assumes size_cond: "size r < size (cond m r)"
-  assumes size_base: "size (base l e) = size (base l e)"
-  assumes size_seq: "size r1 < size (seq r1 r2) \<and> size r2 < size (seq r1 r2)"
+  assumes sound: "valid_rule_transform transformation"
+  assumes terminates: "transformation r = Some r' \<Longrightarrow> size r' < size r"
+  assumes size_wf: "decreasing_measure size"
 begin
 
-definition maybe_opt :: "Rules \<Rightarrow> Rules option" where
-  "maybe_opt r = (if valid_rules r then opt r else None)"
+lemma size_else: "size r1 < size (either r1 r2) \<and> size r2 < size (either r1 r2)"
+  using size_wf unfolding decreasing_measure_def  by blast
+lemma size_choice: "\<forall>r \<in> set rules. size r < size (choice rules)"
+  using decreasing_measure_def size_wf by presburger
+lemma size_cond: "size r < size (cond m r)"
+  using decreasing_measure_def size_wf by presburger
+lemma size_base: "size (base l e) = size (base l e)"
+  by simp
+lemma size_seq: "size r1 < size (seq r1 r2) \<and> size r2 < size (seq r1 r2)"
+  using decreasing_measure_def size_wf by presburger
 
-function apply_meta :: "Rules \<Rightarrow> Rules" where
-  "apply_meta m = (case maybe_opt m of Some m' \<Rightarrow> apply_meta m' | None \<Rightarrow> 
+
+definition transform_valid :: "Rules \<Rightarrow> Rules option" where
+  "transform_valid r = (if valid_rules r then transformation r else None)"
+
+function transform :: "Rules \<Rightarrow> Rules" where
+  "transform m = (case transform_valid m of Some m' \<Rightarrow> transform m' | None \<Rightarrow> 
     (case m of
-      (either r1 r2) \<Rightarrow> (either (apply_meta r1) (apply_meta r2)) |
-      (choice rules) \<Rightarrow> choice (map (apply_meta) rules) |
-      (cond m r) \<Rightarrow> cond m (apply_meta r) |
+      (either r1 r2) \<Rightarrow> (either (transform r1) (transform r2)) |
+      (choice rules) \<Rightarrow> choice (map (transform) rules) |
+      (cond m r) \<Rightarrow> cond m (transform r) |
       (base l e) \<Rightarrow> (base l e) |
-      (seq r1 r2) \<Rightarrow> (seq (apply_meta r1) r2) \<comment> \<open>Avoid recursing through rhs as it could change the entry var\<close>
+      (seq r1 r2) \<Rightarrow> (seq (transform r1) r2) \<comment> \<open>Avoid recursing through rhs as it could change the entry var\<close>
   ))"
   apply pat_completeness+
   by simp+
@@ -104,7 +120,7 @@ function apply_meta :: "Rules \<Rightarrow> Rules" where
 definition termination_measure :: "((Rules + Rules) \<times> (Rules + Rules)) set" where
   "termination_measure = {r'. \<exists>r. r' = (Inl r) \<and> r \<in> measure size}"*)
 
-termination apply_meta apply standard
+termination transform apply standard
   apply (relation "measure size")
   apply simp
   using size_cond apply force
@@ -113,14 +129,14 @@ termination apply_meta apply standard
   using size_seq apply force
   (*using size_seq apply force*)
   using size_choice apply force
-  unfolding maybe_opt_def
+  unfolding transform_valid_def
   by (meson in_measure option.distinct(1) terminates)
 
 theorem apply_meta_sound:
-  "eval_rules r \<sigma> = eval_rules (apply_meta r) \<sigma>"
-proof (induction r arbitrary: \<sigma> rule: apply_meta.induct)
+  "eval_rules r \<sigma> = eval_rules (transform r) \<sigma>"
+proof (induction r arbitrary: \<sigma> rule: transform.induct)
   case (1 m)
-  then show ?case proof (cases "maybe_opt m")
+  then show ?case proof (cases "transform_valid m")
     case None
     then show ?thesis proof (cases m)
       case (base e)
@@ -128,12 +144,12 @@ proof (induction r arbitrary: \<sigma> rule: apply_meta.induct)
         using None by auto
     next
       case (cond x21 r)
-      have ih: "eval_rules r \<sigma> = eval_rules (apply_meta r) \<sigma>"
+      have ih: "eval_rules r \<sigma> = eval_rules (transform r) \<sigma>"
         using None 1
         using cond by blast
-      have app: "apply_meta m = cond x21 (apply_meta r)"
+      have app: "transform m = cond x21 (transform r)"
         using None cond by fastforce
-      have "\<forall>e. eval_rules (cond x21 r) \<sigma> e = eval_rules (cond x21 (apply_meta r)) \<sigma> e"
+      have "\<forall>e. eval_rules (cond x21 r) \<sigma> e = eval_rules (cond x21 (transform r)) \<sigma> e"
         using ih condE
         by (smt (verit) "1.IH"(1) None cond eval_rules.simps)
       then show ?thesis 
@@ -141,27 +157,27 @@ proof (induction r arbitrary: \<sigma> rule: apply_meta.induct)
         by auto
     next
       case (either r1 r2)
-      have ih1: "eval_rules r1 \<sigma> = eval_rules (apply_meta r1) \<sigma>"
+      have ih1: "eval_rules r1 \<sigma> = eval_rules (transform r1) \<sigma>"
         using None 1
         using either by blast
-      have ih2: "eval_rules r2 \<sigma> = eval_rules (apply_meta r2) \<sigma>"
+      have ih2: "eval_rules r2 \<sigma> = eval_rules (transform r2) \<sigma>"
         using None 1
         using either by blast
-      have app: "apply_meta m = either (apply_meta r1) (apply_meta r2)"
+      have app: "transform m = either (transform r1) (transform r2)"
         using None either by fastforce
-      have "\<forall>e. eval_rules (either r1 r2) \<sigma> e = eval_rules (either (apply_meta r1) (apply_meta r2)) \<sigma> e"
+      have "\<forall>e. eval_rules (either r1 r2) \<sigma> e = eval_rules (either (transform r1) (transform r2)) \<sigma> e"
         using ih1 ih2 elseE
         by (metis eval_rules.intros(3) eval_rules.intros(4))
       then show ?thesis
         using app either by auto
     next
       case (seq r1 r2)
-      have ih1: "eval_rules r1 \<sigma> = eval_rules (apply_meta r1) \<sigma>"
+      have ih1: "eval_rules r1 \<sigma> = eval_rules (transform r1) \<sigma>"
         using None 1
         using seq by blast
-      have app: "apply_meta m = seq (apply_meta r1) r2"
+      have app: "transform m = seq (transform r1) r2"
         using None seq by fastforce
-      have "\<forall>e. eval_rules (seq r1 r2) \<sigma> e = eval_rules (seq (apply_meta r1) r2) \<sigma> e"
+      have "\<forall>e. eval_rules (seq r1 r2) \<sigma> e = eval_rules (seq (transform r1) r2) \<sigma> e"
         apply (rule allI; rule iffI)
         using ih1 seqE eval_rules.intros(8) eval_rules.intros(9) eval_rules.intros(10) 
         apply (smt (verit) "1.IH"(4) None Rules.distinct(11) Rules.distinct(15) Rules.distinct(19) Rules.distinct(5) Rules.inject(4) eval_rules.cases list.simps(8) seq)
@@ -170,27 +186,27 @@ proof (induction r arbitrary: \<sigma> rule: apply_meta.induct)
         using app seq by auto
     next
       case (choice rules)
-      have ih: "\<forall>r \<in> set rules. eval_rules r \<sigma> = eval_rules (apply_meta r) \<sigma>"
+      have ih: "\<forall>r \<in> set rules. eval_rules r \<sigma> = eval_rules (transform r) \<sigma>"
         using None 1
         using choice by blast
-      have app: "apply_meta m = (choice (map apply_meta rules))"
+      have app: "transform m = (choice (map transform rules))"
         using None choice by fastforce
-      have allE: "\<forall>a \<in> set rules. \<forall>e. eval_rules a \<sigma> e = eval_rules (apply_meta a) \<sigma> e"
+      have allE: "\<forall>a \<in> set rules. \<forall>e. eval_rules a \<sigma> e = eval_rules (transform a) \<sigma> e"
         using "1.IH"(5) None choice by simp
-      have "\<forall>e. eval_rules (choice rules) \<sigma> e = eval_rules (choice (map apply_meta rules)) \<sigma> e"
+      have "\<forall>e. eval_rules (choice rules) \<sigma> e = eval_rules (choice (map transform rules)) \<sigma> e"
         using inductive_choice  ih by blast
       then show ?thesis
         using app choice by auto
     qed
   next
     case (Some a)
-    then show ?thesis using 1 valid_metaopt_def
-      by (metis (no_types, lifting) apply_meta.elims domI domIff maybe_opt_def metaopt.sound metaopt_axioms option.simps(5))
+    then show ?thesis using 1 valid_rule_transform_def
+      by (metis (no_types, lifting) transform.elims domI domIff transform_valid_def rule_transform.sound rule_transform_axioms option.simps(5))
   qed
 qed
 
 definition run :: "Rules \<Rightarrow> Rules" where
-  "run r = apply_meta r"
+  "run r = transform r"
 
 end
 
@@ -238,22 +254,27 @@ proof -
   show ?thesis using lhs rhs
     by simp
 qed
-end
 
-setup \<open>Locale_Code.open_block\<close>
-interpretation lift_cond : metaopt
-  lift_cond
-  combined_size
-  apply standard apply auto unfolding valid_metaopt_def
-  apply (metis lift_condE lift_cond_sound valid_match.simps(3) valid_rules.simps(1))
-  using combined_size_decreases lift_condE apply blast
-  subgoal for rules r apply (induction rules) 
+lemma combined_size_wf:
+  "decreasing_measure combined_size"
+  unfolding decreasing_measure_def
+  apply auto subgoal for rules r apply (induction rules) 
     apply fastforce
     by force
   done
+end
+
+setup \<open>Locale_Code.open_block\<close>
+interpretation lift_cond : rule_transform
+  lift_cond
+  combined_size
+  apply standard unfolding valid_rule_transform_def
+    apply (metis lift_condE lift_cond_sound valid_match.simps(3) valid_rules.simps(1))
+  using combined_size_decreases lift_condE apply blast
+  using combined_size_wf by simp
 setup \<open>Locale_Code.close_block\<close>
 
-fun run where "run x = lift_cond.apply_meta x"
+fun run where "run x = lift_cond.transform x"
 
 thm lift_cond.apply_meta_sound
 thm_oracles lift_cond.apply_meta_sound
@@ -369,23 +390,29 @@ next
 qed
 end
 
+lemma size_wf:
+  "decreasing_measure size"
+  unfolding decreasing_measure_def
+  apply auto subgoal for rules r apply (induction rules) 
+    apply fastforce
+    by force
+  done
+
 setup \<open>Locale_Code.open_block\<close>
-interpretation join_conditions : metaopt
+interpretation join_conditions : rule_transform
   join_conditions
   size
-  apply standard unfolding valid_metaopt_def
+  apply standard unfolding valid_rule_transform_def
   using join_conditions_sound
   apply (smt (z3) join_conditions.elims option.discI option.inject valid_rules.simps(1) valid_rules.simps(2))
-  apply (smt (z3) Rules.size(7) Rules.size(8) add.right_neutral add_Suc_right join_conditions.elims less_add_Suc1 option.distinct(1) option.sel plus_nat.simps(2))
-  apply simp+
-  subgoal for rules apply (induction rules; auto) done
-  by simp+
+   apply (smt (z3) Rules.size(7) Rules.size(8) add.right_neutral add_Suc_right join_conditions.elims less_add_Suc1 option.distinct(1) option.sel plus_nat.simps(2))
+  using size_wf by simp
 setup \<open>Locale_Code.close_block\<close>
 
 subsection \<open>Combined Meta-optimizations\<close>
 
 (*fun reduce where "reduce x = (join_conditions.apply_meta o elim_noop.apply_meta o lift_cond.apply_meta) x"*)
-definition reduce where "reduce = (join_conditions.apply_meta o lift_cond.apply_meta)"
+definition reduce where "reduce = (join_conditions.transform o lift_cond.transform)"
 
 
 theorem reduce_sound:
@@ -929,14 +956,14 @@ lemma eliminate_choice_valid:
   by (smt (verit) choice_Single eliminate_choice.elims option.distinct(1) option.sel)
 end
 
-interpretation eliminate_choice : metaopt
+interpretation eliminate_choice : rule_transform
   eliminate_choice
   combined_size
-  apply standard apply auto
+  apply standard
   using eliminate_choice_valid
-  apply (smt (verit) Rules.inject(5) eliminate_choice.elims eliminate_choice.simps(2) eliminate_choice.simps(3) eliminate_choice.simps(4) eliminate_choice.simps(5) list.set_intros(1) option.distinct(1) option.sel valid_metaopt_def valid_rules.elims(1))
-  apply (smt (verit) eliminate_choice.elims lift_cond.size_choice list.set_intros(1) opt_to_list.simps(2) option.distinct(1))
-  using lift_cond.size_choice by force
+  apply (smt (verit) Rules.inject(5) eliminate_choice.elims eliminate_choice.simps(2) eliminate_choice.simps(3) eliminate_choice.simps(4) eliminate_choice.simps(5) list.set_intros(1) option.distinct(1) option.sel valid_rule_transform_def valid_rules.elims(1))
+   apply (smt (verit) eliminate_choice.elims lift_cond.size_choice list.set_intros(1) opt_to_list.simps(2) option.distinct(1))
+  using combined_size_wf by fastforce
 
 
 
@@ -944,10 +971,10 @@ definition option_composition :: "(Rules \<Rightarrow> Rules option) \<Rightarro
   "option_composition f\<^sub>1 f\<^sub>2 = (\<lambda>r. (case f\<^sub>1 r of Some r' \<Rightarrow> f\<^sub>2 r' | None \<Rightarrow> f\<^sub>2 r))"
 
 lemma option_composition_valid:
-  assumes "valid_metaopt f\<^sub>1"
-  assumes "valid_metaopt f\<^sub>2"
-  shows "valid_metaopt (f\<^sub>1 \<Zspot> f\<^sub>2)"
-  using assms unfolding option_composition_def valid_metaopt_def
+  assumes "valid_rule_transform f\<^sub>1"
+  assumes "valid_rule_transform f\<^sub>2"
+  shows "valid_rule_transform (f\<^sub>1 \<Zspot> f\<^sub>2)"
+  using assms unfolding option_composition_def valid_rule_transform_def
   by (metis (full_types) option.case_eq_if option.collapse)
 
 lemma option_composition_terminates:
@@ -986,10 +1013,10 @@ lemma option_composition_terminates:
   done
 
 lemma metaopt_composition:
-  assumes "metaopt f\<^sub>1 s"
-  assumes "metaopt f\<^sub>2 s"
-  shows "metaopt (f\<^sub>1 \<Zspot> f\<^sub>2) s"
-  using assms unfolding metaopt_def
+  assumes "rule_transform f\<^sub>1 s"
+  assumes "rule_transform f\<^sub>2 s"
+  shows "rule_transform (f\<^sub>1 \<Zspot> f\<^sub>2) s"
+  using assms unfolding rule_transform_def
   apply auto
   using option_composition_valid apply blast
   by (metis is_none_code(2) option.case_eq_if option.split_sel option_composition_def order.strict_trans)
@@ -1003,22 +1030,22 @@ definition optimized_export' where
   "optimized_export' = lift_cond \<Zspot> join_conditions \<Zspot> eliminate_choice"
 
 setup \<open>Locale_Code.open_block\<close>
-interpretation optimized_export : metaopt
+interpretation optimized_export : rule_transform
   optimized_export'
   combined_size
   (*using metaopt_composition optimized_export'_def
   lift_cond.metaopt_axioms join_conditions.metaopt_axioms eliminate_choice.metaopt_axioms*)
-  apply standard apply auto using option_composition_valid unfolding valid_metaopt_def 
+  apply standard using option_composition_valid unfolding rule_transform_def 
   unfolding optimized_export'_def
-    apply (metis eliminate_choice.sound join_conditions.sound lift_cond.sound option_composition_valid valid_metaopt_def)
+    apply (metis eliminate_choice.sound join_conditions.sound lift_cond.sound option_composition_valid valid_rule_transform_def)
   unfolding option_composition_def
   apply (smt (z3) eliminate_choice.simps(3) eliminate_choice.terminates join_conditions.elims option.case_eq_if option.distinct(1) option.sel)
-  using lift_cond.size_choice by blast
+  using combined_size_wf by simp
 setup \<open>Locale_Code.close_block\<close>
 
 
 
-fun runall where "runall x = optimized_export.apply_meta x"
+fun runall where "runall x = optimized_export.transform x"
 
 value "runall x"
 

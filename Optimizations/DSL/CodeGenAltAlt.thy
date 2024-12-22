@@ -2025,22 +2025,28 @@ lemma det_variable_rules:
   using assms det_variable_match
   by (smt (verit) Rules.distinct(1) Rules.distinct(11) Rules.distinct(13) Rules.distinct(9) Rules.inject(2) eval_rules.simps generate.simps)
 
+definition refining_rule :: "Rules \<Rightarrow> bool" where
+  "refining_rule r = (\<exists>l e\<^sub>r c e\<^sub>p v. pattern_refinement e\<^sub>r e\<^sub>p \<and> valid_pattern e\<^sub>p \<and> \<L> e\<^sub>r \<subseteq> \<L> e\<^sub>p \<and> \<L> c \<subseteq> \<L> e\<^sub>p \<and> (l, e\<^sub>p, c, e\<^sub>r) \<leadsto> (v, r))"
+
 lemma lift_choice:
-  assumes "\<forall> r \<in> set rules. \<exists>l e\<^sub>r c e\<^sub>p v. pattern_refinement e\<^sub>r e\<^sub>p \<and> (l, e\<^sub>p, c, e\<^sub>r) \<leadsto> (v, r) \<and> valid_pattern e\<^sub>p \<and> \<L> e\<^sub>r \<subseteq> \<L> e\<^sub>p \<and> \<L> c \<subseteq> \<L> e\<^sub>p"
+  assumes "\<forall> r \<in> set rules. refining_rule r"
   assumes "eval_rules (choice rules) [v \<mapsto> e\<^sub>g] (Some e')"
   shows "e' \<le> e\<^sub>g"
-  using assms using det_variable_rules choiceE option.distinct(1) sound_rules
+  using assms using det_variable_rules choiceE option.distinct(1) sound_rules unfolding refining_rule_def
   by (smt (verit))
 
 lemma lift_else:
-  assumes "\<exists>l e\<^sub>r c e\<^sub>p v. pattern_refinement e\<^sub>r e\<^sub>p \<and> valid_pattern e\<^sub>p \<and> \<L> e\<^sub>r \<subseteq> \<L> e\<^sub>p \<and> \<L> c \<subseteq> \<L> e\<^sub>p \<and> (l, e\<^sub>p, c, e\<^sub>r) \<leadsto> (v, r1)"
-  assumes "\<exists>l e\<^sub>r c e\<^sub>p v. pattern_refinement e\<^sub>r e\<^sub>p \<and> valid_pattern e\<^sub>p \<and> \<L> e\<^sub>r \<subseteq> \<L> e\<^sub>p \<and> \<L> c \<subseteq> \<L> e\<^sub>p \<and> (l, e\<^sub>p, c, e\<^sub>r) \<leadsto> (v, r2)"
+  assumes "refining_rule r1"
+  assumes "refining_rule r2"
   assumes "eval_rules (r1 else r2) [v \<mapsto> e\<^sub>g] (Some e')"
   shows "e' \<le> e\<^sub>g"
-  using assms using det_variable_rules
+  using assms using det_variable_rules unfolding refining_rule_def
   by (metis elseE sound_rules)
 
 thm_oracles lift_choice
+
+definition valid_rule :: "Rules \<Rightarrow> bool" where
+  "valid_rule r = (\<forall>\<sigma> e e\<^sub>g v. eval_rules r \<sigma> (Some e) \<and> entry_var r = Some v \<and> \<sigma> v = Some e\<^sub>g \<longrightarrow> e \<le> e\<^sub>g)"
 
 lemma inductive_choice:
   assumes "\<forall>a \<in> set rules. eval_rules a \<sigma> = eval_rules (f a) \<sigma>"
