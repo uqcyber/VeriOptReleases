@@ -5,6 +5,117 @@ theory AbsPhase
     Common Proofs.StampEvalThms
 begin
 
+(*
+class undefined =
+  fixes undef :: 'a
+begin
+end
+
+instantiation Value :: undefined
+begin
+lift_definition undef :: "Value"
+  is "UndefVal" .
+
+instance by standard
+end
+
+(*
+class comm_ring_1_type_safe = comm_ring_1 + undefined +
+  assumes type_safe_plus: "a \<noteq> undef \<Longrightarrow> b \<noteq> undef \<Longrightarrow> a + b \<noteq> undef"
+  assumes type_safe_minus: "a \<noteq> undef \<Longrightarrow> b \<noteq> undef \<Longrightarrow> a - b \<noteq> undef"
+  assumes type_safe_uminus: "a \<noteq> undef \<Longrightarrow> -a \<noteq> undef"
+  assumes type_safe_times: "a \<noteq> undef \<Longrightarrow> b \<noteq> undef \<Longrightarrow> a * b \<noteq> undef"
+begin
+end
+*)
+
+class comm_ring_1_type_safe = comm_ring_1 + undefined +
+  assumes type_safe_plus: "a + b \<noteq> undef"
+  assumes type_safe_minus: "a - b \<noteq> undef"
+  assumes type_safe_uminus: "-a \<noteq> undef"
+  assumes type_safe_times: "a * b \<noteq> undef"
+begin
+end
+
+locale type_safe_plus = comm_ring_1 + undefined +
+  fixes a :: 'a
+  fixes b :: 'a
+  assumes "plus a b \<noteq> undef"
+  assumes "minus a b \<noteq> undef"
+  assumes "uminus a \<noteq> undef"
+  assumes "times a b \<noteq> undef"
+begin
+end
+
+instantiation Value :: type_safe_plus
+begin
+
+sublocale type_safe_plus \<subseteq>
+  comm_ring_1 UndefVal intval_mul "IntVal 32 1" intval_add "IntVal 32 0" intval_sub intval_negate
+  apply standard sledgehammer
+
+print_locale comm_ring_1_type_safe
+
+inductive integer_params :: "Value \<Rightarrow> Value \<Rightarrow> bool" where
+  "integer_params (IntVal b a) (IntVal b c)"
+
+locale type_safe_integers =
+  fixes a :: Value
+  fixes b :: Value
+  assumes wf: "integer_params a b"
+begin
+end
+
+
+sublocale type_safe_integers \<subseteq>
+  comm_ring_1 intval_mul "IntVal 32 1" intval_add "IntVal 32 0" intval_sub intval_negate
+  apply standard using local.wf unfolding integer_params.simps sorry
+  using local.wf apply auto[1]
+
+instantiation Value :: comm_ring_1
+begin
+
+lift_definition zero_word :: \<open>Value\<close>
+  is "IntVal 32 0" .
+
+lift_definition one_word :: \<open>Value\<close>
+  is "IntVal 32 1" .
+
+lift_definition plus_word :: \<open>Value \<Rightarrow> Value \<Rightarrow> Value\<close>
+  is \<open>intval_add\<close> .
+
+lift_definition minus_word :: \<open>Value \<Rightarrow> Value \<Rightarrow> Value\<close>
+  is \<open>intval_sub\<close> .
+
+lift_definition uminus_word :: \<open>Value \<Rightarrow> Value\<close>
+  is \<open>intval_negate\<close> .
+
+lift_definition times_word :: \<open>Value \<Rightarrow> Value \<Rightarrow> Value\<close>
+  is \<open>intval_mul\<close> .
+
+instance
+  apply (standard; transfer)
+  sledgehammer
+  apply (simp add: algebra_simps)
+
+end
+
+instantiation word :: (len) semiring_modulo
+begin
+
+lift_definition divide_word :: \<open>'a word \<Rightarrow> 'a word \<Rightarrow> 'a word\<close>
+  is \<open>\<lambda>a b. take_bit LENGTH('a) a div take_bit LENGTH('a) b\<close>
+  by simp
+
+lift_definition modulo_word :: \<open>'a word \<Rightarrow> 'a word \<Rightarrow> 'a word\<close>
+  is \<open>\<lambda>a b. take_bit LENGTH('a) a mod take_bit LENGTH('a) b\<close>
+  by simp
+
+instance proof
+
+end
+*)
+
 phase AbsNode
   terminating size
 begin
