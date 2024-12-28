@@ -4,6 +4,7 @@ theory Common
   imports 
     OptimizationDSL.Canonicalization
     Semantics.IRTreeEvalThms
+    Proofs.StampEvalThms
 begin
 
 lemma size_pos[size_simps]: "0 < size y"
@@ -381,9 +382,41 @@ proof -
 qed
 *)
 
+
+
+lemma unfold_binary_fixed_32_ops:
+  assumes "op \<in> binary_fixed_32_ops"
+  shows "([m,p] \<turnstile> BinaryExpr op xe ye \<mapsto> IntVal 32 val) = (\<exists> x y b.
+          (([m,p] \<turnstile> xe \<mapsto> IntVal b x) \<and>
+           ([m,p] \<turnstile> ye \<mapsto> IntVal b y) \<and>
+           (IntVal 32 val = bin_eval op (IntVal b x) (IntVal b y)) \<and>
+           (IntVal 32 val \<noteq> UndefVal)
+        ))" (is "?L = ?R")
+proof (intro iffI)
+  assume 3: ?L
+  show ?R
+    apply (rule evaltree.cases[OF 3]) apply auto
+    apply (cases "op \<in> binary_fixed_32_ops")
+    using unfold_binary_width_bin_normal assms 
+    apply (metis bin_eval_input_bits_equal bin_eval_inputs_are_ints binary_ops_distinct_shift)
+    using assms by blast
+next
+  assume R: ?R
+  then obtain x y b where "[m,p] \<turnstile> xe \<mapsto> IntVal b x"
+        and "[m,p] \<turnstile> ye \<mapsto> IntVal b y"
+        and "new_int 32 val = bin_eval op (IntVal b x) (IntVal b y)"
+        and "new_int 32 val \<noteq> UndefVal"
+    using bin_eval_unused_bits_zero by force
+  then show ?L 
+    using R by blast
+qed
+
+
 lemma stamp_under_lower:
   assumes "valid_stamp (stamp_expr u) \<and> valid_stamp (stamp_expr v)"
   assumes "evalCondition (StampUnder (Expr u) (Expr v))"
+  assumes "([m, p] \<turnstile> BinaryExpr BinIntegerLessThan u v \<mapsto> val) \<or> ([m, p] \<turnstile> BinaryExpr BinIntegerLessThan v u \<mapsto> val)"
+  assumes "wf_stamp u \<and> wf_stamp v"
   shows "stamp_under (stamp_expr u) (stamp_expr v)"
 proof -
   obtain b lu hu du uu where su: "stamp_expr u = IntegerStamp b lu hu du uu"
@@ -397,8 +430,19 @@ proof -
   have lt64: "64 \<turnstile> hu <j lv"
     using su sv assms stamp_under
     by (metis Stamp.sel(2) Stamp.sel(3))
+  obtain uval b'' where uval: "[m, p] \<turnstile> u \<mapsto> IntVal b'' uval"
+    by (metis EvalTreeE(5) assms(3) defined_eval_is_intval is_IntVal_def)
+  then obtain vval where vval: "[m, p] \<turnstile> v \<mapsto> IntVal b'' vval"
+    using EvalTreeE(5) bin_eval.simps(14) bool_to_val_bin.simps assms(3) defined_eval_is_intval evalDet intval_less_than.simps(1) is_IntVal_def
+    by (smt (verit, del_insts))
+  then have b: "stp_bits (stamp_expr u) = stp_bits (stamp_expr v)"
+    using assms(4) unfolding wf_stamp_def
+    by (metis Stamp.sel(1) su sv uval valid_int_same_bits)
   have "b = b'"
-    sorry
+    using assms(3) apply auto
+    using b su sv
+    apply auto[1]
+    using b su sv by force
   then have "b \<turnstile> hu <j lv"
     using tbu tbv lt64
     by (smt (verit, ccfv_SIG) assms(1) int_signed_value.simps raise_lt signed_word_eqI sv valid_stamp.simps(1))

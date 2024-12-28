@@ -65,7 +65,7 @@ gencode "AllOpts" "(
   RedundantSubAdd_code,
   AddNeutral_code,
   AddShiftConstantRight_code,
-  AbsNegate_code,
+  AbsNegation_code,
   AbsIdempotence_code,
   AndRightFallThrough_code,
   AndLeftFallThrough_code

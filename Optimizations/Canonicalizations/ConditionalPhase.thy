@@ -58,34 +58,25 @@ optimization DefaultFalseBranch: "(false ? x : y) \<longmapsto> y" .
 
 optimization ConditionalEqualBranches: "(e ? x : x) \<longmapsto> x" .
 
+lemma signed_less_than_trans:
+  assumes "signed_take_bit (b-1) v = v"
+  assumes "signed_take_bit (b-1) u = u"
+  assumes "64 \<turnstile> u <j v"
+  assumes "0 < b \<and> b \<le> 64"
+  shows "b \<turnstile> u <j v"
+  using assms
+  by (smt (verit, ccfv_threshold) int_signed_value.elims raise_lt signed_word_eqI)
+
 optimization ConditionBoundsX: 
-  (*when "cond[((Expr u)..stamp()..upper()) < ((Expr v)..stamp()..lower())]"*)
   when "valid_stamp (stamp_expr u)"
   when "valid_stamp (stamp_expr v)"
   when "StampUnder u v"
   when "wf_stamp u \<and> wf_stamp v"
-  (*when "cond[u..stamp() instanceof IntegerStamp]"
-  when "cond[v..stamp() instanceof IntegerStamp]"
-  when "cond[(u..stamp()..upperBound()) < (v..stamp()..lowerBound())]"*)
   "((u < v) ? x : y) \<longmapsto> x"
-  apply (rule impI)+
-  subgoal premises assms apply simp apply (rule allI)+ apply (rule impI)+
-    subgoal premises eval
-  proof -
-    have under: "stp_bits (stamp_expr u) \<turnstile> stpi_upper (stamp_expr u) <j stpi_lower (stamp_expr v)"
-      using stamp_under assms sorry
-    have u: "is_IntegerStamp (stamp_expr u)" using assms(1,2) eval
-      using assms(3) combine_cond_lhs stamp_instanceof_IntegerStamp by blast
-    have v: "is_IntegerStamp (stamp_expr v)" using assms(1,2) eval
-      using assms(3) combine_cond_lhs combine_cond_rhs stamp_instanceof_IntegerStamp by blast
-    have "stamp_under (stamp_expr u) (stamp_expr v)"
-      using u v under
-      using assms(1) assms(2) assms(3) stamp_under_lower by blast
-    then show ?thesis
-      using assms(1,2) eval stamp_under_defn by fastforce
-  qed
-  done
-  done
+  using stamp_under_lower
+  by (smt (verit, best) BinaryExprE EvalTreeE(3) le_expr_def stamp_under_defn)
+
+thm_oracles ConditionBoundsX
 
 optimization ConditionBoundsY:
   when "wf_stamp u \<and> wf_stamp v"
@@ -93,7 +84,8 @@ optimization ConditionBoundsY:
   when "StampUnder v u"
   "((u < v) ? x : y) \<longmapsto> y"
   using stamp_under_defn_inverse
-  by (smt (verit, ccfv_threshold) BinaryExprE ConditionalExprE le_expr_def stamp_under_lower)
+  BinaryExprE ConditionalExprE le_expr_def stamp_under_lower
+  by (smt (verit, best))
 
 (** Start of new proofs **)
 
@@ -147,40 +139,215 @@ lemma preserveBoolean:
   using assms isBoolean_def apply auto[1]
   by (metis (no_types, lifting) IntVal0 IntVal1 intval_logic_negation.simps(1) logic_negate_def)
 
-optimization ConditionalIntegerEquals1[notactic]: "exp[BinaryExpr BinIntegerEquals (c ? x : y) (x)] \<longmapsto> c
-                                          when IsIntegerStamp x; WellFormed x;
-                                               IsIntegerStamp y; WellFormed y;
-                                               AlwaysDistinct x y;
-                                               IsBoolStamp c; WellFormed c"
-  defer apply simp
-  apply (metis Canonicalization.cond_size add_lessD1 size_binary_lhs) apply auto[1]
-  subgoal premises p for m p cExpr xv cond
-  proof -
-    obtain cond where cond: "[m,p] \<turnstile> c \<mapsto> cond"
-      using p by blast
-    then have cRange: "cond = IntVal 32 0 \<or> cond = IntVal 32 1"
-      using p(6,7) sorry
-    then obtain yv where yVal: "[m,p] \<turnstile> y \<mapsto> yv"
-      using p by auto
-    obtain xvv b where xvv: "xv = IntVal b xvv"
-      by (metis Value.exhaust evaltree_not_undef intval_equals.simps(7) intval_equals.simps(8) intval_equals.simps(9) p(8) p(9))
-    obtain yvv where yvv: "yv = IntVal b yvv"
-      using xvv yVal sorry
-    have yxDiff: "xvv \<noteq> yvv"
-      using xvv yvv yVal p(8)  p sorry
-    have eqEvalFalse: "intval_equals yv xv = (IntVal 32 0)"
-      unfolding xvv yvv apply auto[1] by (metis (mono_tags) bool_to_val.simps(2) yxDiff)
-    then have valEvalSame: "cond = intval_equals val[cond ? xv : yv] xv"
-      apply (cases "cond = IntVal 32 0"; simp) using cRange xvv by auto
-    then have condTrue: "val_to_bool cond \<Longrightarrow> cExpr = xv"
-      by (metis cond evalDet p(10) p(12) p(8))
-    then have condFalse: "\<not>(val_to_bool cond) \<Longrightarrow> cExpr = yv"
-      sorry
-    then have "[m,p] \<turnstile> c \<mapsto> intval_equals cExpr xv"
-      using cond condTrue valEvalSame by fastforce
+lemma jlt_trans:
+  assumes "(b \<turnstile> h <j l)"
+  shows "\<not>((b \<turnstile> l \<le>j val) \<and> (b \<turnstile> val \<le>j h))"
+  using assms
+  by linarith
+
+lemma is_stamp_empty_valid:
+  assumes "is_stamp_empty s"
+  shows "\<not>(\<exists> val. valid_value val s)"
+  using assms is_stamp_empty.simps apply (cases s; auto)
+  by (metis One_nat_def int_signed_value.simps jlt_trans valid_value.simps(1) valid_value_elims(3))
+
+lemma join_valid_stamp:
+  assumes "is_IntegerStamp s1 \<and> is_IntegerStamp s2"
+  assumes "valid_stamp s1 \<and> valid_stamp s2"
+  shows "valid_stamp (join s1 s2)"
+  using assms apply (cases s1; cases s2; simp)
+  by (metis smax_def smin_def)
+
+lemma join_valid_lower:
+  assumes "s1 = IntegerStamp b l1 h1 d1 u1"
+  assumes "s2 = IntegerStamp b l2 h2 d2 u2"
+  assumes "join s1 s2 = IntegerStamp b l h d u"
+  shows "(b \<turnstile> l1 \<le>j val) \<and> (b \<turnstile> l2 \<le>j val) \<equiv> b \<turnstile> l \<le>j val"
+  using assms apply auto
+  by (smt (verit, del_insts) One_nat_def int_signed_value.elims smax_def)
+
+lemma join_valid_upper:
+  assumes "s1 = IntegerStamp b l1 h1 d1 u1"
+  assumes "s2 = IntegerStamp b l2 h2 d2 u2"
+  assumes "join s1 s2 = IntegerStamp b l h d u"
+  shows "(b \<turnstile> val \<le>j h1) \<and> (b \<turnstile> val \<le>j h2) \<equiv> b \<turnstile> val \<le>j h"
+  using assms apply auto
+  by (smt (verit, del_insts) One_nat_def int_signed_value.elims smin_def)
+
+lemma join_valid_down:
+  assumes "s1 = IntegerStamp b l1 h1 d1 u1"
+  assumes "s2 = IntegerStamp b l2 h2 d2 u2"
+  assumes "join s1 s2 = IntegerStamp b l h d u"
+  shows "((and (not val) d1) = 0) \<and> ((and (not val) d2) = 0) \<equiv> (and (not val) d) = 0"
+  using assms apply auto
+  by (smt (verit, del_insts) bit.conj_disj_distrib or_eq_0_iff)
+
+lemma join_valid_up:
+  assumes "s1 = IntegerStamp b l1 h1 d1 u1"
+  assumes "s2 = IntegerStamp b l2 h2 d2 u2"
+  assumes "join s1 s2 = IntegerStamp b l h d u"
+  shows "((and val u1) = val) \<and> ((and val u2) = val) \<equiv> (and val u) = val"
+  using assms apply auto
+  by (smt (verit) word_ao_absorbs(6) word_ao_absorbs(8) word_bw_assocs(1))
+
+lemma join_valid:
+  assumes "is_IntegerStamp s1 \<and> is_IntegerStamp s2"
+  assumes "valid_stamp s1 \<and> valid_stamp s2"
+  shows "(valid_value v s1 \<and> valid_value v s2) = valid_value v (join s1 s2)" (is "?lhs = ?rhs")
+proof
+  assume lhs: ?lhs
+  obtain b l1 h1 d1 u1 where s1def:"s1 = IntegerStamp b l1 h1 d1 u1"
+    using assms
+    using is_IntegerStamp_def by fastforce
+  then obtain l2 h2 d2 u2 where s2def:"s2 = IntegerStamp b l2 h2 d2 u2"
+    using assms
+    by (metis Stamp.collapse(1) lhs valid_int valid_int_same_bits)
+  also obtain l h d u where joindef:"join s1 s2 = IntegerStamp b l h d u"
+    by (simp add: s1def s2def)
+  then show ?rhs
+    using s1def s2def assms joindef
+    using join_valid_stamp join_valid_lower join_valid_upper join_valid_down join_valid_up
+    by (smt (verit, del_insts) lhs valid_int valid_value.simps(1))
+next
+  assume rhs: ?rhs
+  obtain b l1 h1 d1 u1 where s1def:"s1 = IntegerStamp b l1 h1 d1 u1"
+    using assms
+    using is_IntegerStamp_def by fastforce
+  also obtain l h d u where joindef:"join s1 s2 = IntegerStamp b l h d u"
+    by (metis assms(1) calculation is_IntegerStamp_def join.simps(2) rhs valid_value.simps(22))
+  then obtain l2 h2 d2 u2 where s2def:"s2 = IntegerStamp b l2 h2 d2 u2"
+    apply (cases s2; auto simp: assms(1)) 
+    using calculation apply force
+    using assms(1) by fastforce+
+  then show ?lhs
+    using s1def s2def assms joindef
+    using join_valid_stamp join_valid_lower join_valid_upper join_valid_down join_valid_up
+    by (smt (verit, del_insts) rhs valid_int valid_value.simps(1))
+qed
+
+lemma alwaysDistinct_evaluate:
+  assumes "wf_stamp x \<and> wf_stamp y"
+  assumes "alwaysDistinct (stamp_expr x) (stamp_expr y)"
+  assumes "is_IntegerStamp (stamp_expr x) \<and> is_IntegerStamp (stamp_expr y) \<and> valid_stamp (stamp_expr x) \<and> valid_stamp (stamp_expr y)"
+  shows "\<not>(\<exists> val . ([m, p] \<turnstile> x \<mapsto> val) \<and> ([m, p] \<turnstile> y \<mapsto> val))"
+proof -
+  have "\<forall>v. valid_value v (join (stamp_expr x) (stamp_expr y)) = (valid_value v (stamp_expr x) \<and> valid_value v (stamp_expr y))"
+    using assms(3)
+    by (simp add: join_valid)
+  then show ?thesis
+    using assms unfolding alwaysDistinct.simps
+    by (metis is_stamp_empty_valid wf_stamp_def)
+qed
+
+lemma join_commute:
+  assumes "valid_stamp x \<and> valid_stamp y"
+  assumes "is_IntegerStamp x \<and> is_IntegerStamp y"
+  shows "join x y = join y x"
+  using assms(2) apply (cases x; cases y; auto)
+  apply (metis assms(1) smax_signed_commute valid_stamp.simps(1))
+  apply (metis assms(1) smin_signed_commute valid_stamp.simps(1))
+  using or.commute apply blast
+  by (meson and.commute)
+
+lemma alwaysDistinct_commute:
+  assumes "valid_stamp x \<and> valid_stamp y"
+  assumes "is_IntegerStamp x \<and> is_IntegerStamp y"
+  shows "alwaysDistinct x y = alwaysDistinct y x"
+  using assms join_commute
+  by simp
+
+lemma alwaysDistinct_valid:
+  assumes "wf_stamp x \<and> wf_stamp y"
+  assumes "alwaysDistinct (stamp_expr x) (stamp_expr y)"
+  assumes "[m, p] \<turnstile> exp[x eq y] \<mapsto> val"
+  shows "\<not>(val_to_bool val)"
+proof -
+  have no_valid: "\<forall> val. \<not>(valid_value val (join (stamp_expr x) (stamp_expr y)))"
+    using assms(2) unfolding alwaysDistinct.simps using is_stamp_empty.simps
+    by (smt (verit, ccfv_threshold) is_stamp_empty.elims(2) valid_int_stamp_gives)
+  obtain xv yv where evalsub: "[m, p] \<turnstile> x \<mapsto> xv \<and> [m, p] \<turnstile> y \<mapsto> yv"
+    using assms(3) by blast
+  have xvalid: "valid_value xv (stamp_expr x)"
+    using assms(1) evalsub wf_stamp_def by blast
+  then have xint: "is_IntegerStamp (stamp_expr x)"
+    using assms(1) valid_value.elims(2)
+    by (metis Stamp.disc(2) alwaysDistinct.elims(2) assms(2) is_stamp_empty.simps(8) join.simps(34))
+  then have xstamp: "valid_stamp (stamp_expr x)"
+    using xvalid apply (cases xv; auto) 
+    apply (smt (z3) valid_stamp.simps(6) valid_value.elims(1))
+    using is_IntegerStamp_def by fastforce
+  have yvalid: "valid_value yv (stamp_expr y)"
+    using assms(1) evalsub wf_stamp_def by blast
+  then have yint: "is_IntegerStamp (stamp_expr y)"
+    using assms(1) valid_value.elims(2)
+    by (metis Stamp.collapse(1) Stamp.disc(2) alwaysDistinct.elims(2) assms(2) is_stamp_empty.simps(8) join.simps(10) xint)
+  then have ystamp: "valid_stamp (stamp_expr y)"
+    using yvalid apply (cases yv; auto) 
+    apply (smt (z3) valid_stamp.simps(6) valid_value.elims(1))
+    using is_IntegerStamp_def by fastforce
+  have disjoint: "\<not>(\<exists> val . ([m, p] \<turnstile> x \<mapsto> val) \<and> ([m, p] \<turnstile> y \<mapsto> val))"
+    using alwaysDistinct_evaluate
+    using assms(1) assms(2) xint xstamp yint ystamp by blast
+  (*have "val = bin_eval BinIntegerEquals xv yv"
+    sledgehammer
+    by (metis BinaryExprE encodeeval.simps assms(3) evalsub graphDet)
+  also have "v \<noteq> UndefVal"
+    using evale by auto*)
+  then have "\<exists>b1 b2. val =  bool_to_val_bin b1 b2 (xv = yv)"
+    unfolding bin_eval.simps
+    by (smt (verit, ccfv_SIG) BinaryExprE ExpIntBecomesIntVal assms(1) assms(3) bin_eval.simps(13) bool_to_val_bin.elims evalDet eval_thms(117) evalsub is_IntegerStamp_def xint xvalid yint yvalid)
+  then show ?thesis
+    by (metis (mono_tags, lifting) assms(3) bool_to_val.simps(2) bool_to_val_bin.elims disjoint evalsub unfold_evaltree(1) val_to_bool.simps(1))
+qed
+
+optimization ConditionalIntegerEquals1[notactic,nogen]:
+  when "wf_stamp x \<and> wf_stamp y"
+  when "alwaysDistinct (stamp_expr x) (stamp_expr y)"
+  when "isBoolean c"
+  "((c ? x : y) eq (x)) \<longmapsto> c"
+   apply (metis add_lessD1 size.simps(10) size_binary_lhs)
+  apply simp apply (rule allI; rule allI; rule allI; rule impI)
+  subgoal premises p for m p v
+proof -
+  obtain cv where cv: "[m, p] \<turnstile> c \<mapsto> cv"
+    using p
+    by blast
+  then show ?thesis
+  proof (cases "val_to_bool cv")
+    case True
+    obtain xv where xv: "[m, p] \<turnstile> x \<mapsto> xv"
+      using p(3) by blast
+    then have "[m, p] \<turnstile> exp[c ? x : y] \<mapsto> xv"
+      using True cv evalDet p(3) by auto
+    then have "[m, p] \<turnstile> exp[(c ? x : y) eq x] \<mapsto> IntVal 32 1"
+      by (metis EvalTreeE(5) bin_eval.simps(13) defined_eval_is_intval evalDet evaltree_not_undef intval_self_is_true is_IntVal_def p(3) xv)
+    also have "[m, p] \<turnstile> c \<mapsto> IntVal 32 1"
+      using True cv
+      using isBoolean_def p(1) by fastforce
+    ultimately show ?thesis
+      by (metis evalDet p(3))
+  next
+    case False
+    obtain yv where yv: "[m, p] \<turnstile> y \<mapsto> yv"
+      using p(3) by blast
+    then have "[m, p] \<turnstile> exp[c ? x : y] \<mapsto> yv"
+      using False cv evalDet p(3) by auto
+    obtain eqval where "[m, p] \<turnstile> exp[y eq x] \<mapsto> eqval"
+      by (metis EvalTreeE(5) \<open>[m,p] \<turnstile> ConditionalExpr c x y \<mapsto> yv\<close> evalDet evaltree.intros(5) p(3) yv)
+    also have "alwaysDistinct (stamp_expr y) (stamp_expr x)"
+      by (metis BinaryExprE Stamp.disc(2) \<open>[m,p] \<turnstile> ConditionalExpr c x y \<mapsto> yv\<close> alwaysDistinct.elims(3) defined_eval_is_intval evalDet is_IntVal_def join_commute p(2) p(3) valid_int_gives wf_stamp_def yv)
+    then have "\<not>(val_to_bool eqval)"
+      using p(2,3) alwaysDistinct_valid
+      using calculation by blast
+    then have e: "[m, p] \<turnstile> exp[(c ? x : y) eq x] \<mapsto> IntVal 32 0"
+      using \<open>[m,p] \<turnstile> ConditionalExpr c x y \<mapsto> yv\<close> calculation evalDet intval_equals_result yv by fastforce
+    then have "[m, p] \<turnstile> c \<mapsto> IntVal 32 0"
+      using False cv
+      using isBoolean_def p(1) by fastforce
     then show ?thesis
-      by blast
+      by (metis e evalDet p(3))
   qed
+qed
   done
 
 (* Helpers *)
@@ -217,69 +384,57 @@ proof -
     using notEval by auto
 qed
 
-optimization ConditionalIntegerEquals2[notactic]: "exp[BinaryExpr BinIntegerEquals (c ? x : y) (y)] \<longmapsto> (!c)
-                                          when IsIntegerStamp x && WellFormed x &&
-                                               IsIntegerStamp y && WellFormed y &&
-                                               AlwaysDistinct x y &&
-                                               IsBoolStamp c"
-  defer apply simp
-  apply (smt (verit) not_add_less1 max_less_iff_conj max.absorb3 linorder_less_linear add_2_eq_Suc'
-         add_less_cancel_right size_binary_lhs add_lessD1 Canonicalization.cond_size)
-  apply auto[1]
-  subgoal premises p for m p cExpr yv cond trE faE
-  proof -
-    obtain cond where cond: "[m,p] \<turnstile> c \<mapsto> cond"
-      using p by blast
-    then have condNotUndef: "cond \<noteq> UndefVal"
-      by (simp add: evaltree_not_undef)
-    then obtain notCond where notCond: "[m,p] \<turnstile> exp[!c] \<mapsto> notCond"
-      sorry
-    have cRange: "cond = IntVal 32 0 \<or> cond = IntVal 32 1"
-      using p cond sorry
-    then have cNotRange:  "notCond = IntVal 32 0 \<or> notCond = IntVal 32 1"
-      by (metis (no_types, lifting) IntVal0 IntVal1 cond evalDet intval_logic_negation.simps(1)
-          logic_negate_def negation_preserve_eval notCond)
-    then obtain xv where xv: "[m,p] \<turnstile> x \<mapsto> xv"
-      using p by auto
-    then have trueCond: "(notCond = IntVal 32 1) \<Longrightarrow> [m,p] \<turnstile> (ConditionalExpr c x y) \<mapsto> yv"
-      by (smt (verit, best) cRange evalDet negates negation_preserve_eval notCond p(7) cond
-          zero_less_numeral val_to_bool.simps(1) evaltree_not_undef ConditionalExpr
-          ConditionalExprE)
-    obtain b xvv where xvv: "xv = IntVal b xvv"
-      sorry
-    then have opposites: "notCond = intval_logic_negation cond"
-      by (metis cond evalDet negation_preserve_eval notCond)
-    then have negate: "(intval_logic_negation cond = IntVal 32 0) \<Longrightarrow> (cond = IntVal 32 1)"
-      using cRange intval_logic_negation.simps negates by fastforce
-    have falseCond: "(notCond = IntVal 32 0) \<Longrightarrow> [m,p] \<turnstile> (ConditionalExpr c x y) \<mapsto> xv"
-      unfolding opposites using negate cond evalDet p(13,14,15,16) xv by auto
-    obtain yvv where yvv: "yv = IntVal b yvv"
-      sorry
-    have yxDiff: "xv \<noteq> yv"
-      sorry
-    then have trueEvalCond: "(cond = IntVal 32 0) \<Longrightarrow>
-                         [m,p] \<turnstile> exp[BinaryExpr BinIntegerEquals (c ? x : y) (y)]
-                               \<mapsto> intval_equals yv yv"
-      by (smt (verit) cNotRange trueCond ConditionalExprE cond bin_eval.simps(13) evalDet p
-          falseCond unfold_binary val_to_bool.simps(1))
-    then have falseEval: "(notCond = IntVal 32 0) \<Longrightarrow>
-                         [m,p] \<turnstile> exp[BinaryExpr BinIntegerEquals (c ? x : y) (y)]
-                               \<mapsto> intval_equals xv yv"
-      using p by (metis ConditionalExprE bin_eval.simps(13) evalDet falseCond unfold_binary)
-    have eqEvalFalse: "intval_equals yv xv = (IntVal 32 0)"
-      unfolding xvv yvv apply auto[1] by (metis (mono_tags) bool_to_val.simps(2) yxDiff yvv xvv)
-    have trueEvalEquiv: "[m,p] \<turnstile> exp[BinaryExpr BinIntegerEquals (c ? x : y) (y)] \<mapsto> notCond"
-      apply (cases notCond) prefer 2
-      sorry
-    show ?thesis
-      using ConditionalExprE
-      by (metis cNotRange falseEval notCond trueEvalEquiv trueCond falseCond intval_self_is_true
-          yvv p(9,11) evalDet)
+optimization ConditionalIntegerEquals2[nogen]:
+  when "wf_stamp x \<and> wf_stamp y"
+  when "alwaysDistinct (stamp_expr x) (stamp_expr y)"
+  when "isBoolean c"
+  "((c ? x : y) eq (y)) \<longmapsto> (!c)"
+  apply (metis add_2_eq_Suc' less_add_same_cancel1 order_less_trans plus_nat.simps(2) size.simps(10) size_binary_lhs size_pos)
+apply simp apply (rule allI; rule allI; rule allI; rule impI)
+  subgoal premises p for m p v
+proof -
+  obtain cv where cv: "[m, p] \<turnstile> c \<mapsto> cv"
+    using p
+    by blast
+  then show ?thesis
+  proof (cases "val_to_bool cv")
+    case True
+    obtain xv where xv: "[m, p] \<turnstile> x \<mapsto> xv"
+      using p(3) by blast
+    then have "[m, p] \<turnstile> exp[c ? x : y] \<mapsto> xv"
+      using True cv evalDet p(3) by auto
+    obtain eqval where "[m, p] \<turnstile> exp[x eq y] \<mapsto> eqval"
+      by (metis BinaryExpr EvalTreeE(5) \<open>[m,p] \<turnstile> ConditionalExpr c x y \<mapsto> xv\<close> evalDet p(3) xv)
+    then have "\<not>(val_to_bool eqval)"
+      using p(2,3) alwaysDistinct_valid
+      by (meson alwaysDistinct.simps)
+    then have e: "[m, p] \<turnstile> exp[(c ? x : y) eq y] \<mapsto> IntVal 32 0"
+      using \<open>[m,p] \<turnstile> BinaryExpr BinIntegerEquals x y \<mapsto> eqval\<close> \<open>[m,p] \<turnstile> ConditionalExpr c x y \<mapsto> xv\<close> evalDet intval_equals_result xv by fastforce
+    then have "[m, p] \<turnstile> exp[!c] \<mapsto> IntVal 32 0"
+      using True cv
+      by (metis (no_types, lifting) IntVal0 UnaryExpr Value.simps(6) empty_iff insertE intval_logic_negation.simps(1) isBoolean_def logic_negate_def p(1) unary_eval.simps(4) val_to_bool.simps(1))
+    then show ?thesis
+      by (metis e evalDet p(3))
+  next
+    case False
+    obtain yv where yv: "[m, p] \<turnstile> y \<mapsto> yv"
+      using p(3) by blast
+    then have "[m, p] \<turnstile> exp[c ? x : y] \<mapsto> yv"
+      using False cv evalDet p(3) by auto
+    then have "[m, p] \<turnstile> exp[(c ? x : y) eq y] \<mapsto> IntVal 32 1"
+      by (metis EvalTreeE(5) bin_eval.simps(13) defined_eval_is_intval evalDet evaltree_not_undef intval_self_is_true is_IntVal_def p(3) yv)
+    also have "[m, p] \<turnstile> exp[!c] \<mapsto> IntVal 32 1"
+      using False cv
+      by (metis (no_types, lifting) IntVal1 UnaryExpr empty_iff insertE intval_logic_negation.simps(1) isBoolean_def logic_negate_def p(1) semiring_norm(160) unary_eval.simps(4) val_to_bool.simps(1) val_to_bool.simps(2))
+    ultimately show ?thesis
+      by (metis evalDet p(3))
   qed
+qed
   done
 
+(*
 lemma IsBoolStamp_def:
-  assumes "stamp_expr e = (IntegerStamp 32 0 1) \<and> CodeGen.wf_stamp e"
+  assumes "stamp_expr e = (IntegerStamp 32 0 1) \<and> wf_stamp e"
   assumes "[m, p] \<turnstile> e \<mapsto> v"
   shows "v = IntVal 32 0 \<or> v = IntVal 32 1"
 proof -
@@ -294,40 +449,33 @@ proof -
   then show ?thesis
     using vdef b sorry
   qed
+*)
 
-optimization ConditionalExtractCondition: "exp[(c ? true : false)] \<longmapsto> c
-                                          when IsBoolStamp c && WellFormed c"
-  using IsBoolStamp_def
-  using le_expr_def unfold_const val_to_bool.simps(1) by fastforce
+lemma isBooleanCaseTrue:
+  assumes "isBoolean c"
+  assumes "[m, p] \<turnstile> c \<mapsto> cv"
+  shows "val_to_bool cv \<longrightarrow> cv = IntVal 32 1"
+  using assms
+  using isBoolean_def by fastforce
 
-optimization ConditionalExtractCondition2: "exp[(c ? false : true)] \<longmapsto> !c
-                                          when IsBoolStamp c && WellFormed c"
-  apply auto[1]
-  subgoal premises p for m p cExpr cond
-  proof-
-    obtain cond where cond: "[m,p] \<turnstile> c \<mapsto> cond"
-      using p(3) by auto
-    obtain notCond where notCond: "[m,p] \<turnstile> exp[!c] \<mapsto> notCond"
-      sorry
-    then have cRange: "cond = IntVal 32 0 \<or> cond = IntVal 32 1"
-      using isBoolean_def cond p(1)
-      using IsBoolStamp_def p(2) by metis
-    then have cExprRange: "cExpr = IntVal 32 0 \<or> cExpr = IntVal 32 1"
-      by (metis (full_types) ConstantExprE p(5))
-    then have condTrue: "cond = IntVal 32 1 \<Longrightarrow> cExpr = IntVal 32 0"
-      using cond evalDet p(3) p(5) by fastforce
-    then have condFalse: "cond = IntVal 32 0 \<Longrightarrow> cExpr = IntVal 32 1"
-      using p cond evalDet by fastforce
-    then have opposite: "cond = intval_logic_negation cExpr"
-      by (metis (full_types) IntVal0 IntVal1 cRange condTrue intval_logic_negation.simps(1)
-          logic_negate_def)
-    then have eq: "notCond = cExpr"
-      by (metis (no_types, lifting) IntVal0 IntVal1 cExprRange cond evalDet negation_preserve_eval
-          intval_logic_negation.simps(1) logic_negate_def notCond)
-    then show ?thesis
-      using notCond by auto
-  qed
-  done
+lemma isBooleanCaseFalse:
+  assumes "isBoolean c"
+  assumes "[m, p] \<turnstile> c \<mapsto> cv"
+  shows "\<not>(val_to_bool cv) \<longrightarrow> cv = IntVal 32 0"
+  using assms
+  using isBoolean_def by fastforce
+
+optimization ConditionalExtractCondition: 
+  when "isBoolean c"
+  "(c ? true : false) \<longmapsto> c"
+  apply auto
+  using isBooleanCaseFalse isBooleanCaseTrue by fastforce
+
+optimization ConditionalExtractCondition2: 
+  when "isBoolean c"
+  "(c ? false : true) \<longmapsto> !c"
+  apply auto
+  by (smt (verit, ccfv_threshold) EvalTreeE(1) isBooleanCaseFalse isBooleanCaseTrue negates negation_preserve_eval2 preserveBoolean zero_less_numeral)
 
 optimization ConditionalEqualIsRHS: "((x eq y) ? x : y) \<longmapsto> y"
   apply auto[1]

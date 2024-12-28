@@ -359,6 +359,7 @@ optimization ZeroSubtractValue[nogen]:
   using ZeroSubtractValue_Exp1
   by presburger
 
+thm_oracles ZeroSubtractValue
 value "export_rules ZeroSubtractValue_code"
 
 
@@ -426,7 +427,7 @@ lemma valid_bits:
   by (metis Stamp.collapse(1) valid_int wf_stamp_def)
 
 optimization SubSelfIsZero: "(x - x) \<longmapsto> (forZero x) when 
-                      (WellFormed x && IsIntegerStamp x)"
+                      (WellFormed x; IsIntegerStamp x)"
   using size_non_const
    apply simp unfolding le_expr_def using valid_bits apply auto[1]
   by (smt (verit) ConstantExpr evalDet eval_bits_1_64 eval_unused_bits_zero new_int.simps take_bit_of_0 val_sub_self_is_zero validDefIntConst wf_value_def)
