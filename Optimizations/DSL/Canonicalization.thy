@@ -106,6 +106,8 @@ fun pretty ctxt obligations t =
     Syntax.pretty_term ctxt (#source t), Pretty.fbrk
   ] @ obligations @ warning)
   end
+
+fun is_proved t = not (Thm_Deps.has_skip_proof (#proofs t));
 end
 
 structure RewritePhase = DSL_Phase(RewriteRule);
@@ -115,12 +117,23 @@ val _ =
    (Parse.binding --| Parse.$$$ "terminating" -- Parse.const --| Parse.begin
      >> (Toplevel.begin_main_target true o RewritePhase.setup));
 
+fun pretty_bind binding =
+  Pretty.markup 
+    (Position.markup (Binding.pos_of binding) Markup.position)
+    [Pretty.str (Binding.name_of binding)];
+
 fun print_phases print_obligations ctxt =
   let
     val thy = Proof_Context.theory_of ctxt;
+    val phases = sort_by (Binding.name_of o #name) (RewritePhase.phases thy);
     fun print phase = RewritePhase.pretty print_obligations phase ctxt
+    fun summary phase = Pretty.block 
+    [pretty_bind (#name phase), Pretty.str (" & " ^ Int.toString (fst (RewritePhase.summary phase ctxt))),
+     Pretty.str (" & " ^ Int.toString (snd (RewritePhase.summary phase ctxt)))];
   in 
-    map print (RewritePhase.phases thy)
+    [Pretty.str "Phase & Proved & Total"] @
+    map summary phases @
+    map print phases
   end
 
 fun print_optimizations print_obligations thy =
@@ -162,6 +175,8 @@ val _ =
 \<close>
 
 ML_file "rewrites.ML"
+
+print_phases
              
 subsubsection \<open>Semantic Preservation Obligation\<close>
 

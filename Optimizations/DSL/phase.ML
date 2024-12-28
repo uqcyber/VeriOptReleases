@@ -8,6 +8,7 @@ signature Rule =
 sig
   type T
   val pretty: Proof.context -> bool -> T -> Pretty.T
+  val is_proved: T -> bool
 end
 
 signature DSL_PHASE =
@@ -30,6 +31,7 @@ val exit: local_theory -> local_theory
 val setup: config -> theory -> local_theory
 
 val pretty: bool -> phase -> Proof.context -> Pretty.T
+val summary: phase -> Proof.context -> (int * int)
 
 end;
 
@@ -156,6 +158,12 @@ fun pretty_phase obligation (phase:phase) ctxt =
 
 fun pretty obligation phase ctxt =
   pretty_phase obligation phase ctxt
+
+fun fold_pairs (cx, cy) (tx, ty) = (cx + tx, cy + ty)
+fun is_proved r = if Rule.is_proved r then 1 else 0;
+
+fun summary (phase:phase) _ =
+  (fold fold_pairs (map (fn r => (is_proved r, 1))(Map.values (#rules phase))) (0, 0))
 
 fun pretty' state ctxt =
   case (#status state) of
