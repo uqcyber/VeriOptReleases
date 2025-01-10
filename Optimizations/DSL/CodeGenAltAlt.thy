@@ -1612,10 +1612,10 @@ fun valid_rules :: "Rules \<Rightarrow> bool" where
 fun match_entry_var :: "MATCH \<Rightarrow> VarName option" where
   "match_entry_var (match p) = None" |
   "match_entry_var (matchvar v p) = Some v" |
-  "match_entry_var (equality v1 v2) = None" |
+  "match_entry_var (equality v1 v2) = Some v1" |
   "match_entry_var (m1 && m2) = (case match_entry_var m1 of Some v \<Rightarrow> Some v | None \<Rightarrow> match_entry_var m2)" |
   "match_entry_var (condition c) = None" |
-  "match_entry_var (noop v) = None"
+  "match_entry_var (noop v) = Some v"
 
 abbreviation map_filter :: "('a \<Rightarrow> 'b option) \<Rightarrow> 'a list \<Rightarrow> 'b list" where
   "map_filter f xs \<equiv> map (the \<circ> f) (filter (\<lambda>x. f x \<noteq> None) xs)"
@@ -1626,6 +1626,11 @@ fun entry_var :: "Rules \<Rightarrow> VarName option" where
   "entry_var (r1 else r2) = (case entry_var r1 of Some v \<Rightarrow> Some v | None \<Rightarrow> entry_var r2)" |
   "entry_var (choice xs) = find (\<lambda>_.True) (map_filter entry_var xs)" |
   "entry_var (r1 \<Zsemi> r2) = (case entry_var r1 of Some v \<Rightarrow> Some v | None \<Rightarrow> entry_var r2)"
+
+lemma entry_var_exists_lower_pattern:
+  assumes "(e\<^sub>p, \<Sigma>) \<leadsto> (m, v, \<Sigma>')"
+  shows "match_entry_var m = Some v"
+  using assms apply (induct arbitrary: \<Sigma> \<Sigma>' rule: lower.induct) by simp+
 
 inductive eval_rules :: "Rules \<Rightarrow> Subst \<Rightarrow> IRExpr option \<Rightarrow> bool" where
   \<comment> \<open>Evaluate the result\<close>
@@ -1643,8 +1648,8 @@ inductive eval_rules :: "Rules \<Rightarrow> Subst \<Rightarrow> IRExpr option \
 
   \<comment> \<open>Evaluate else\<close>
   RuleElseLHS:
-  "\<lbrakk>eval_rules r\<^sub>1 \<sigma> e\<rbrakk>
-   \<Longrightarrow> eval_rules (r\<^sub>1 else r2) \<sigma> e" |
+  "\<lbrakk>eval_rules r\<^sub>1 \<sigma> (Some e)\<rbrakk>
+   \<Longrightarrow> eval_rules (r\<^sub>1 else r2) \<sigma> (Some e)" |
   RuleElseRHS:
   "\<lbrakk> eval_rules r\<^sub>1 \<sigma> None;
     eval_rules r\<^sub>2 \<sigma> e\<rbrakk>
@@ -1696,6 +1701,13 @@ value "Predicate.the (generateC STR ''myrule''
     (BinaryPattern BinSub (BinaryPattern BinAdd (VariablePattern STR ''x'') (VariablePattern STR ''y'')) (VariablePattern STR ''x''))
     None 
     (VariablePattern STR ''x''))"
+
+lemma entry_var_exists_lower_rule:
+  assumes "(l, e\<^sub>p, c, e\<^sub>r) \<leadsto> (v, r)"
+  shows "entry_var r = Some v"
+  using assms apply (induct  rule: generate.induct)
+   apply (metis entry_var.simps(1) entry_var_exists_lower_pattern option.simps(5))
+  using entry_var_exists_lower_pattern by fastforce
 
 lemma ground_restriction:
   assumes "\<L> e \<subseteq> S"
@@ -2024,6 +2036,13 @@ lemma det_variable_rules:
   shows "v = v'"
   using assms det_variable_match
   by (smt (verit) Rules.distinct(1) Rules.distinct(11) Rules.distinct(13) Rules.distinct(9) Rules.inject(2) eval_rules.simps generate.simps)
+
+lemma det_variable_rules2:
+  assumes "(l, e\<^sub>p, c, e\<^sub>r) \<leadsto> (v, r)"
+  assumes "eval_rules r [v' \<mapsto> e\<^sub>g] (Some e')"
+  shows "v = v' \<and> entry_var r = Some v"
+  using assms
+  using det_variable_rules entry_var_exists_lower_rule by auto
 
 definition refining_rule :: "Rules \<Rightarrow> bool" where
   "refining_rule r = (\<exists>l e\<^sub>r c e\<^sub>p v. pattern_refinement e\<^sub>r e\<^sub>p \<and> valid_pattern e\<^sub>p \<and> \<L> e\<^sub>r \<subseteq> \<L> e\<^sub>p \<and> \<L> c \<subseteq> \<L> e\<^sub>p \<and> (l, e\<^sub>p, c, e\<^sub>r) \<leadsto> (v, r))"

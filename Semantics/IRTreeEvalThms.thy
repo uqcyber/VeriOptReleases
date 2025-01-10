@@ -133,7 +133,8 @@ next
 next
   case BinShortCircuitOr
   then show ?thesis
-    using assms apply (cases x; cases y; auto)
+    using assms apply (cases x; cases y; auto) 
+    using IntVal1 new_int_take_bits apply blast
     by (metis IntVal0 IntVal1 bool_to_val.elims new_int.elims)+
 next
   case BinLeftShift

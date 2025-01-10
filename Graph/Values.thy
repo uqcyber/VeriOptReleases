@@ -238,7 +238,8 @@ fun intval_not :: "Value \<Rightarrow> Value" where
 subsection \<open>Comparison Operators\<close>
 
 fun intval_short_circuit_or :: "Value \<Rightarrow> Value \<Rightarrow> Value" where
-  "intval_short_circuit_or (IntVal b1 v1) (IntVal b2 v2) = bool_to_val_bin b1 b2 (((v1 \<noteq> 0) \<or> (v2 \<noteq> 0)))" |
+  (*"intval_short_circuit_or (IntVal b1 v1) (IntVal b2 v2) = bool_to_val_bin b1 b2 (((v1 \<noteq> 0) \<or> (v2 \<noteq> 0)))" |*)
+  "intval_short_circuit_or (IntVal b1 v1) (IntVal b2 v2) = bool_to_val_bin b1 b2 (if (v1 \<noteq> 0) then True else (v2 \<noteq> 0))" |
   "intval_short_circuit_or _ _ = UndefVal"
 
 fun intval_equals :: "Value \<Rightarrow> Value \<Rightarrow> Value" where

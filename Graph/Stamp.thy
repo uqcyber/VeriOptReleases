@@ -395,6 +395,10 @@ fun valid_value :: "Value \<Rightarrow> Stamp \<Rightarrow> bool" where
   "valid_value (ObjRef ref) (ObjectStamp klass exact nonNull alwaysNull) = 
      ((alwaysNull \<longrightarrow> ref = None) \<and> (ref=None \<longrightarrow> \<not> nonNull))" |
   "valid_value stamp val = False"
+
+lemma
+  "(and (not v) d = 0) = ((or v d) = v)"
+  by (metis (no_types, opaque_lifting) and.right_neutral bit.conj_cancel_left bit.conj_disj_distrib bit.de_Morgan_conj bit.double_compl)
 (* NOTE: we could allow for unsigned interpretations too, like this:
        (if l < 0
         then (l \<le> int_signed_value b val \<and> int_signed_value b val \<le> h)

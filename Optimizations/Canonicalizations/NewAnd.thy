@@ -618,7 +618,7 @@ done
 
 thm_oracles improved_opt
 
-(*
+
 lemma falseBelowN_nBelowLowest:
   assumes "n \<le> Nat.size a"
   assumes "\<forall> i < n. \<not>(bit a i)"
@@ -642,12 +642,18 @@ lemma noZeros_Count:
   using assms unfolding zeroCount_def size64
   using zeroCount_finite by auto
 
+lemma allZeros_Count_imp:
+  fixes a :: "64 word"
+  assumes "zeroCount a = 64"
+  shows "i < Nat.size a \<longrightarrow> \<not>(bit a i)"
+  using assms unfolding zeroCount_def
+  by (smt (verit) ValueThms.size64 assms bitCount_def bitCount_range card_0_eq diff_diff_cancel empty_iff finite_bit_word intersect_bitCount mem_Collect_eq rel_simps(27) verit_minus_simplify(2) zeroCount_def)
+
 lemma allZeros_Count:
   fixes a :: "64 word"
   assumes "zeroCount a = 64"
   shows "\<not>(bit a i)"
-  using assms unfolding zeroCount_def size64
-  using zeroCount_finite apply auto sorry
+  using assms allZeros_Count_imp max_bit by blast
 
 lemma zeroBits:
   fixes a :: "'a::len word"
@@ -671,6 +677,7 @@ lemma maskBitCount:
   using mask_bit_iff assms
   by fastforce
 
+(*
 lemma packedMask:
   fixes a :: "64 word"
   assumes "numberOfLeadingZeros a = zeroCount a"
@@ -725,9 +732,9 @@ proof -
   then show ?thesis using n
     by blast
 qed
-*)
 
-(*
+
+
 lemma consumes: 
   assumes "numberOfLeadingZeros (\<up>z) + bitCount (\<up>z) = 64"
   and "\<up>z \<noteq> 0"
@@ -742,8 +749,8 @@ proof -
     using assms(1) size64 ones_zero_sum_to_width
     by (metis add.commute add_left_imp_eq)
   then have "\<forall>i. \<not>(bit (\<up>z) i) \<longrightarrow> i \<ge> n"
-    using assms(1) zerosAboveOnly
-    using \<open>(n::nat) = (64::nat) - numberOfLeadingZeros (\<up> (z::IRExpr))\<close> by blast
+    using assms(1) sorry
+    (*using \<open>(n::nat) = (64::nat) - numberOfLeadingZeros (\<up> (z::IRExpr))\<close> by blast*)
   then have "\<forall> i < n. bit (\<up>z) i"
     using leD by blast
   then have "\<forall> i < n. \<not>(bit (\<up>y) i)"
